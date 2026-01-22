@@ -2,6 +2,15 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 export type LoginPayload = { email: string; password: string };
 
+export type DashboardStats = {
+  totalSales: number;
+  profit: number;
+  recentLeads: Array<any>;
+  salesCount: number;
+  lowStockCount: number;
+};
+
+
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 async function request<T>(
