@@ -52,6 +52,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [booting, setBooting] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -65,10 +66,10 @@ const App: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  async function bootstrapAuth() {
+  const bootstrapAuth = async () => {
     setBooting(true);
-
     const token = api.getToken();
+
     if (!token) {
       setUser(null);
       setBooting(false);
@@ -76,13 +77,12 @@ const App: React.FC = () => {
     }
 
     try {
-      const me = await api.me();
-      // api.me() ya limpia token si falla (según tu implementación)
+      const me = await api.me(); // si falla, api.me limpia token y devuelve null
       setUser(me);
     } finally {
       setBooting(false);
     }
-  }
+  };
 
   useEffect(() => {
     bootstrapAuth();
@@ -91,24 +91,23 @@ const App: React.FC = () => {
 
   const isLoginRoute = location.pathname === "/login";
 
-  // Mientras verificamos sesión/token, no renders parciales
   if (booting) return <FullScreenLoading text="Checking session..." />;
 
-  // ✅ SIN usuario:
-  // - si no está en /login → redirige a /login
-  // - si está en /login → muestra Login
+  // Sin user -> forzar /login
   if (!user) {
     if (!isLoginRoute) return <Navigate to="/login" replace />;
     return (
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route
+          path="/login"
+          element={<Login onLoginSuccess={bootstrapAuth} />}
+        />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
   }
 
-  // ✅ CON usuario:
-  // - si está en /login → redirige a /
+  // Con user -> si está en /login, manda al dashboard
   if (user && isLoginRoute) return <Navigate to="/" replace />;
 
   return (
@@ -135,7 +134,6 @@ const App: React.FC = () => {
           </nav>
 
           <div className="space-y-2">
-            {/* Clear session (por si queda token pegado) */}
             <button
               onClick={() => {
                 api.clearToken();
@@ -147,7 +145,6 @@ const App: React.FC = () => {
               Clear session
             </button>
 
-            {/* Logout real */}
             <button
               onClick={async () => {
                 await api.logout();
@@ -174,9 +171,7 @@ const App: React.FC = () => {
               : "Branch: (none)"}
           </div>
 
-          <div className="text-xs text-gray-500">
-            {user?.email ? user.email : ""}
-          </div>
+          <div className="text-xs text-gray-500">{user?.email ?? ""}</div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -186,7 +181,7 @@ const App: React.FC = () => {
             <Route path="/stocks" element={<Stocks />} />
             <Route path="/leads" element={<Leads />} />
             <Route path="/appointments" element={<Appointments />} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </main>

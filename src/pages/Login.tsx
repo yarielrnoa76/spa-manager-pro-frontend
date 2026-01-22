@@ -2,8 +2,13 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 
-const Login: React.FC = () => {
+type LoginProps = {
+  onLoginSuccess?: () => void | Promise<void>;
+};
+
+const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const navigate = useNavigate();
+
   const [email, setEmail] = useState("admin@local.test");
   const [password, setPassword] = useState("Admin12345!");
   const [error, setError] = useState("");
@@ -16,6 +21,11 @@ const Login: React.FC = () => {
 
     try {
       await api.login({ email, password });
+
+      // ✅ refresca estado auth en App
+      await onLoginSuccess?.();
+
+      // ✅ ahora sí, entra al dashboard
       navigate("/", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Invalid credentials. Please try again.");
