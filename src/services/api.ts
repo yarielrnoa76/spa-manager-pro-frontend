@@ -1,6 +1,10 @@
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+console.log("API_URL =", API_URL);
+
 
 export type LoginPayload = { email: string; password: string };
+
+
 
 export type DashboardStats = {
   totalSales: number;
@@ -10,6 +14,10 @@ export type DashboardStats = {
   lowStockCount: number;
 };
 
+if (!API_URL) {
+  // eslint-disable-next-line no-console
+  console.error("VITE_API_URL is missing. Create frontend/.env with VITE_API_URL=http://127.0.0.1:8000 and restart npm run dev");
+}
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -30,6 +38,9 @@ async function request<T>(
     const token = localStorage.getItem("auth_token");
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
+
+  // eslint-disable-next-line no-console
+console.log("[API]", method, `${API_URL}${path}`);
 
   const res = await fetch(`${API_URL}${path}`, {
     method,

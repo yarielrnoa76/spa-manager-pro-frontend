@@ -22,10 +22,19 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     try {
       await api.login({ email, password });
 
-      // ✅ refresca estado auth en App
+      // ✅ Verifica inmediatamente que el token sirve y que /api/user responde
+      const me = await api.me();
+      if (!me) {
+        api.clearToken();
+        throw new Error(
+          "Login OK, pero /api/user no respondió. Revisa Sanctum/auth y rutas.",
+        );
+      }
+
+      // ✅ deja que App refresque su estado
       await onLoginSuccess?.();
 
-      // ✅ ahora sí, entra al dashboard
+      // ✅ entra al dashboard
       navigate("/", { replace: true });
     } catch (err: any) {
       setError(err?.message || "Invalid credentials. Please try again.");

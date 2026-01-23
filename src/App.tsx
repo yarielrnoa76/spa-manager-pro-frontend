@@ -27,6 +27,8 @@ import Appointments from "./pages/Appointments";
 import Stocks from "./pages/Stocks";
 import Login from "./pages/Login";
 
+console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
+
 const SidebarItem = ({ to, icon: Icon, label, active, onClick }: any) => (
   <Link
     to={to}
