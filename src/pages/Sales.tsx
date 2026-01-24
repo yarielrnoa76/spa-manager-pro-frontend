@@ -34,6 +34,14 @@ function money(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
 
+function safeFileLabel(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // quita acentos
+    .replace(/\s+/g, "_") // espacios -> _
+    .replace(/[^\w-]/g, ""); // quita caracteres raros
+}
+
 const Sales: React.FC = () => {
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -42,6 +50,9 @@ const Sales: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split("T")[0],
+  );
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -58,7 +69,7 @@ const Sales: React.FC = () => {
     notes: "",
   });
 
-  // ✅ Cargar todo 1 sola vez (filtrado se hace en frontend)
+  // ✅ Cargar datos (sin romper lógica existente)
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,39 +93,68 @@ const Sales: React.FC = () => {
     }
   };
 
-  // ✅ Base: filtra por branch seleccionado (sin search)
-  const branchFilteredSales = useMemo(() => {
-    if (selectedBranch === "all") return sales;
-    return sales.filter(
-      (s: any) => String(s.branch_id) === String(selectedBranch),
+  // ✅ Nombre de sucursal seleccionada (para UI y export)
+  const selectedBranchName = useMemo(() => {
+    if (selectedBranch === "all") return "Todos";
+    return (
+      branches.find((b) => String(b.id) === String(selectedBranch))?.name ||
+      "Sucursal"
     );
-  }, [sales, selectedBranch]);
+  }, [selectedBranch, branches]);
 
-  // ✅ Visible: filtra por branch + search
+  const branchLabelForFile = useMemo(
+    () => safeFileLabel(selectedBranchName),
+    [selectedBranchName],
+  );
+
+  // ✅ Dropdown de fechas: se basa en las fechas existentes en ventas (orden desc)
+  const availableDates = useMemo(() => {
+    const set = new Set<string>();
+    (sales as any[]).forEach((s: any) => {
+      const d = String(s.date ?? "");
+      if (d) set.add(d);
+    });
+    const arr = Array.from(set);
+    arr.sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+    return arr;
+  }, [sales]);
+
+  // Si por alguna razón selectedDate no existe en el dataset, mantenemos el valor actual.
+  // (No hacemos auto-reset para no "saltar" UX).
+
+  // ✅ Base: filtra por fecha + branch (sin search)
+  const dateBranchFilteredSales = useMemo(() => {
+    return (sales as any[]).filter((s: any) => {
+      const matchesDate = String(s.date) === String(selectedDate);
+      const matchesBranch =
+        selectedBranch === "all" ||
+        String(s.branch_id) === String(selectedBranch);
+      return matchesDate && matchesBranch;
+    });
+  }, [sales, selectedDate, selectedBranch]);
+
+  // ✅ Visible: fecha + branch + search
   const visibleSales = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return branchFilteredSales;
+    if (!term) return dateBranchFilteredSales;
 
-    return branchFilteredSales.filter((s: any) => {
+    return dateBranchFilteredSales.filter((s: any) => {
       const client = String(s.client_name ?? "").toLowerCase();
       const service = String(s.service_rendered ?? "").toLowerCase();
       return client.includes(term) || service.includes(term);
     });
-  }, [branchFilteredSales, searchTerm]);
+  }, [dateBranchFilteredSales, searchTerm]);
 
-  // ✅ RESUMEN: depende del filtro de branch + search (lo que estás viendo)
+  // ✅ RESUMEN: ahora es del día seleccionado (y branch seleccionado)
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
-
-    const todaySales = visibleSales.filter(
-      (s: any) => String(s.date) === today,
-    );
-    const totalAmount = todaySales.reduce(
+    const totalAmount = visibleSales.reduce(
       (acc, curr: any) => acc + toNumber(String(curr.amount)),
       0,
     );
-
-    return { count: todaySales.length, total: totalAmount };
+    return {
+      count: visibleSales.length,
+      total: totalAmount,
+    };
   }, [visibleSales]);
 
   const availableProducts = useMemo(
@@ -189,9 +229,9 @@ const Sales: React.FC = () => {
 
   const handleQuantityChange = (qtyStr: string) => {
     let qty = parseInt(qtyStr.replace(/[^\d]/g, "") || "1", 10);
-    if (selectedProduct && qty > Number((selectedProduct as any).stock)) {
+    if (selectedProduct && qty > Number((selectedProduct as any).stock))
       qty = Number((selectedProduct as any).stock);
-    }
+
     setNewSale((prev) => ({
       ...prev,
       ...recalcTotals({ quantity: String(qty) }),
@@ -215,7 +255,7 @@ const Sales: React.FC = () => {
     }
   };
 
-  // ✅ Exporta EXACTAMENTE lo que estás viendo (branch + search)
+  // ✅ Exporta EXACTAMENTE lo que estás viendo (fecha + branch + search)
   const exportToCSV = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
     const rows = visibleSales.map((s: any) =>
@@ -237,10 +277,11 @@ const Sales: React.FC = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ventas_${selectedBranch}_${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `ventas_${selectedDate}_${branchLabelForFile}.csv`;
     a.click();
   };
 
+  // Check if the form can be submitted
   const canSubmit =
     newSale.branch_id &&
     newSale.date &&
@@ -262,7 +303,18 @@ const Sales: React.FC = () => {
           <p className="text-gray-500 text-sm">
             Gestiona transacciones e inventario en tiempo real.
           </p>
+
+          {/* ✅ Info visible del filtro actual */}
+          <p className="text-xs text-gray-400 mt-1">
+            Sucursal:{" "}
+            <span className="font-bold text-gray-600">
+              {selectedBranchName}
+            </span>{" "}
+            · Fecha:{" "}
+            <span className="font-bold text-gray-600">{selectedDate}</span>
+          </p>
         </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={exportToCSV}
@@ -279,7 +331,7 @@ const Sales: React.FC = () => {
         </div>
       </div>
 
-      {/* RESUMEN: ahora depende de filtros */}
+      {/* RESUMEN (depende de filtros) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -298,7 +350,7 @@ const Sales: React.FC = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase">
-              Monto Total Hoy (según filtro)
+              Monto Total (según filtro)
             </p>
             <p className="text-2xl font-black text-gray-900">
               ${money(stats.total)}
@@ -324,10 +376,31 @@ const Sales: React.FC = () => {
             />
           </div>
 
+          {/* ✅ NUEVO: filtro de fecha */}
+          <select
+            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            title="Filtrar por fecha"
+          >
+            {/* Si por algún motivo no hay sales todavía, mostramos hoy */}
+            {availableDates.length === 0 ? (
+              <option value={selectedDate}>{selectedDate}</option>
+            ) : (
+              availableDates.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))
+            )}
+          </select>
+
+          {/* ✅ filtro sucursal */}
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
+            title="Filtrar por sucursal"
           >
             <option value="all">Todas las Sucursales</option>
             {branches.map((b) => (
@@ -501,7 +574,6 @@ const Sales: React.FC = () => {
                     }))
                   }
                 />
-
                 {showSuggestions && leadSuggestions.length > 0 && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
                     {leadSuggestions.map((lead) => (
