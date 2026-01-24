@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import { DailyLog, Branch, Product } from "../types";
-import { Plus, Download, Search, X, Package } from "lucide-react";
+import {
+  Plus,
+  Download,
+  Search,
+  X,
+  Package,
+  DollarSign,
+  ShoppingBag,
+} from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
 type NewSaleState = {
@@ -10,9 +18,9 @@ type NewSaleState = {
   product_id: string;
   client_name: string;
   service_rendered: string;
-  quantity: string; // UI string
-  unit_price: string; // UI string
-  amount: string; // UI string (readonly)
+  quantity: string;
+  unit_price: string;
+  amount: string;
   payment_method: string;
   notes?: string;
 };
@@ -30,7 +38,7 @@ const Sales: React.FC = () => {
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [leads, setLeads] = useState<any[]>([]); // Estado para leads
+  const [leads, setLeads] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
@@ -50,12 +58,35 @@ const Sales: React.FC = () => {
     notes: "",
   });
 
+  // --- LÓGICA DE FILTRADO Y RESUMEN ---
+  const filteredSales = useMemo(() => {
+    return sales.filter((s) => {
+      const client = String((s as any).client_name ?? "").toLowerCase();
+      const service = String((s as any).service_rendered ?? "").toLowerCase();
+      const term = searchTerm.toLowerCase();
+      return client.includes(term) || service.includes(term);
+    });
+  }, [sales, searchTerm]);
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const todaySales = filteredSales.filter((s) => (s as any).date === today);
+
+    const totalAmount = todaySales.reduce(
+      (acc, curr) => acc + toNumber(String(curr.amount)),
+      0,
+    );
+    return {
+      count: todaySales.length,
+      total: totalAmount,
+    };
+  }, [filteredSales]);
+
   const availableProducts = useMemo(
     () => products.filter((p) => Number(p.stock) > 0),
     [products],
   );
 
-  // Filtrado de leads por nombre y sucursal seleccionada
   const leadSuggestions = useMemo(() => {
     if (
       !newSale.client_name ||
@@ -76,7 +107,6 @@ const Sales: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch]);
 
   const fetchData = async () => {
@@ -86,7 +116,7 @@ const Sales: React.FC = () => {
         api.listSales(selectedBranch),
         api.listBranches(),
         api.listProducts(),
-        api.listLeads(), // Se asume que este método existe en tu api.ts
+        api.listLeads(),
       ]);
       setSales(Array.isArray(s) ? s : []);
       setBranches(Array.isArray(b) ? b : []);
@@ -113,12 +143,10 @@ const Sales: React.FC = () => {
       parseInt(String(next.quantity ?? newSale.quantity), 10) || 1,
     );
     const unitPrice = toNumber(String(next.unit_price ?? newSale.unit_price));
-    const total = unitPrice * qty;
-
     return {
       ...next,
       quantity: String(qty),
-      amount: unitPrice ? money(total) : "",
+      amount: unitPrice ? money(unitPrice * qty) : "",
     };
   };
 
@@ -126,7 +154,6 @@ const Sales: React.FC = () => {
     const p =
       availableProducts.find((x: any) => String(x.id) === String(productId)) ||
       null;
-
     if (!p) {
       setNewSale((prev) => ({
         ...prev,
@@ -137,77 +164,36 @@ const Sales: React.FC = () => {
       }));
       return;
     }
-
-    const currentQty = parseInt(newSale.quantity, 10) || 1;
-    const safeQty = Math.min(Math.max(currentQty, 1), Number(p.stock) || 1);
-
-    setNewSale((prev) => {
-      const next: Partial<NewSaleState> = {
+    setNewSale((prev) => ({
+      ...prev,
+      ...recalcTotals({
         product_id: String(p.id),
         service_rendered: p.name,
         unit_price: String(p.price ?? ""),
-        quantity: String(safeQty),
-      };
-      return { ...prev, ...recalcTotals(next) };
-    });
+      }),
+    }));
   };
 
   const handleQuantityChange = (qtyStr: string) => {
-    const raw = qtyStr.replace(/[^\d]/g, "");
-    const parsed = parseInt(raw || "0", 10);
-
-    let qty = parsed;
-    if (!qty || qty < 1) qty = 1;
-
-    if (selectedProduct) {
-      const max = Number(selectedProduct.stock) || 1;
-      if (qty > max) qty = max;
-    }
-
-    setNewSale((prev) => {
-      const next: Partial<NewSaleState> = { quantity: String(qty) };
-      return { ...prev, ...recalcTotals(next) };
-    });
-  };
-
-  const canSubmit =
-    !!newSale.branch_id &&
-    !!newSale.product_id &&
-    !!newSale.client_name.trim() &&
-    (parseInt(newSale.quantity, 10) || 0) >= 1;
-
-  const openModal = () => {
-    setNewSale({
-      date: new Date().toISOString().split("T")[0],
-      branch_id: "",
-      product_id: "",
-      client_name: "",
-      service_rendered: "",
-      quantity: "1",
-      unit_price: "",
-      amount: "",
-      payment_method: "Credit Card",
-      notes: "",
-    });
-    setIsModalOpen(true);
+    let qty = parseInt(qtyStr.replace(/[^\d]/g, "") || "1", 10);
+    if (selectedProduct && qty > Number(selectedProduct.stock))
+      qty = Number(selectedProduct.stock);
+    setNewSale((prev) => ({
+      ...prev,
+      ...recalcTotals({ quantity: String(qty) }),
+    }));
   };
 
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.createSale({
-        date: newSale.date,
-        branch_id: newSale.branch_id,
-        product_id: newSale.product_id || null,
-        quantity: parseInt(newSale.quantity, 10) || 1,
-        client_name: newSale.client_name,
-        service_rendered: newSale.service_rendered,
-        payment_method: newSale.payment_method,
-        notes: newSale.notes || null,
+        ...newSale,
+        quantity: parseInt(newSale.quantity, 10),
         unit_price: toNumber(newSale.unit_price),
         amount: toNumber(newSale.amount),
+        product_id: newSale.product_id || null,
       });
-
       setIsModalOpen(false);
       await fetchData();
     } catch (err: any) {
@@ -217,64 +203,61 @@ const Sales: React.FC = () => {
 
   const exportToCSV = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
-    const rows = sales.map((s) =>
+    const rows = filteredSales.map((s: any) =>
       [
-        (s as any).date ?? "",
-        (s as any).seller_id ?? "",
-        branches.find((b) => String(b.id) === String((s as any).branch_id))
-          ?.name ||
-          (s as any).branch_id ||
-          "",
-        (s as any).client_name ?? "",
-        (s as any).service_rendered ?? "",
-        (s as any).amount ?? "",
-        (s as any).payment_method ?? "",
-        (s as any).notes ?? "",
+        s.date,
+        "",
+        branches.find((b) => String(b.id) === String(s.branch_id))?.name ||
+          s.branch_id,
+        s.client_name,
+        s.service_rendered,
+        s.amount,
+        s.payment_method,
+        s.notes,
       ].join(","),
     );
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," + headers + "\n" + rows.join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute(
-      "download",
-      `sales_${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const blob = new Blob([headers + "\n" + rows.join("\n")], {
+      type: "text/csv",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ventas_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
   };
 
-  const filteredSales = sales.filter((s) => {
-    const client = String((s as any).client_name ?? "").toLowerCase();
-    const service = String((s as any).service_rendered ?? "").toLowerCase();
-    const term = searchTerm.toLowerCase();
-    return client.includes(term) || service.includes(term);
-  });
+  // Check if the form can be submitted
+  const canSubmit =
+    newSale.branch_id &&
+    newSale.date &&
+    newSale.product_id &&
+    newSale.client_name &&
+    newSale.quantity &&
+    toNumber(newSale.quantity) > 0 &&
+    newSale.amount &&
+    toNumber(newSale.amount) > 0;
 
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Registro de Ventas Diarias
           </h1>
           <p className="text-gray-500 text-sm">
-            Registro detallado de transacciones diarias vinculadas a inventario.
+            Gestiona transacciones e inventario en tiempo real.
           </p>
         </div>
-
         <div className="flex items-center gap-3">
           <button
             onClick={exportToCSV}
             className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
           >
-            <Download size={18} /> Exportar Excel
+            <Download size={18} /> Exportar
           </button>
           <button
-            onClick={openModal}
+            onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
           >
             <Plus size={18} /> Nueva Venta
@@ -282,6 +265,35 @@ const Sales: React.FC = () => {
         </div>
       </div>
 
+      {/* --- NUEVO: RESUMEN DE VENTAS --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+            <ShoppingBag size={24} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase">
+              Ventas del Día
+            </p>
+            <p className="text-2xl font-black text-gray-900">{stats.count}</p>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+            <DollarSign size={24} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase">
+              Monto Total Hoy
+            </p>
+            <p className="text-2xl font-black text-gray-900">
+              ${money(stats.total)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* TABLA Y FILTROS */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
@@ -297,7 +309,6 @@ const Sales: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedBranch}
@@ -312,16 +323,6 @@ const Sales: React.FC = () => {
           </select>
         </div>
 
-        {loading && (
-          <div className="p-4 text-sm text-gray-500">Cargando...</div>
-        )}
-
-        {!loading && filteredSales.length === 0 && (
-          <div className="p-4 text-sm text-gray-500">
-            No hay ventas para mostrar.
-          </div>
-        )}
-
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold">
@@ -335,35 +336,48 @@ const Sales: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {filteredSales.map((sale: any) => (
-                <tr key={sale.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">{sale.date}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
-                      {branches.find(
-                        (b) => String(b.id) === String(sale.branch_id),
-                      )?.name || "—"}
-                    </span>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-4 text-center text-gray-400"
+                  >
+                    Cargando datos...
                   </td>
-                  <td className="px-6 py-4 font-medium">{sale.client_name}</td>
-                  <td className="px-6 py-4 flex items-center gap-2">
-                    {sale.product_id && (
-                      <Package size={14} className="text-gray-400" />
-                    )}
-                    {sale.service_rendered}
-                  </td>
-                  <td className="px-6 py-4 text-right font-bold text-gray-900">
-                    ${sale.amount}
-                  </td>
-                  <td className="px-6 py-4">{sale.payment_method}</td>
                 </tr>
-              ))}
+              ) : (
+                filteredSales.map((sale: any) => (
+                  <tr key={sale.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">{sale.date}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
+                        {branches.find(
+                          (b) => String(b.id) === String(sale.branch_id),
+                        )?.name || "—"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-medium">
+                      {sale.client_name}
+                    </td>
+                    <td className="px-6 py-4 flex items-center gap-2">
+                      {sale.product_id && (
+                        <Package size={14} className="text-gray-400" />
+                      )}
+                      {sale.service_rendered}
+                    </td>
+                    <td className="px-6 py-4 text-right font-bold text-gray-900">
+                      ${sale.amount}
+                    </td>
+                    <td className="px-6 py-4">{sale.payment_method}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal Crear Venta */}
+      {/* MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
@@ -388,7 +402,7 @@ const Sales: React.FC = () => {
                       setNewSale((prev) => ({
                         ...prev,
                         branch_id: e.target.value,
-                        client_name: "", // Reseteamos cliente al cambiar sucursal
+                        client_name: "",
                       }))
                     }
                   >
@@ -400,7 +414,6 @@ const Sales: React.FC = () => {
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Fecha
@@ -419,29 +432,23 @@ const Sales: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Producto / Servicio (Inventario)
+                  Producto / Servicio
                 </label>
-                <div className="relative">
-                  <select
-                    required
-                    className="w-full border rounded-lg p-2 text-sm appearance-none bg-white"
-                    value={newSale.product_id}
-                    onChange={(e) => handleProductSelect(e.target.value)}
-                  >
-                    <option value="">-- Seleccionar de Inventario --</option>
-                    {availableProducts.map((p: any) => (
-                      <option key={p.id} value={String(p.id)}>
-                        {p.name} (Stock: {p.stock}) - ${p.price}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                    <Package size={16} />
-                  </div>
-                </div>
+                <select
+                  required
+                  className="w-full border rounded-lg p-2 text-sm"
+                  value={newSale.product_id}
+                  onChange={(e) => handleProductSelect(e.target.value)}
+                >
+                  <option value="">-- Seleccionar de Inventario --</option>
+                  {availableProducts.map((p: any) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.name} (Stock: {p.stock})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* CAMPO DE CLIENTE CON AUTOCOMPLETADO FILTRADO POR SUCURSAL */}
               <div className="relative">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                   Nombre del Cliente
@@ -452,10 +459,10 @@ const Sales: React.FC = () => {
                   disabled={!newSale.branch_id}
                   placeholder={
                     newSale.branch_id
-                      ? "Ej. Juan Pérez"
-                      : "Selecciona sucursal primero..."
+                      ? "Buscar en leads..."
+                      : "Elige sucursal primero"
                   }
-                  className={`w-full border rounded-lg p-2 text-sm ${!newSale.branch_id ? "bg-gray-50 cursor-not-allowed" : ""}`}
+                  className={`w-full border rounded-lg p-2 text-sm ${!newSale.branch_id ? "bg-gray-50" : ""}`}
                   value={newSale.client_name}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() =>
@@ -468,14 +475,13 @@ const Sales: React.FC = () => {
                     }))
                   }
                 />
-
                 {showSuggestions && leadSuggestions.length > 0 && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
                     {leadSuggestions.map((lead) => (
                       <button
                         key={lead.id}
                         type="button"
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 flex justify-between items-center transition-colors"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 flex justify-between items-center"
                         onClick={() => {
                           setNewSale((prev) => ({
                             ...prev,
@@ -487,7 +493,7 @@ const Sales: React.FC = () => {
                         <span className="font-medium text-gray-900">
                           {lead.name}
                         </span>
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold uppercase">
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">
                           {lead.status}
                         </span>
                       </button>
@@ -504,11 +510,6 @@ const Sales: React.FC = () => {
                   <input
                     type="number"
                     min={1}
-                    max={
-                      selectedProduct
-                        ? Number(selectedProduct.stock)
-                        : undefined
-                    }
                     required
                     className="w-full border rounded-lg p-2 text-sm font-bold"
                     value={newSale.quantity}
@@ -516,19 +517,6 @@ const Sales: React.FC = () => {
                     disabled={!newSale.product_id}
                   />
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Precio Unitario ($)
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full border rounded-lg p-2 text-sm font-bold bg-gray-50"
-                    value={newSale.unit_price}
-                    readOnly
-                  />
-                </div>
-
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Total ($)
@@ -540,48 +528,22 @@ const Sales: React.FC = () => {
                     readOnly
                   />
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Método de Pago
-                  </label>
-                  <select
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={newSale.payment_method}
-                    onChange={(e) =>
-                      setNewSale((prev) => ({
-                        ...prev,
-                        payment_method: e.target.value,
-                      }))
-                    }
-                  >
-                    <option>Credit Card</option>
-                    <option>Cash</option>
-                    <option>Zelle</option>
-                    <option>Transfer</option>
-                  </select>
-                </div>
               </div>
 
               <div className="pt-4 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2 border rounded-lg text-sm font-bold hover:bg-gray-50"
+                  className="flex-1 py-2 border rounded-lg text-sm font-bold"
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold shadow-lg transition ${
-                    canSubmit
-                      ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${canSubmit ? "bg-indigo-600 shadow-lg" : "bg-gray-300"}`}
                 >
-                  Confirmar Venta
+                  Confirmar
                 </button>
               </div>
             </form>
