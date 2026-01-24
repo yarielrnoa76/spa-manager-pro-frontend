@@ -28,10 +28,7 @@ async function request<T>(
   const method = options.method ?? "GET";
   const auth = options.auth ?? true;
 
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-  };
-
+  const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET") headers["Content-Type"] = "application/json";
 
   if (auth) {
@@ -39,27 +36,29 @@ async function request<T>(
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // eslint-disable-next-line no-console
-console.log("[API]", method, `${API_URL}${path}`);
-
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  // Si token expiró / inválido
-  if (res.status === 401) {
-    localStorage.removeItem("auth_token");
-  }
+  if (res.status === 401) localStorage.removeItem("auth_token");
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
+    const text = await res.text().catch(() => "");
+    let data: any = {};
+    try { data = text ? JSON.parse(text) : {}; } catch {}
     throw new Error(data?.message || `Request failed (${res.status})`);
   }
 
-  return res.json();
+  // ✅ 204 = No Content (DELETE típico)
+  if (res.status === 204) return null as unknown as T;
+
+  // ✅ soporta body vacío aunque status sea 200/201
+   const text = await res.text();
+return (text ? JSON.parse(text) : (null as any)) as T;
 }
+
 
 export const api = {
   // --- Token helpers ---
@@ -103,9 +102,10 @@ export const api = {
   },
 
   // --- Branches ---
-  async listBranches() {
-    return request(`/api/branches`, { method: "GET", auth: true });
-  },
+async listBranches() {
+  const res: any = await request(`/api/branches`, { method: "GET", auth: true });
+  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+},
 
   // --- Appointments ---
   async listAppointments() {
@@ -121,17 +121,43 @@ export const api = {
     return request(`/api/leads`, { method: "GET", auth: true });
   },
 
-  // --- Sales ---
-  async listSales() {
-    return request(`/api/sales`, { method: "GET", auth: true });
-  },
+ // --- Sales ---
+async listSales(branch_id: string | number = "all") {
+  const q = branch_id ? `?branch_id=${encodeURIComponent(String(branch_id))}` : "";
+  const res: any = await request(`/api/sales${q}`, { method: "GET", auth: true });
+  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+},
+
+async createSale(payload: any) {
+  return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+},
 
   // --- Products / Inventory ---
-  async listProducts() {
-    return request(`/api/products`, { method: "GET", auth: true });
-  },
+async createProduct(payload: any) {
+  return request(`/api/products`, { method: "POST", body: payload, auth: true });
+},
+async deleteProduct(productId: string | number) {
+  return request(`/api/products/${encodeURIComponent(String(productId))}`, {
+    method: "DELETE",
+    auth: true,
+  });
+},
 
-  async moveStock(payload: any) {
-    return request(`/api/inventory/transaction`, { method: "POST", body: payload, auth: true });
-  },
+ async listProducts() {
+  const res: any = await request(`/api/products`, { method: "GET", auth: true });
+  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+},
+
+ async moveStock(payload: {
+  product_id: number | string;
+  type: "purchase" | "sale";
+  quantity: number;
+}) {
+  return request(`/api/inventory/transaction`, {
+    method: "POST",
+    body: payload,
+    auth: true,
+  });
+},
+
 };
