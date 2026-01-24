@@ -30,10 +30,12 @@ const Sales: React.FC = () => {
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [leads, setLeads] = useState<any[]>([]); // Estado para leads
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
   const [loading, setLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [newSale, setNewSale] = useState<NewSaleState>({
     date: new Date().toISOString().split("T")[0],
@@ -53,6 +55,25 @@ const Sales: React.FC = () => {
     [products],
   );
 
+  // Filtrado de leads por nombre y sucursal seleccionada
+  const leadSuggestions = useMemo(() => {
+    if (
+      !newSale.client_name ||
+      newSale.client_name.length < 2 ||
+      !newSale.branch_id
+    ) {
+      return [];
+    }
+    return leads
+      .filter(
+        (lead) =>
+          lead.name.toLowerCase().includes(newSale.client_name.toLowerCase()) &&
+          String(lead.branch_id) === String(newSale.branch_id) &&
+          (lead.status === "new" || lead.status === "contacted"),
+      )
+      .slice(0, 5);
+  }, [newSale.client_name, newSale.branch_id, leads]);
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,14 +82,16 @@ const Sales: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [s, b, p] = await Promise.all([
+      const [s, b, p, l] = await Promise.all([
         api.listSales(selectedBranch),
         api.listBranches(),
         api.listProducts(),
+        api.listLeads(), // Se asume que este método existe en tu api.ts
       ]);
       setSales(Array.isArray(s) ? s : []);
       setBranches(Array.isArray(b) ? b : []);
       setProducts(Array.isArray(p) ? p : []);
+      setLeads(Array.isArray(l) ? l : []);
     } finally {
       setLoading(false);
     }
@@ -104,7 +127,6 @@ const Sales: React.FC = () => {
       availableProducts.find((x: any) => String(x.id) === String(productId)) ||
       null;
 
-    // Si eligen vacío o algo inválido:
     if (!p) {
       setNewSale((prev) => ({
         ...prev,
@@ -116,7 +138,6 @@ const Sales: React.FC = () => {
       return;
     }
 
-    // Ajustar quantity si excede stock
     const currentQty = parseInt(newSale.quantity, 10) || 1;
     const safeQty = Math.min(Math.max(currentQty, 1), Number(p.stock) || 1);
 
@@ -132,14 +153,12 @@ const Sales: React.FC = () => {
   };
 
   const handleQuantityChange = (qtyStr: string) => {
-    // permitir vacío mientras tipea, pero al final lo normalizamos
     const raw = qtyStr.replace(/[^\d]/g, "");
     const parsed = parseInt(raw || "0", 10);
 
     let qty = parsed;
     if (!qty || qty < 1) qty = 1;
 
-    // si hay producto, limitar a stock
     if (selectedProduct) {
       const max = Number(selectedProduct.stock) || 1;
       if (qty > max) qty = max;
@@ -175,9 +194,6 @@ const Sales: React.FC = () => {
 
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Backend ahora calcula amount/unit_price si hay product_id,
-    // pero igual mandamos quantity y los campos básicos.
     try {
       await api.createSale({
         date: newSale.date,
@@ -188,8 +204,6 @@ const Sales: React.FC = () => {
         service_rendered: newSale.service_rendered,
         payment_method: newSale.payment_method,
         notes: newSale.notes || null,
-
-        // opcional: si quieres mandar para UI, pero backend lo recalcula:
         unit_price: toNumber(newSale.unit_price),
         amount: toNumber(newSale.amount),
       });
@@ -374,6 +388,7 @@ const Sales: React.FC = () => {
                       setNewSale((prev) => ({
                         ...prev,
                         branch_id: e.target.value,
+                        client_name: "", // Reseteamos cliente al cambiar sucursal
                       }))
                     }
                   >
@@ -384,11 +399,6 @@ const Sales: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  {branches.length === 0 && (
-                    <p className="text-[10px] text-red-500 mt-1 font-bold">
-                      No hay sucursales cargadas (seed BranchSeeder).
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -429,24 +439,28 @@ const Sales: React.FC = () => {
                     <Package size={16} />
                   </div>
                 </div>
-
-                {availableProducts.length === 0 && (
-                  <p className="text-[10px] text-red-500 mt-1 font-bold">
-                    No hay productos con stock disponible (seed Products).
-                  </p>
-                )}
               </div>
 
-              <div>
+              {/* CAMPO DE CLIENTE CON AUTOCOMPLETADO FILTRADO POR SUCURSAL */}
+              <div className="relative">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                   Nombre del Cliente
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Juan Pérez"
-                  className="w-full border rounded-lg p-2 text-sm"
+                  disabled={!newSale.branch_id}
+                  placeholder={
+                    newSale.branch_id
+                      ? "Ej. Juan Pérez"
+                      : "Selecciona sucursal primero..."
+                  }
+                  className={`w-full border rounded-lg p-2 text-sm ${!newSale.branch_id ? "bg-gray-50 cursor-not-allowed" : ""}`}
                   value={newSale.client_name}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() =>
+                    setTimeout(() => setShowSuggestions(false), 200)
+                  }
                   onChange={(e) =>
                     setNewSale((prev) => ({
                       ...prev,
@@ -454,6 +468,32 @@ const Sales: React.FC = () => {
                     }))
                   }
                 />
+
+                {showSuggestions && leadSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
+                    {leadSuggestions.map((lead) => (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 flex justify-between items-center transition-colors"
+                        onClick={() => {
+                          setNewSale((prev) => ({
+                            ...prev,
+                            client_name: lead.name,
+                          }));
+                          setShowSuggestions(false);
+                        }}
+                      >
+                        <span className="font-medium text-gray-900">
+                          {lead.name}
+                        </span>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold uppercase">
+                          {lead.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -475,11 +515,6 @@ const Sales: React.FC = () => {
                     onChange={(e) => handleQuantityChange(e.target.value)}
                     disabled={!newSale.product_id}
                   />
-                  <p className="text-[9px] text-gray-400 mt-1">
-                    {selectedProduct
-                      ? `* Máx: ${selectedProduct.stock}`
-                      : "* Selecciona un producto"}
-                  </p>
                 </div>
 
                 <div>
@@ -492,9 +527,6 @@ const Sales: React.FC = () => {
                     value={newSale.unit_price}
                     readOnly
                   />
-                  <p className="text-[9px] text-gray-400 mt-1">
-                    * Precio fijado por inventario
-                  </p>
                 </div>
 
                 <div>
@@ -507,9 +539,6 @@ const Sales: React.FC = () => {
                     value={newSale.amount}
                     readOnly
                   />
-                  <p className="text-[9px] text-gray-400 mt-1">
-                    * unit_price × quantity
-                  </p>
                 </div>
 
                 <div>
@@ -555,12 +584,6 @@ const Sales: React.FC = () => {
                   Confirmar Venta
                 </button>
               </div>
-
-              {!canSubmit && (
-                <p className="text-[10px] text-gray-400">
-                  * Debes seleccionar sucursal, producto y escribir cliente.
-                </p>
-              )}
             </form>
           </div>
         </div>

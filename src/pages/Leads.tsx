@@ -108,7 +108,9 @@ const LeadCard: React.FC<{
           {/* Left arrow for previous status */}
           {STATUS_PREV[lead.status] && (
             <button
-              onClick={() => onStatusChange(lead.id, STATUS_PREV[lead.status] as LeadStatus)}
+              onClick={() =>
+                onStatusChange(lead.id, STATUS_PREV[lead.status] as LeadStatus)
+              }
               className="p-1.5 text-gray-500 hover:text-indigo-600"
               title="Volver al estado anterior"
             >
@@ -207,13 +209,19 @@ const Leads: React.FC = () => {
   };
 
   // Soft delete handler
-  const handleDeleteLead = async (leadId: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este lead? Esta acción es reversible solo desde la base de datos.")) return;
+  const handleDeleteLead = async (leadId: string | number) => {
+    if (!window.confirm("¿Seguro que deseas eliminar este lead?")) return;
+
     try {
       await api.deleteLead(leadId);
-      fetchData();
+      // Filtrar el lead eliminado del estado actual para una respuesta instantánea
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      // Opcional: fetchData();
     } catch (err) {
-      alert("Error al eliminar el lead.");
+      console.error(err);
+      alert(
+        "Error al eliminar el lead. Verifica que la ruta DELETE exista en el servidor.",
+      );
     }
   };
 
