@@ -1,3 +1,5 @@
+    
+  
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 console.log("API_URL =", API_URL);
 
@@ -120,7 +122,24 @@ async listBranches() {
   async listLeads() {
     return request(`/api/leads`, { method: "GET", auth: true });
   },
-
+// --- Leads ---
+  async createLead(payload: any) {
+    return request(`/api/leads`, { method: "POST", body: payload, auth: true });
+  },
+// --- Leads ---
+    async deleteLead(leadId: string | number) {
+      return request(`/api/leads/${encodeURIComponent(String(leadId))}`, {
+        method: "DELETE",
+        auth: true,
+      });
+    },
+  async updateLeadStatus(leadId: string | number, status: string) {
+    return request(`/api/leads/${encodeURIComponent(String(leadId))}/status`, {
+      method: "PATCH",
+      body: { status },
+      auth: true,
+    });
+  },
  // --- Sales ---
 async listSales(branch_id: string | number = "all") {
   const q = branch_id ? `?branch_id=${encodeURIComponent(String(branch_id))}` : "";
