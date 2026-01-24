@@ -11,33 +11,33 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   const [email, setEmail] = useState("admin@local.test");
   const [password, setPassword] = useState("Admin12345!");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(null);
     setIsLoading(true);
 
     try {
       await api.login({ email, password });
 
-      // ✅ Verifica inmediatamente que el token sirve y que /api/user responde
       const me = await api.me();
       if (!me) {
         api.clearToken();
-        throw new Error(
-          "Login OK, pero /api/user no respondió. Revisa Sanctum/auth y rutas.",
-        );
+        throw new Error("Login OK, but user data could not be retrieved.");
       }
 
-      // ✅ deja que App refresque su estado
       await onLoginSuccess?.();
-
-      // ✅ entra al dashboard
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.message || "Invalid credentials. Please try again.");
+      if (err?.code === "DB_CONNECTION_ERROR") {
+        setError("Connection to DB Server Error");
+      } else if (err?.code === "VALIDATION_ERROR") {
+        setError("Please check your email and password.");
+      } else {
+        setError(err?.message || "Invalid credentials. Please try again.");
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -46,6 +46,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      {/* 👉 ESTA es la ventanita centrada */}
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-800">SPA Manager Pro</h1>
@@ -55,14 +56,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label
-                className="block text-sm font-bold text-gray-600 mb-1"
-                htmlFor="email"
-              >
+              <label className="block text-sm font-bold text-gray-600 mb-1">
                 Email Address
               </label>
               <input
-                id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -72,14 +69,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div>
-              <label
-                className="block text-sm font-bold text-gray-600 mb-1"
-                htmlFor="password"
-              >
+              <label className="block text-sm font-bold text-gray-600 mb-1">
                 Password
               </label>
               <input
-                id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -88,14 +81,17 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               />
             </div>
 
+            {/* 🔴 Error centrado DENTRO de la tarjeta */}
             {error && (
-              <p className="text-red-500 text-sm font-semibold">{error}</p>
+              <div className="text-center text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg py-2 px-3">
+                {error}
+              </div>
             )}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition duration-300 disabled:bg-indigo-400"
+              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition disabled:bg-indigo-400"
             >
               {isLoading ? "Signing In..." : "Sign In"}
             </button>

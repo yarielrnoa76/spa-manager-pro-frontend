@@ -1,12 +1,7 @@
-    
-  
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 console.log("API_URL =", API_URL);
 
-
 export type LoginPayload = { email: string; password: string };
-
-
 
 export type DashboardStats = {
   totalSales: number;
@@ -18,10 +13,44 @@ export type DashboardStats = {
 
 if (!API_URL) {
   // eslint-disable-next-line no-console
-  console.error("VITE_API_URL is missing. Create frontend/.env with VITE_API_URL=http://127.0.0.1:8000 and restart npm run dev");
+  console.error(
+    "VITE_API_URL is missing. Create frontend/.env with VITE_API_URL=http://127.0.0.1:8000 and restart npm run dev"
+  );
 }
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+// ✅ Error enriquecido (sin romper: sigue siendo Error)
+type ApiErrorPayload = {
+  ok?: boolean;
+  code?: string;
+  message?: string;
+  errors?: Record<string, string[]>;
+};
+
+class ApiError extends Error {
+  code?: string;
+  status?: number;
+  errors?: Record<string, string[]>;
+  data?: any;
+
+  constructor(message: string, opts?: { code?: string; status?: number; errors?: Record<string, string[]>; data?: any }) {
+    super(message);
+    this.name = "ApiError";
+    this.code = opts?.code;
+    this.status = opts?.status;
+    this.errors = opts?.errors;
+    this.data = opts?.data;
+  }
+}
+
+function safeJsonParse(text: string): any {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {};
+  }
+}
 
 async function request<T>(
   path: string,
@@ -44,23 +73,46 @@ async function request<T>(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  if (res.status === 401) localStorage.removeItem("auth_token");
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let data: any = {};
-    try { data = text ? JSON.parse(text) : {}; } catch {}
-    throw new Error(data?.message || `Request failed (${res.status})`);
-  }
-
   // ✅ 204 = No Content (DELETE típico)
   if (res.status === 204) return null as unknown as T;
 
-  // ✅ soporta body vacío aunque status sea 200/201
-   const text = await res.text();
-return (text ? JSON.parse(text) : (null as any)) as T;
-}
+  // ✅ Lee body UNA sola vez
+  const rawText = await res.text().catch(() => "");
+  const data: ApiErrorPayload | any = safeJsonParse(rawText);
 
+  if (res.status === 401) localStorage.removeItem("auth_token");
+
+  if (!res.ok) {
+    // ✅ Caso 503 DB down (tu backend ya responde code)
+    if (res.status === 503 && data?.code === "DB_CONNECTION_ERROR") {
+      throw new ApiError("Connection to DB Server Error", {
+        code: "DB_CONNECTION_ERROR",
+        status: 503,
+        data,
+      });
+    }
+
+    // ✅ Caso 422 Validation (si quieres usarlo en UI)
+    if (res.status === 422 && data?.code === "VALIDATION_ERROR") {
+      throw new ApiError(data?.message || "Validation failed.", {
+        code: "VALIDATION_ERROR",
+        status: 422,
+        errors: data?.errors || {},
+        data,
+      });
+    }
+
+    // ✅ Fallback: comportamiento anterior (pero mejorado)
+    throw new ApiError(data?.message || `Request failed (${res.status})`, {
+      code: data?.code,
+      status: res.status,
+      data,
+    });
+  }
+
+  // ✅ soporta body vacío aunque status sea 200/201
+  return (rawText ? (data as T) : (null as any)) as T;
+}
 
 export const api = {
   // --- Token helpers ---
@@ -104,10 +156,10 @@ export const api = {
   },
 
   // --- Branches ---
-async listBranches() {
-  const res: any = await request(`/api/branches`, { method: "GET", auth: true });
-  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-},
+  async listBranches() {
+    const res: any = await request(`/api/branches`, { method: "GET", auth: true });
+    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+  },
 
   // --- Appointments ---
   async listAppointments() {
@@ -122,17 +174,18 @@ async listBranches() {
   async listLeads() {
     return request(`/api/leads`, { method: "GET", auth: true });
   },
-// --- Leads ---
+
   async createLead(payload: any) {
     return request(`/api/leads`, { method: "POST", body: payload, auth: true });
   },
-// --- Leads ---
-    async deleteLead(leadId: string | number) {
-      return request(`/api/leads/${encodeURIComponent(String(leadId))}`, {
-        method: "DELETE",
-        auth: true,
-      });
-    },
+
+  async deleteLead(leadId: string | number) {
+    return request(`/api/leads/${encodeURIComponent(String(leadId))}`, {
+      method: "DELETE",
+      auth: true,
+    });
+  },
+
   async updateLeadStatus(leadId: string | number, status: string) {
     return request(`/api/leads/${encodeURIComponent(String(leadId))}/status`, {
       method: "PATCH",
@@ -140,43 +193,40 @@ async listBranches() {
       auth: true,
     });
   },
- // --- Sales ---
-async listSales(branch_id: string | number = "all") {
-  const q = branch_id ? `?branch_id=${encodeURIComponent(String(branch_id))}` : "";
-  const res: any = await request(`/api/sales${q}`, { method: "GET", auth: true });
-  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-},
 
-async createSale(payload: any) {
-  return request(`/api/sales`, { method: "POST", body: payload, auth: true });
-},
+  // --- Sales ---
+  async listSales(branch_id: string | number = "all") {
+    const q = branch_id ? `?branch_id=${encodeURIComponent(String(branch_id))}` : "";
+    const res: any = await request(`/api/sales${q}`, { method: "GET", auth: true });
+    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+  },
+
+  async createSale(payload: any) {
+    return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+  },
 
   // --- Products / Inventory ---
-async createProduct(payload: any) {
-  return request(`/api/products`, { method: "POST", body: payload, auth: true });
-},
-async deleteProduct(productId: string | number) {
-  return request(`/api/products/${encodeURIComponent(String(productId))}`, {
-    method: "DELETE",
-    auth: true,
-  });
-},
+  async createProduct(payload: any) {
+    return request(`/api/products`, { method: "POST", body: payload, auth: true });
+  },
 
- async listProducts() {
-  const res: any = await request(`/api/products`, { method: "GET", auth: true });
-  return Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-},
+  async deleteProduct(productId: string | number) {
+    return request(`/api/products/${encodeURIComponent(String(productId))}`, {
+      method: "DELETE",
+      auth: true,
+    });
+  },
 
- async moveStock(payload: {
-  product_id: number | string;
-  type: "purchase" | "sale";
-  quantity: number;
-}) {
-  return request(`/api/inventory/transaction`, {
-    method: "POST",
-    body: payload,
-    auth: true,
-  });
-},
+  async listProducts() {
+    const res: any = await request(`/api/products`, { method: "GET", auth: true });
+    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+  },
 
+  async moveStock(payload: { product_id: number | string; type: "purchase" | "sale"; quantity: number }) {
+    return request(`/api/inventory/transaction`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
+  },
 };

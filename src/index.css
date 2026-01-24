@@ -13,6 +13,13 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Ajuste para que el login y las páginas ocupen todo el ancho disponible */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 a {
   font-weight: 500;
   color: #646cff;
@@ -24,10 +31,20 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  /* Corregido: Eliminamos place-items: center y display: flex para evitar el encajonamiento */
+  display: block; 
+  width: 100%;
   min-height: 100vh;
+}
+
+/* Animación de entrada suave para los componentes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
 }
 
 h1 {

@@ -58,32 +58,67 @@ const Sales: React.FC = () => {
     notes: "",
   });
 
-  // --- LÓGICA DE FILTRADO Y RESUMEN ---
-  const filteredSales = useMemo(() => {
-    return sales.filter((s) => {
-      const client = String((s as any).client_name ?? "").toLowerCase();
-      const service = String((s as any).service_rendered ?? "").toLowerCase();
-      const term = searchTerm.toLowerCase();
+  // ✅ Cargar todo 1 sola vez (filtrado se hace en frontend)
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [s, b, p, l] = await Promise.all([
+        api.listSales("all"), // traemos todo y filtramos en frontend
+        api.listBranches(),
+        api.listProducts(),
+        api.listLeads(),
+      ]);
+      setSales(Array.isArray(s) ? s : []);
+      setBranches(Array.isArray(b) ? b : []);
+      setProducts(Array.isArray(p) ? p : []);
+      setLeads(Array.isArray(l) ? l : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Base: filtra por branch seleccionado (sin search)
+  const branchFilteredSales = useMemo(() => {
+    if (selectedBranch === "all") return sales;
+    return sales.filter(
+      (s: any) => String(s.branch_id) === String(selectedBranch),
+    );
+  }, [sales, selectedBranch]);
+
+  // ✅ Visible: filtra por branch + search
+  const visibleSales = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return branchFilteredSales;
+
+    return branchFilteredSales.filter((s: any) => {
+      const client = String(s.client_name ?? "").toLowerCase();
+      const service = String(s.service_rendered ?? "").toLowerCase();
       return client.includes(term) || service.includes(term);
     });
-  }, [sales, searchTerm]);
+  }, [branchFilteredSales, searchTerm]);
 
+  // ✅ RESUMEN: depende del filtro de branch + search (lo que estás viendo)
   const stats = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
-    const todaySales = filteredSales.filter((s) => (s as any).date === today);
 
+    const todaySales = visibleSales.filter(
+      (s: any) => String(s.date) === today,
+    );
     const totalAmount = todaySales.reduce(
-      (acc, curr) => acc + toNumber(String(curr.amount)),
+      (acc, curr: any) => acc + toNumber(String(curr.amount)),
       0,
     );
-    return {
-      count: todaySales.length,
-      total: totalAmount,
-    };
-  }, [filteredSales]);
+
+    return { count: todaySales.length, total: totalAmount };
+  }, [visibleSales]);
 
   const availableProducts = useMemo(
-    () => products.filter((p) => Number(p.stock) > 0),
+    () => products.filter((p: any) => Number(p.stock) > 0),
     [products],
   );
 
@@ -104,28 +139,6 @@ const Sales: React.FC = () => {
       )
       .slice(0, 5);
   }, [newSale.client_name, newSale.branch_id, leads]);
-
-  useEffect(() => {
-    fetchData();
-  }, [selectedBranch]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [s, b, p, l] = await Promise.all([
-        api.listSales(selectedBranch),
-        api.listBranches(),
-        api.listProducts(),
-        api.listLeads(),
-      ]);
-      setSales(Array.isArray(s) ? s : []);
-      setBranches(Array.isArray(b) ? b : []);
-      setProducts(Array.isArray(p) ? p : []);
-      setLeads(Array.isArray(l) ? l : []);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const selectedProduct = useMemo(() => {
     const pid = String(newSale.product_id || "");
@@ -176,8 +189,9 @@ const Sales: React.FC = () => {
 
   const handleQuantityChange = (qtyStr: string) => {
     let qty = parseInt(qtyStr.replace(/[^\d]/g, "") || "1", 10);
-    if (selectedProduct && qty > Number(selectedProduct.stock))
-      qty = Number(selectedProduct.stock);
+    if (selectedProduct && qty > Number((selectedProduct as any).stock)) {
+      qty = Number((selectedProduct as any).stock);
+    }
     setNewSale((prev) => ({
       ...prev,
       ...recalcTotals({ quantity: String(qty) }),
@@ -201,9 +215,10 @@ const Sales: React.FC = () => {
     }
   };
 
+  // ✅ Exporta EXACTAMENTE lo que estás viendo (branch + search)
   const exportToCSV = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
-    const rows = filteredSales.map((s: any) =>
+    const rows = visibleSales.map((s: any) =>
       [
         s.date,
         "",
@@ -222,11 +237,10 @@ const Sales: React.FC = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ventas_${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `ventas_${selectedBranch}_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
   };
 
-  // Check if the form can be submitted
   const canSubmit =
     newSale.branch_id &&
     newSale.date &&
@@ -265,7 +279,7 @@ const Sales: React.FC = () => {
         </div>
       </div>
 
-      {/* --- NUEVO: RESUMEN DE VENTAS --- */}
+      {/* RESUMEN: ahora depende de filtros */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -273,7 +287,7 @@ const Sales: React.FC = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase">
-              Ventas del Día
+              Ventas del Día (según filtro)
             </p>
             <p className="text-2xl font-black text-gray-900">{stats.count}</p>
           </div>
@@ -284,7 +298,7 @@ const Sales: React.FC = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase">
-              Monto Total Hoy
+              Monto Total Hoy (según filtro)
             </p>
             <p className="text-2xl font-black text-gray-900">
               ${money(stats.total)}
@@ -309,6 +323,7 @@ const Sales: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedBranch}
@@ -345,8 +360,17 @@ const Sales: React.FC = () => {
                     Cargando datos...
                   </td>
                 </tr>
+              ) : visibleSales.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-4 text-center text-gray-400"
+                  >
+                    No hay ventas para los filtros seleccionados.
+                  </td>
+                </tr>
               ) : (
-                filteredSales.map((sale: any) => (
+                visibleSales.map((sale: any) => (
                   <tr key={sale.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">{sale.date}</td>
                     <td className="px-6 py-4">
@@ -462,7 +486,9 @@ const Sales: React.FC = () => {
                       ? "Buscar en leads..."
                       : "Elige sucursal primero"
                   }
-                  className={`w-full border rounded-lg p-2 text-sm ${!newSale.branch_id ? "bg-gray-50" : ""}`}
+                  className={`w-full border rounded-lg p-2 text-sm ${
+                    !newSale.branch_id ? "bg-gray-50" : ""
+                  }`}
                   value={newSale.client_name}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() =>
@@ -475,6 +501,7 @@ const Sales: React.FC = () => {
                     }))
                   }
                 />
+
                 {showSuggestions && leadSuggestions.length > 0 && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
                     {leadSuggestions.map((lead) => (
@@ -541,7 +568,9 @@ const Sales: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${canSubmit ? "bg-indigo-600 shadow-lg" : "bg-gray-300"}`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${
+                    canSubmit ? "bg-indigo-600 shadow-lg" : "bg-gray-300"
+                  }`}
                 >
                   Confirmar
                 </button>
