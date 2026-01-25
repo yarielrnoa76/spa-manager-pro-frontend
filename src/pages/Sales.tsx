@@ -37,9 +37,16 @@ function money(n: number): string {
 function safeFileLabel(name: string) {
   return name
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quita acentos
-    .replace(/\s+/g, "_") // espacios -> _
-    .replace(/[^\w-]/g, ""); // quita caracteres raros
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^\w-]/g, "");
+}
+
+// ✅ Normaliza fecha a YYYY-MM-DD (soporta "2026-01-24 00:00:00", ISO, etc.)
+function normalizeDate(d: any): string {
+  const s = String(d ?? "");
+  if (!s) return "";
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 const Sales: React.FC = () => {
@@ -69,7 +76,6 @@ const Sales: React.FC = () => {
     notes: "",
   });
 
-  // ✅ Cargar datos (sin romper lógica existente)
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,7 +85,7 @@ const Sales: React.FC = () => {
     setLoading(true);
     try {
       const [s, b, p, l] = await Promise.all([
-        api.listSales("all"), // traemos todo y filtramos en frontend
+        api.listSales("all"),
         api.listBranches(),
         api.listProducts(),
         api.listLeads(),
@@ -107,11 +113,11 @@ const Sales: React.FC = () => {
     [selectedBranchName],
   );
 
-  // ✅ Dropdown de fechas: se basa en las fechas existentes en ventas (orden desc)
+  // ✅ Dropdown de fechas (normalizadas) orden desc
   const availableDates = useMemo(() => {
     const set = new Set<string>();
     (sales as any[]).forEach((s: any) => {
-      const d = String(s.date ?? "");
+      const d = normalizeDate(s.date);
       if (d) set.add(d);
     });
     const arr = Array.from(set);
@@ -119,13 +125,21 @@ const Sales: React.FC = () => {
     return arr;
   }, [sales]);
 
-  // Si por alguna razón selectedDate no existe en el dataset, mantenemos el valor actual.
-  // (No hacemos auto-reset para no "saltar" UX).
+  // ✅ FIX CLAVE: si la fecha seleccionada no existe en ventas, usar la más reciente
+  useEffect(() => {
+    if (availableDates.length === 0) return;
+
+    const exists = availableDates.includes(selectedDate);
+    if (!exists) {
+      setSelectedDate(availableDates[0]); // fecha más reciente
+    }
+  }, [availableDates, selectedDate]);
 
   // ✅ Base: filtra por fecha + branch (sin search)
   const dateBranchFilteredSales = useMemo(() => {
     return (sales as any[]).filter((s: any) => {
-      const matchesDate = String(s.date) === String(selectedDate);
+      const saleDate = normalizeDate(s.date);
+      const matchesDate = saleDate === String(selectedDate);
       const matchesBranch =
         selectedBranch === "all" ||
         String(s.branch_id) === String(selectedBranch);
@@ -145,7 +159,7 @@ const Sales: React.FC = () => {
     });
   }, [dateBranchFilteredSales, searchTerm]);
 
-  // ✅ RESUMEN: ahora es del día seleccionado (y branch seleccionado)
+  // ✅ Resumen = lo visible (depende de filtros)
   const stats = useMemo(() => {
     const totalAmount = visibleSales.reduce(
       (acc, curr: any) => acc + toNumber(String(curr.amount)),
@@ -229,8 +243,9 @@ const Sales: React.FC = () => {
 
   const handleQuantityChange = (qtyStr: string) => {
     let qty = parseInt(qtyStr.replace(/[^\d]/g, "") || "1", 10);
-    if (selectedProduct && qty > Number((selectedProduct as any).stock))
+    if (selectedProduct && qty > Number((selectedProduct as any).stock)) {
       qty = Number((selectedProduct as any).stock);
+    }
 
     setNewSale((prev) => ({
       ...prev,
@@ -255,12 +270,11 @@ const Sales: React.FC = () => {
     }
   };
 
-  // ✅ Exporta EXACTAMENTE lo que estás viendo (fecha + branch + search)
   const exportToCSV = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
     const rows = visibleSales.map((s: any) =>
       [
-        s.date,
+        normalizeDate(s.date),
         "",
         branches.find((b) => String(b.id) === String(s.branch_id))?.name ||
           s.branch_id,
@@ -281,7 +295,6 @@ const Sales: React.FC = () => {
     a.click();
   };
 
-  // Check if the form can be submitted
   const canSubmit =
     newSale.branch_id &&
     newSale.date &&
@@ -304,7 +317,6 @@ const Sales: React.FC = () => {
             Gestiona transacciones e inventario en tiempo real.
           </p>
 
-          {/* ✅ Info visible del filtro actual */}
           <p className="text-xs text-gray-400 mt-1">
             Sucursal:{" "}
             <span className="font-bold text-gray-600">
@@ -331,7 +343,7 @@ const Sales: React.FC = () => {
         </div>
       </div>
 
-      {/* RESUMEN (depende de filtros) */}
+      {/* RESUMEN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -344,6 +356,7 @@ const Sales: React.FC = () => {
             <p className="text-2xl font-black text-gray-900">{stats.count}</p>
           </div>
         </div>
+
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-green-50 text-green-600 rounded-lg">
             <DollarSign size={24} />
@@ -376,14 +389,13 @@ const Sales: React.FC = () => {
             />
           </div>
 
-          {/* ✅ NUEVO: filtro de fecha */}
+          {/* FILTRO FECHA */}
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             title="Filtrar por fecha"
           >
-            {/* Si por algún motivo no hay sales todavía, mostramos hoy */}
             {availableDates.length === 0 ? (
               <option value={selectedDate}>{selectedDate}</option>
             ) : (
@@ -395,7 +407,7 @@ const Sales: React.FC = () => {
             )}
           </select>
 
-          {/* ✅ filtro sucursal */}
+          {/* FILTRO SUCURSAL */}
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedBranch}
@@ -423,6 +435,7 @@ const Sales: React.FC = () => {
                 <th className="px-6 py-4">Método</th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-100 text-sm">
               {loading ? (
                 <tr>
@@ -445,7 +458,9 @@ const Sales: React.FC = () => {
               ) : (
                 visibleSales.map((sale: any) => (
                   <tr key={sale.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">{sale.date}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {normalizeDate(sale.date)}
+                    </td>
                     <td className="px-6 py-4">
                       <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
                         {branches.find(
@@ -511,6 +526,7 @@ const Sales: React.FC = () => {
                     ))}
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Fecha
@@ -574,6 +590,7 @@ const Sales: React.FC = () => {
                     }))
                   }
                 />
+
                 {showSuggestions && leadSuggestions.length > 0 && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
                     {leadSuggestions.map((lead) => (
@@ -616,6 +633,7 @@ const Sales: React.FC = () => {
                     disabled={!newSale.product_id}
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Total ($)
