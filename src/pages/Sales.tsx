@@ -33,6 +33,7 @@ function toNumber(v: string): number {
 function money(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
+
 function saleAmount(sale: any): number {
   const candidates = [
     sale?.amount,
@@ -48,10 +49,9 @@ function saleAmount(sale: any): number {
     if (raw === "") continue;
 
     const n = toNumber(raw);
-    if (Number.isFinite(n)) return n; // ✅ ya no exige n > 0
+    if (Number.isFinite(n)) return n;
   }
 
-  // fallback: quantity * unit_price
   const q = toNumber(String(sale?.quantity ?? ""));
   const u = toNumber(String(sale?.unit_price ?? ""));
   const t = q * u;
@@ -67,7 +67,6 @@ function safeFileLabel(name: string) {
     .replace(/[^\w-]/g, "");
 }
 
-// ✅ Normaliza fecha a YYYY-MM-DD (soporta "2026-01-24 00:00:00", ISO, etc.)
 function normalizeDate(d: any): string {
   const s = String(d ?? "");
   if (!s) return "";
@@ -88,18 +87,26 @@ const Sales: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const [newSale, setNewSale] = useState<NewSaleState>({
-    date: new Date().toISOString().split("T")[0],
-    branch_id: "",
-    product_id: "",
-    client_name: "",
-    service_rendered: "",
-    quantity: "1",
-    unit_price: "",
-    amount: "",
-    payment_method: "Credit Card",
-    notes: "",
-  });
+  // ✅ estado inicial reusable (evita cargar datos de la última venta al abrir modal)
+  const today = new Date().toISOString().split("T")[0];
+  const initialNewSale: NewSaleState = useMemo(
+    () => ({
+      date: today,
+      branch_id: "",
+      product_id: "",
+      client_name: "",
+      service_rendered: "",
+      quantity: "1",
+      unit_price: "",
+      amount: "",
+      payment_method: "Credit Card",
+      notes: "",
+    }),
+    [today],
+  );
+
+  // ✅ inicializa con el estado limpio
+  const [newSale, setNewSale] = useState<NewSaleState>(initialNewSale);
 
   type SaleVisibility = "active" | "all" | "cancelled";
   const [saleVisibility, setSaleVisibility] =
@@ -126,7 +133,7 @@ const Sales: React.FC = () => {
             : undefined;
 
       const [s, b, p, l] = await Promise.all([
-        api.listSales("all", salesOpts),
+        api.listSales("all", salesOpts as any),
         api.listBranches(),
         api.listProducts(),
         api.listLeads(),
@@ -141,7 +148,6 @@ const Sales: React.FC = () => {
     }
   };
 
-  // ✅ Nombre de sucursal seleccionada (para UI y export)
   const selectedBranchName = useMemo(() => {
     if (selectedBranch === "all") return "Todos";
     return (
@@ -155,7 +161,6 @@ const Sales: React.FC = () => {
     [selectedBranchName],
   );
 
-  // ✅ Dropdown de fechas (normalizadas) orden desc
   const availableDates = useMemo(() => {
     const set = new Set<string>();
     (sales as any[]).forEach((s: any) => {
@@ -167,19 +172,14 @@ const Sales: React.FC = () => {
     return arr;
   }, [sales]);
 
-  // ✅ FIX CLAVE: si la fecha seleccionada no existe en ventas, usar la más reciente
-  // Opcional: si quieres que al cargar por primera vez ponga la fecha más reciente disponible
   useEffect(() => {
     if (sales.length === 0) return;
-
-    // solo si selectedDate está vacío (no debería), o si quieres set inicial inteligente
     if (!selectedDate && availableDates.length > 0) {
       setSelectedDate(availableDates[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales]);
 
-  // ✅ Base: filtra por fecha + branch (sin search)
   const dateBranchFilteredSales = useMemo(() => {
     return (sales as any[]).filter((s: any) => {
       const saleDate = normalizeDate(s.date);
@@ -191,7 +191,6 @@ const Sales: React.FC = () => {
     });
   }, [sales, selectedDate, selectedBranch]);
 
-  // ✅ Visible: fecha + branch + search
   const visibleSales = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return dateBranchFilteredSales;
@@ -203,25 +202,6 @@ const Sales: React.FC = () => {
     });
   }, [dateBranchFilteredSales, searchTerm]);
 
-  useEffect(() => {
-    if (visibleSales.length === 0) return;
-
-    const s = visibleSales[0];
-    console.log("SAMPLE SALE RAW =>", s);
-    console.log("SALE KEYS =>", Object.keys(s));
-    console.log("AMOUNT CANDIDATES =>", {
-      amount: (s as any).amount,
-      total: (s as any).total,
-      monto: (s as any).monto,
-      total_amount: (s as any).total_amount,
-      price_total: (s as any).price_total,
-      subtotal: (s as any).subtotal,
-      quantity: (s as any).quantity,
-      unit_price: (s as any).unit_price,
-    });
-  }, [visibleSales]);
-
-  // ✅ Resumen = lo visible (depende de filtros)
   const stats = useMemo(() => {
     const totalAmount = visibleSales.reduce(
       (acc, curr) => acc + saleAmount(curr),
@@ -270,7 +250,6 @@ const Sales: React.FC = () => {
   const recalcTotals = (next: Partial<NewSaleState>) => {
     const qRaw = String(next.quantity ?? newSale.quantity ?? "").trim();
 
-    // ✅ si está vacío, no calculamos total
     if (!qRaw) {
       return {
         ...next,
@@ -317,7 +296,6 @@ const Sales: React.FC = () => {
     }));
   };
 
-  // Detecta si una venta está cancelada (soft-deleted) según distintos backends
   const isSaleCancelled = (sale: any) => {
     return Boolean(
       sale?.deleted_at ||
@@ -329,13 +307,16 @@ const Sales: React.FC = () => {
     );
   };
 
-  // Llamada segura al backend para cancelar (softdelete + restore inventory)
   const handleCancelSale = async (sale: any) => {
     try {
       if (!sale?.id) return;
 
       const ok = window.confirm(
-        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${sale?.client_name || "—"}\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${sale?.quantity || "—"}\n\nEsto hará soft-delete y restaurará inventario.`,
+        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${
+          sale?.client_name || "—"
+        }\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${
+          sale?.quantity || "—"
+        }\n\nEsto hará soft-delete y restaurará inventario.`,
       );
       if (!ok) return;
 
@@ -350,7 +331,6 @@ const Sales: React.FC = () => {
   };
 
   const handleQuantityChange = (qtyStr: string) => {
-    // ✅ permitir borrar
     if (qtyStr === "") {
       setNewSale((prev) => ({
         ...prev,
@@ -360,11 +340,9 @@ const Sales: React.FC = () => {
       return;
     }
 
-    // solo dígitos
     let qty = parseInt(qtyStr.replace(/[^\d]/g, ""), 10);
     if (!Number.isFinite(qty) || qty <= 0) qty = 1;
 
-    // si hay producto seleccionado, limitar por stock
     if (selectedProduct && qty > Number((selectedProduct as any).stock)) {
       qty = Number((selectedProduct as any).stock);
     }
@@ -386,10 +364,14 @@ const Sales: React.FC = () => {
         ...newSale,
         quantity: qty,
         unit_price: unit,
-        amount: calcAmount, // ✅ siempre calculado
+        amount: calcAmount,
         product_id: newSale.product_id || null,
       });
+
+      // ✅ cierra y resetea para que al abrir vuelva limpio
       setIsModalOpen(false);
+      setNewSale(initialNewSale);
+
       await fetchData();
     } catch (err: any) {
       alert(err?.message || "Error al crear la venta");
@@ -430,6 +412,7 @@ const Sales: React.FC = () => {
     toNumber(newSale.quantity) > 0 &&
     newSale.amount &&
     toNumber(newSale.amount) > 0;
+
   return (
     <div className="space-y-6">
       {/* HEADER */}
@@ -459,8 +442,13 @@ const Sales: React.FC = () => {
           >
             <Download size={18} /> Exportar
           </button>
+
+          {/* ✅ al abrir: resetea la venta */}
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setNewSale(initialNewSale);
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
           >
             <Plus size={18} /> Nueva Venta
@@ -521,7 +509,7 @@ const Sales: React.FC = () => {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             title="Filtrar por fecha"
-            max={new Date().toISOString().slice(0, 10)} // ✅ evita escoger fechas futuras
+            max={new Date().toISOString().slice(0, 10)}
           />
 
           {/* FILTRO SUCURSAL */}
@@ -538,7 +526,8 @@ const Sales: React.FC = () => {
               </option>
             ))}
           </select>
-          {/* FILTRO ESTADO (Activas / Todas / Canceladas) */}
+
+          {/* FILTRO ESTADO */}
           <select
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={saleVisibility}
@@ -559,6 +548,8 @@ const Sales: React.FC = () => {
                 <th className="px-6 py-4">Sucursal</th>
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Servicio/Producto</th>
+                <th className="px-6 py-4 text-right">Precio</th>
+                <th className="px-6 py-4 text-right">Cantidad</th>
                 <th className="px-6 py-4 text-right">Monto</th>
                 <th className="px-6 py-4">Método</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
@@ -569,7 +560,7 @@ const Sales: React.FC = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={9}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     Cargando datos...
@@ -578,7 +569,7 @@ const Sales: React.FC = () => {
               ) : visibleSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={9}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     No hay ventas para los filtros seleccionados.
@@ -588,11 +579,14 @@ const Sales: React.FC = () => {
                 visibleSales.map((sale: any) => (
                   <tr
                     key={sale.id}
-                    className={`hover:bg-gray-50 ${isSaleCancelled(sale) ? "opacity-60" : ""}`}
+                    className={`hover:bg-gray-50 ${
+                      isSaleCancelled(sale) ? "opacity-60" : ""
+                    }`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {normalizeDate(sale.date)}
                     </td>
+
                     <td className="px-6 py-4">
                       <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
                         {branches.find(
@@ -600,19 +594,37 @@ const Sales: React.FC = () => {
                         )?.name || "—"}
                       </span>
                     </td>
+
                     <td className="px-6 py-4 font-medium">
                       {sale.client_name}
                     </td>
+
                     <td className="px-6 py-4 flex items-center gap-2">
                       {sale.product_id && (
                         <Package size={14} className="text-gray-400" />
                       )}
                       {sale.service_rendered}
                     </td>
+
+                    {/* PRECIO UNITARIO */}
+                    <td className="px-6 py-4 text-right text-gray-700">
+                      {toNumber(sale?.unit_price ?? 0) > 0
+                        ? `$${money(toNumber(sale?.unit_price ?? 0))}`
+                        : "—"}
+                    </td>
+
+                    {/* CANTIDAD */}
+                    <td className="px-6 py-4 text-right font-bold text-gray-700">
+                      {Number(sale?.quantity ?? 0) || 0}
+                    </td>
+
+                    {/* MONTO TOTAL */}
                     <td className="px-6 py-4 text-right font-bold text-gray-900">
                       ${money(saleAmount(sale))}
                     </td>
+
                     <td className="px-6 py-4">{sale.payment_method}</td>
+
                     <td className="px-6 py-4 text-right">
                       {isSaleCancelled(sale) ? (
                         <span className="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600">
@@ -643,7 +655,15 @@ const Sales: React.FC = () => {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="px-6 py-4 border-b flex justify-between items-center">
               <h3 className="font-bold text-lg">Nueva Venta</h3>
-              <button onClick={() => setIsModalOpen(false)}>
+
+              {/* ✅ al cerrar: resetea */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setNewSale(initialNewSale);
+                }}
+              >
                 <X size={20} />
               </button>
             </div>
@@ -796,13 +816,18 @@ const Sales: React.FC = () => {
               </div>
 
               <div className="pt-4 flex gap-3">
+                {/* ✅ al cancelar modal: resetea */}
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setNewSale(initialNewSale);
+                  }}
                   className="flex-1 py-2 border rounded-lg text-sm font-bold"
                 >
                   Cancelar
                 </button>
+
                 <button
                   type="submit"
                   disabled={!canSubmit}
