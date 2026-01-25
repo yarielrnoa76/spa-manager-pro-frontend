@@ -101,20 +101,37 @@ const Sales: React.FC = () => {
     notes: "",
   });
 
+  type SaleVisibility = "active" | "all" | "cancelled";
+  const [saleVisibility, setSaleVisibility] =
+    useState<SaleVisibility>("active");
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saleVisibility]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
+      const salesOpts =
+        saleVisibility === "cancelled"
+          ? { only_cancelled: true }
+          : saleVisibility === "all"
+            ? { include_cancelled: true }
+            : undefined;
+
       const [s, b, p, l] = await Promise.all([
-        api.listSales("all"),
+        api.listSales("all", salesOpts),
         api.listBranches(),
         api.listProducts(),
         api.listLeads(),
       ]);
+
       setSales(Array.isArray(s) ? s : []);
       setBranches(Array.isArray(b) ? b : []);
       setProducts(Array.isArray(p) ? p : []);
@@ -300,6 +317,38 @@ const Sales: React.FC = () => {
     }));
   };
 
+  // Detecta si una venta está cancelada (soft-deleted) según distintos backends
+  const isSaleCancelled = (sale: any) => {
+    return Boolean(
+      sale?.deleted_at ||
+      sale?.deletedAt ||
+      sale?.is_deleted ||
+      sale?.isDeleted ||
+      String(sale?.status || "").toLowerCase() === "cancelled" ||
+      String(sale?.status || "").toLowerCase() === "canceled",
+    );
+  };
+
+  // Llamada segura al backend para cancelar (softdelete + restore inventory)
+  const handleCancelSale = async (sale: any) => {
+    try {
+      if (!sale?.id) return;
+
+      const ok = window.confirm(
+        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${sale?.client_name || "—"}\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${sale?.quantity || "—"}\n\nEsto hará soft-delete y restaurará inventario.`,
+      );
+      if (!ok) return;
+
+      setLoading(true);
+      await api.cancelSale(sale.id);
+      await fetchData();
+    } catch (err: any) {
+      alert(err?.message || "Error al cancelar la venta");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleQuantityChange = (qtyStr: string) => {
     // ✅ permitir borrar
     if (qtyStr === "") {
@@ -381,7 +430,6 @@ const Sales: React.FC = () => {
     toNumber(newSale.quantity) > 0 &&
     newSale.amount &&
     toNumber(newSale.amount) > 0;
-
   return (
     <div className="space-y-6">
       {/* HEADER */}
@@ -490,6 +538,17 @@ const Sales: React.FC = () => {
               </option>
             ))}
           </select>
+          {/* FILTRO ESTADO (Activas / Todas / Canceladas) */}
+          <select
+            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
+            value={saleVisibility}
+            onChange={(e) => setSaleVisibility(e.target.value as any)}
+            title="Filtrar por estado"
+          >
+            <option value="active">Activas</option>
+            <option value="all">Todas</option>
+            <option value="cancelled">Canceladas</option>
+          </select>
         </div>
 
         <div className="overflow-x-auto">
@@ -502,6 +561,7 @@ const Sales: React.FC = () => {
                 <th className="px-6 py-4">Servicio/Producto</th>
                 <th className="px-6 py-4 text-right">Monto</th>
                 <th className="px-6 py-4">Método</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
 
@@ -509,7 +569,7 @@ const Sales: React.FC = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     Cargando datos...
@@ -518,7 +578,7 @@ const Sales: React.FC = () => {
               ) : visibleSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     No hay ventas para los filtros seleccionados.
@@ -526,7 +586,10 @@ const Sales: React.FC = () => {
                 </tr>
               ) : (
                 visibleSales.map((sale: any) => (
-                  <tr key={sale.id} className="hover:bg-gray-50">
+                  <tr
+                    key={sale.id}
+                    className={`hover:bg-gray-50 ${isSaleCancelled(sale) ? "opacity-60" : ""}`}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {normalizeDate(sale.date)}
                     </td>
@@ -550,6 +613,22 @@ const Sales: React.FC = () => {
                       ${money(saleAmount(sale))}
                     </td>
                     <td className="px-6 py-4">{sale.payment_method}</td>
+                    <td className="px-6 py-4 text-right">
+                      {isSaleCancelled(sale) ? (
+                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600">
+                          Cancelada
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelSale(sale)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50"
+                          title="Cancelar (soft delete) y restaurar inventario"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

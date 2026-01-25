@@ -214,19 +214,39 @@ export const api = {
   },
 
   // --- Sales ---
-  async listSales(branch_id: string | number = "all") {
-    const q = branch_id
-      ? `?branch_id=${encodeURIComponent(String(branch_id))}`
-      : "";
+  async listSales(
+    branch_id: string | number = "all",
+    opts?: { include_cancelled?: boolean; only_cancelled?: boolean },
+  ) {
+    const params = new URLSearchParams();
+
+    if (branch_id && branch_id !== "all")
+      params.set("branch_id", String(branch_id));
+
+    if (opts?.only_cancelled) {
+      params.set("only_cancelled", "1");
+    } else if (opts?.include_cancelled) {
+      params.set("include_cancelled", "1");
+    }
+
+    const q = params.toString() ? `?${params.toString()}` : "";
+
     const res: any = await request(`/api/sales${q}`, {
       method: "GET",
       auth: true,
     });
+
     return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
   },
 
   async createSale(payload: any) {
     return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+  },
+  async cancelSale(saleId: string | number) {
+    return request(`/api/sales/${encodeURIComponent(String(saleId))}/cancel`, {
+      method: "POST",
+      auth: true,
+    });
   },
 
   // --- Products / Inventory ---
@@ -280,7 +300,7 @@ export const api = {
 
   async moveStock(payload: {
     product_id: number;
-    type: "purchase" | "sale";
+    type: "purchase" | "sale" | "sale_cancel";
     quantity: number;
     sales_price?: number;
     cost_price?: number;
