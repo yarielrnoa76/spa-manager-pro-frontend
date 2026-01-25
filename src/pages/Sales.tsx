@@ -126,14 +126,16 @@ const Sales: React.FC = () => {
   }, [sales]);
 
   // ✅ FIX CLAVE: si la fecha seleccionada no existe en ventas, usar la más reciente
+  // Opcional: si quieres que al cargar por primera vez ponga la fecha más reciente disponible
   useEffect(() => {
-    if (availableDates.length === 0) return;
+    if (sales.length === 0) return;
 
-    const exists = availableDates.includes(selectedDate);
-    if (!exists) {
-      setSelectedDate(availableDates[0]); // fecha más reciente
+    // solo si selectedDate está vacío (no debería), o si quieres set inicial inteligente
+    if (!selectedDate && availableDates.length > 0) {
+      setSelectedDate(availableDates[0]);
     }
-  }, [availableDates, selectedDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sales]);
 
   // ✅ Base: filtra por fecha + branch (sin search)
   const dateBranchFilteredSales = useMemo(() => {
@@ -390,22 +392,14 @@ const Sales: React.FC = () => {
           </div>
 
           {/* FILTRO FECHA */}
-          <select
+          <input
+            type="date"
             className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             title="Filtrar por fecha"
-          >
-            {availableDates.length === 0 ? (
-              <option value={selectedDate}>{selectedDate}</option>
-            ) : (
-              availableDates.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))
-            )}
-          </select>
+            max={new Date().toISOString().slice(0, 10)} // ✅ evita escoger fechas futuras
+          />
 
           {/* FILTRO SUCURSAL */}
           <select
