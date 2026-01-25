@@ -162,18 +162,18 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b flex items-center justify-between px-6">
-          <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
-            <Menu />
-          </button>
-
-          <div className="font-bold text-gray-800">
-            {user?.branch?.name
-              ? `Branch: ${user.branch.name}`
-              : "Branch: (none)"}
+        <header className="h-16 bg-white border-b flex items-center px-6">
+          {/* LADO IZQUIERDO */}
+          <div className="flex items-center gap-4">
+            <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
+              <Menu />
+            </button>
           </div>
 
-          <div className="text-xs text-gray-500">{user?.email ?? ""}</div>
+          {/* LADO DERECHO */}
+          <div className="ml-auto text-xs text-gray-500">
+            {user?.email ?? ""}
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
