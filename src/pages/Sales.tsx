@@ -33,6 +33,31 @@ function toNumber(v: string): number {
 function money(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
+function saleAmount(sale: any): number {
+  const candidates = [
+    sale?.amount,
+    sale?.total,
+    sale?.monto,
+    sale?.total_amount,
+    sale?.price_total,
+    sale?.subtotal,
+  ];
+
+  for (const v of candidates) {
+    const raw = String(v ?? "").trim();
+    if (raw === "") continue;
+
+    const n = toNumber(raw);
+    if (Number.isFinite(n)) return n; // ✅ ya no exige n > 0
+  }
+
+  // fallback: quantity * unit_price
+  const q = toNumber(String(sale?.quantity ?? ""));
+  const u = toNumber(String(sale?.unit_price ?? ""));
+  const t = q * u;
+
+  return Number.isFinite(t) ? t : 0;
+}
 
 function safeFileLabel(name: string) {
   return name
@@ -161,12 +186,31 @@ const Sales: React.FC = () => {
     });
   }, [dateBranchFilteredSales, searchTerm]);
 
+  useEffect(() => {
+    if (visibleSales.length === 0) return;
+
+    const s = visibleSales[0];
+    console.log("SAMPLE SALE RAW =>", s);
+    console.log("SALE KEYS =>", Object.keys(s));
+    console.log("AMOUNT CANDIDATES =>", {
+      amount: (s as any).amount,
+      total: (s as any).total,
+      monto: (s as any).monto,
+      total_amount: (s as any).total_amount,
+      price_total: (s as any).price_total,
+      subtotal: (s as any).subtotal,
+      quantity: (s as any).quantity,
+      unit_price: (s as any).unit_price,
+    });
+  }, [visibleSales]);
+
   // ✅ Resumen = lo visible (depende de filtros)
   const stats = useMemo(() => {
     const totalAmount = visibleSales.reduce(
-      (acc, curr: any) => acc + toNumber(String(curr.amount)),
+      (acc, curr) => acc + saleAmount(curr),
       0,
     );
+
     return {
       count: visibleSales.length,
       total: totalAmount,
@@ -207,11 +251,20 @@ const Sales: React.FC = () => {
   }, [newSale.product_id, availableProducts, products]);
 
   const recalcTotals = (next: Partial<NewSaleState>) => {
-    const qty = Math.max(
-      1,
-      parseInt(String(next.quantity ?? newSale.quantity), 10) || 1,
-    );
+    const qRaw = String(next.quantity ?? newSale.quantity ?? "").trim();
+
+    // ✅ si está vacío, no calculamos total
+    if (!qRaw) {
+      return {
+        ...next,
+        quantity: "",
+        amount: "",
+      };
+    }
+
+    const qty = Math.max(1, parseInt(qRaw, 10) || 1);
     const unitPrice = toNumber(String(next.unit_price ?? newSale.unit_price));
+
     return {
       ...next,
       quantity: String(qty),
@@ -223,6 +276,7 @@ const Sales: React.FC = () => {
     const p =
       availableProducts.find((x: any) => String(x.id) === String(productId)) ||
       null;
+
     if (!p) {
       setNewSale((prev) => ({
         ...prev,
@@ -233,18 +287,35 @@ const Sales: React.FC = () => {
       }));
       return;
     }
+
+    const salesPrice = toNumber(String((p as any).sales_price ?? 0));
+
     setNewSale((prev) => ({
       ...prev,
       ...recalcTotals({
         product_id: String(p.id),
         service_rendered: p.name,
-        unit_price: String(p.price ?? ""),
+        unit_price: salesPrice ? money(salesPrice) : "",
       }),
     }));
   };
 
   const handleQuantityChange = (qtyStr: string) => {
-    let qty = parseInt(qtyStr.replace(/[^\d]/g, "") || "1", 10);
+    // ✅ permitir borrar
+    if (qtyStr === "") {
+      setNewSale((prev) => ({
+        ...prev,
+        quantity: "",
+        amount: "",
+      }));
+      return;
+    }
+
+    // solo dígitos
+    let qty = parseInt(qtyStr.replace(/[^\d]/g, ""), 10);
+    if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+
+    // si hay producto seleccionado, limitar por stock
     if (selectedProduct && qty > Number((selectedProduct as any).stock)) {
       qty = Number((selectedProduct as any).stock);
     }
@@ -258,11 +329,15 @@ const Sales: React.FC = () => {
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const qty = parseInt(String(newSale.quantity || "0"), 10) || 0;
+      const unit = toNumber(newSale.unit_price);
+      const calcAmount = qty > 0 && unit > 0 ? unit * qty : 0;
+
       await api.createSale({
         ...newSale,
-        quantity: parseInt(newSale.quantity, 10),
-        unit_price: toNumber(newSale.unit_price),
-        amount: toNumber(newSale.amount),
+        quantity: qty,
+        unit_price: unit,
+        amount: calcAmount, // ✅ siempre calculado
         product_id: newSale.product_id || null,
       });
       setIsModalOpen(false);
@@ -282,7 +357,7 @@ const Sales: React.FC = () => {
           s.branch_id,
         s.client_name,
         s.service_rendered,
-        s.amount,
+        money(saleAmount(s)),
         s.payment_method,
         s.notes,
       ].join(","),
@@ -472,7 +547,7 @@ const Sales: React.FC = () => {
                       {sale.service_rendered}
                     </td>
                     <td className="px-6 py-4 text-right font-bold text-gray-900">
-                      ${sale.amount}
+                      ${money(saleAmount(sale))}
                     </td>
                     <td className="px-6 py-4">{sale.payment_method}</td>
                   </tr>
@@ -550,7 +625,7 @@ const Sales: React.FC = () => {
                   <option value="">-- Seleccionar de Inventario --</option>
                   {availableProducts.map((p: any) => (
                     <option key={p.id} value={String(p.id)}>
-                      {p.name} (Stock: {p.stock})
+                      {p.name} (Stock: {p.stock})(Price: {p.sales_price})
                     </option>
                   ))}
                 </select>
@@ -634,9 +709,9 @@ const Sales: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    readOnly
                     className="w-full border rounded-lg p-2 text-sm font-bold bg-gray-50"
                     value={newSale.amount}
-                    readOnly
                   />
                 </div>
               </div>

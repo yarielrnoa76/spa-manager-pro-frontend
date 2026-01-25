@@ -22,21 +22,24 @@ export interface User {
 }
 
 export interface Product {
-  id: string;
+  id: number;
   name: string;
-  sku: string;
-  description?: string;
-  price: number;
+  sku?: string | null;
+  description?: string | null;
+
+  sales_price: number; // nuevo
+  cost_price: number;  // nuevo
+
   stock: number;
   min_stock: number;
-  max_stock?: number;
+  max_stock?: number | null;
   is_low_stock: boolean;
   transactions?: InventoryTransaction[];
 }
 
 export interface InventoryTransaction {
   id: string;
-  product_id: string;
+  product_id: number;
   type: 'purchase' | 'sale';
   quantity: number;
   stock_before: number;

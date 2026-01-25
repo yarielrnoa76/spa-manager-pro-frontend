@@ -9,6 +9,7 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRightLeft,
+  Pencil,
 } from "lucide-react";
 
 const Stocks: React.FC = () => {
@@ -21,14 +22,32 @@ const Stocks: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [canDeleteProduct, setCanDeleteProduct] = useState(false);
 
+  // Productos nuevos
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
-    price: "0",
+    sales_price: "0",
+    cost_price: "0",
     stock: "0",
+    min_stock: "",
+    max_stock: "",
+  });
+  // ditar Productos
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
+
+  const [editForm, setEditForm] = useState({
+    name: "",
+    sku: "",
+    sales_price: "0",
+    cost_price: "0",
     min_stock: "0",
     max_stock: "0",
   });
+
+  // precios en modal de movimiento (editables según tipo)
+  const [moveSalesPrice, setMoveSalesPrice] = useState<string>("0");
+  const [moveCostPrice, setMoveCostPrice] = useState<string>("0");
 
   useEffect(() => {
     fetchData();
@@ -37,7 +56,6 @@ const Stocks: React.FC = () => {
       const perms: string[] =
         me?.permissions || me?.role?.permissions?.map((p: any) => p.name) || [];
 
-      // soporta ambos nombres por si hay inconsistencia
       setCanDeleteProduct(
         perms.includes("delete_product") ||
           perms.includes("product_delete") ||
@@ -46,8 +64,21 @@ const Stocks: React.FC = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!selectedProduct) return;
+    setMoveSalesPrice(String(selectedProduct.sales_price ?? 0));
+    setMoveCostPrice(String(selectedProduct.cost_price ?? 0));
+  }, [selectedProduct]);
+
+  useEffect(() => {
+    // cuando cambia de entrada/salida, mantenemos valores actuales del producto
+    if (!selectedProduct) return;
+    setMoveSalesPrice(String(selectedProduct.sales_price ?? 0));
+    setMoveCostPrice(String(selectedProduct.cost_price ?? 0));
+  }, [moveType]);
+
   const fetchData = async () => {
-    const data = await api.listProducts(); // ✅ antes: getProducts()
+    const data = await api.listProducts();
     setProducts(data);
   };
 
@@ -64,7 +95,6 @@ const Stocks: React.FC = () => {
 
     try {
       await api.deleteProduct(product.id);
-      // refresca tabla
       fetchData();
     } catch (err: any) {
       alert(err?.message || "Error eliminando producto");
@@ -78,7 +108,8 @@ const Stocks: React.FC = () => {
       await api.createProduct({
         name: newProduct.name.trim(),
         sku: newProduct.sku.trim() || null,
-        price: Number(newProduct.price),
+        sales_price: Number(newProduct.sales_price),
+        cost_price: Number(newProduct.cost_price),
         stock: Number(newProduct.stock),
         min_stock: Number(newProduct.min_stock),
         max_stock: Number(newProduct.max_stock),
@@ -88,7 +119,8 @@ const Stocks: React.FC = () => {
       setNewProduct({
         name: "",
         sku: "",
-        price: "0",
+        sales_price: "0",
+        cost_price: "0",
         stock: "0",
         min_stock: "0",
         max_stock: "0",
@@ -100,16 +132,80 @@ const Stocks: React.FC = () => {
     }
   };
 
+  const openEditModal = (p: Product) => {
+    setEditProduct(p);
+    setEditForm({
+      name: p.name ?? "",
+      sku: p.sku ?? "",
+      sales_price: String(p.sales_price ?? 0),
+      cost_price: String(p.cost_price ?? 0),
+      min_stock: String(p.min_stock ?? 0),
+      max_stock:
+        p.max_stock === null || p.max_stock === undefined
+          ? ""
+          : String(p.max_stock),
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const toNum = (v: string) => {
+    const n = Number(String(v ?? "").trim());
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editProduct) return;
+
+    try {
+      const payload: any = {
+        name: editForm.name.trim(),
+        sku: editForm.sku.trim() || null,
+        sales_price: toNum(editForm.sales_price),
+        cost_price: toNum(editForm.cost_price),
+        min_stock: Math.max(0, Math.trunc(toNum(editForm.min_stock))),
+      };
+
+      // ✅ max_stock: si está vacío o "0" => null
+      const ms = String(editForm.max_stock ?? "").trim();
+      if (ms === "" || toNum(ms) === 0) {
+        payload.max_stock = null;
+      } else {
+        payload.max_stock = Math.max(0, Math.trunc(toNum(ms)));
+      }
+
+      await api.updateProduct(editProduct.id, payload);
+
+      setIsEditModalOpen(false);
+      setEditProduct(null);
+      fetchData();
+    } catch (err: any) {
+      // ✅ para ver el detalle real de la validación
+      console.log("UPDATE PRODUCT ERROR =>", err);
+      alert(err?.message || "Error actualizando producto");
+    }
+  };
+
   const handleStockMove = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct) return;
 
     try {
-      await api.moveStock({
+      const payload: any = {
         product_id: selectedProduct.id,
-        type: moveType, // "purchase" | "sale"
-        quantity: quantity, // number
-      }); // ✅ antes: moveStock(id, type, qty)
+        type: moveType,
+        quantity: quantity,
+      };
+
+      // Siempre se puede enviar sales_price (ambos casos, editable en ambos)
+      payload.sales_price = Number(moveSalesPrice);
+
+      // cost_price solo editable/aplicable en entrada
+      if (moveType === "purchase") {
+        payload.cost_price = Number(moveCostPrice);
+      }
+
+      await api.moveStock(payload);
 
       setIsModalOpen(false);
       setSelectedProduct(null);
@@ -133,7 +229,7 @@ const Stocks: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold">Gestión de Inventario</h1>
           <p className="text-gray-500 text-sm">
-            Control de stock de insumos y productos de reventa.
+            Control de productos para la venta.
           </p>
         </div>
         <button
@@ -180,11 +276,15 @@ const Stocks: React.FC = () => {
                 {products
                   .reduce(
                     (acc, p) =>
-                      acc + (Number(p.price) || 0) * (Number(p.stock) || 0),
+                      acc +
+                      (Number(p.cost_price) || 0) * (Number(p.stock) || 0),
                     0,
                   )
                   .toLocaleString()}
               </h3>
+              <p className="text-[11px] text-gray-400 mt-1">
+                (calculado por Cost Price)
+              </p>
             </div>
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
               <TrendingUp />
@@ -214,19 +314,16 @@ const Stocks: React.FC = () => {
             <tr>
               <th className="px-6 py-4">Producto</th>
               <th className="px-6 py-4">SKU</th>
-              <th className="px-6 py-4">Precio</th>
+              <th className="px-6 py-4">Sales Price</th>
               <th className="px-6 py-4 text-center">Stock Actual</th>
               <th className="px-6 py-4 text-center">Stock Mínimo</th>
               <th className="px-6 py-4 text-center">Stock Máximo</th>
               <th className="px-6 py-4">Estado</th>
-              <th className="px-6 py-4 text-right">Acciones</th>
+              <th className="px-6 py-4 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filtered.map((product) => {
-              const min = product.min_stock ?? "";
-              const max = product.max_stock ?? "";
-
               return (
                 <tr key={product.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-bold text-gray-900">
@@ -235,12 +332,15 @@ const Stocks: React.FC = () => {
                   <td className="px-6 py-4 text-gray-500">
                     {product.sku || ""}
                   </td>
-                  <td className="px-6 py-4 font-medium">${product.price}</td>
+
+                  <td className="px-6 py-4 font-medium">
+                    ${product.sales_price}
+                  </td>
 
                   <td className="px-6 py-4 text-center">
                     <span
                       className={`px-3 py-1 rounded-full font-bold ${
-                        Number(product.stock) <= Number(product.min_stock)
+                        Number(product.stock) < Number(product.min_stock)
                           ? "bg-red-100 text-red-700"
                           : "bg-green-100 text-green-700"
                       }`}
@@ -269,9 +369,17 @@ const Stocks: React.FC = () => {
                     )}
                   </td>
 
-                  {/*  ÚLTIMA COLUMNA: ACCIONES */}
                   <td className="px-6 py-4">
                     <div className="flex justify-end gap-3">
+                      {/* ✅ EDITAR */}
+                      <button
+                        onClick={() => openEditModal(product)}
+                        className="text-gray-700 hover:text-gray-900 flex items-center gap-1 font-bold"
+                      >
+                        <Pencil size={16} /> Editar
+                      </button>
+
+                      {/* MOVIMIENTO */}
                       <button
                         onClick={() => {
                           setSelectedProduct(product);
@@ -279,9 +387,10 @@ const Stocks: React.FC = () => {
                         }}
                         className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold"
                       >
-                        <ArrowRightLeft size={16} /> Movimiento
+                        <ArrowRightLeft size={16} /> Mover
                       </button>
 
+                      {/* ELIMINAR */}
                       {canDeleteProduct && (
                         <button
                           onClick={() => handleDeleteProduct(product)}
@@ -343,6 +452,45 @@ const Stocks: React.FC = () => {
                 </button>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
+                    Cost Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={`w-full border rounded-lg p-3 text-sm font-bold ${
+                      moveType === "sale" ? "bg-gray-100 text-gray-500" : ""
+                    }`}
+                    value={moveCostPrice}
+                    disabled={moveType === "sale"} // en salida no se puede
+                    onChange={(e) => setMoveCostPrice(e.target.value)}
+                  />
+                  {moveType === "sale" && (
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      En salida no se permite modificar Cost Price.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
+                    Sales Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    className="w-full border rounded-lg p-3 text-sm font-bold"
+                    value={moveSalesPrice}
+                    onChange={(e) => setMoveSalesPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
                   Cantidad
@@ -386,6 +534,139 @@ const Stocks: React.FC = () => {
                   className="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-bold shadow-lg"
                 >
                   Confirmar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isEditModalOpen && editProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-lg">Editar Producto</h3>
+                <p className="text-xs text-gray-500">{editProduct.name}</p>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-gray-400"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProduct} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  Nombre
+                </label>
+                <input
+                  required
+                  className="w-full border rounded-lg p-2 text-sm"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, name: e.target.value })
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  SKU (opcional)
+                </label>
+                <input
+                  className="w-full border rounded-lg p-2 text-sm"
+                  value={editForm.sku}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, sku: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Cost Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={editForm.cost_price}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, cost_price: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Sales Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={editForm.sales_price}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, sales_price: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Min stock
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={editForm.min_stock}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, min_stock: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Max stock
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={editForm.max_stock}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, max_stock: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 py-2 border rounded-lg font-bold hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700"
+                >
+                  Guardar Cambios
                 </button>
               </div>
             </form>
@@ -442,7 +723,7 @@ const Stocks: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Precio
+                    Cost Price
                   </label>
                   <input
                     type="number"
@@ -450,13 +731,38 @@ const Stocks: React.FC = () => {
                     min="0"
                     required
                     className="w-full border rounded-lg p-2 text-sm"
-                    value={newProduct.price}
+                    value={newProduct.cost_price}
                     onChange={(e) =>
-                      setNewProduct({ ...newProduct, price: e.target.value })
+                      setNewProduct({
+                        ...newProduct,
+                        cost_price: e.target.value,
+                      })
                     }
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Sales Price
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={newProduct.sales_price}
+                    onChange={(e) =>
+                      setNewProduct({
+                        ...newProduct,
+                        sales_price: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Stock inicial
@@ -472,9 +778,7 @@ const Stocks: React.FC = () => {
                     }
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Min stock
@@ -493,7 +797,9 @@ const Stocks: React.FC = () => {
                     }
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Max stock
@@ -512,6 +818,7 @@ const Stocks: React.FC = () => {
                     }
                   />
                 </div>
+                <div />
               </div>
 
               <div className="flex gap-3 pt-2">
