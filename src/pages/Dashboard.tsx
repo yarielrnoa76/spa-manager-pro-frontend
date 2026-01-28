@@ -137,9 +137,6 @@ const Dashboard: React.FC = () => {
     };
   }, [selectedBranch]);
 
-
-
-
   const soldLeads = useMemo(() => {
     return (stats?.recentLeads || [])
       .filter((l) => l.status === "sold")
@@ -180,15 +177,13 @@ const Dashboard: React.FC = () => {
     });
   }, [sales, selectedBranch]);
 
-
   // -----------------------------
   // ✅ CAMBIO: Lead vendidos (MTD)
   // -----------------------------
- const soldLeadsCount = useMemo(() => {
-  // ✅ “leads vendidos” = cantidad de ventas activas del mes (MTD)
-  return mtdSales.length;
-}, [mtdSales]);
-
+  const soldLeadsCount = useMemo(() => {
+    // ✅ “leads vendidos” = cantidad de ventas activas del mes (MTD)
+    return mtdSales.length;
+  }, [mtdSales]);
 
   // -----------------------------
   // ✅ Chart 1: Ventas por día del mes (hasta hoy)

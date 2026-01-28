@@ -16,6 +16,7 @@ import {
   Menu,
   Store,
   Package,
+  Settings,
 } from "lucide-react";
 
 import { api } from "./services/api";
@@ -26,6 +27,8 @@ import Leads from "./pages/Leads";
 import Appointments from "./pages/Appointments";
 import Stocks from "./pages/Stocks";
 import Login from "./pages/Login";
+
+import SettingsPage from "./pages/Settings";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 
@@ -56,7 +59,12 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   const location = useLocation();
+
   const navigate = useNavigate();
+
+  const canSeeSettings =
+    (user?.permissions ?? []).includes("manage_settings") ||
+    user?.role?.name === "admin";
 
   const navItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -64,6 +72,12 @@ const App: React.FC = () => {
     { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
     { to: "/leads", icon: UserPlus, label: "Leads" },
     { to: "/appointments", icon: Calendar, label: "Citas" },
+    // ...(user?.role === "admin"
+    //   ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
+    //   : []),
+    ...(canSeeSettings
+      ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
+      : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -183,6 +197,12 @@ const App: React.FC = () => {
             <Route path="/stocks" element={<Stocks />} />
             <Route path="/leads" element={<Leads />} />
             <Route path="/appointments" element={<Appointments />} />
+            <Route
+              path="/settings"
+              element={
+                canSeeSettings ? <SettingsPage /> : <Navigate to="/" replace />
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

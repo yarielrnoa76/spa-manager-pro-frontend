@@ -122,6 +122,12 @@ async function request<T>(
   return (rawText ? (data as T) : (null as any)) as T;
 }
 
+function normalizeApiPath(path: string): string {
+  // permite pasar "/branches" y lo convierte en "/api/branches"
+  if (!path.startsWith("/")) path = `/${path}`;
+  return path.startsWith("/api/") ? path : `/api${path}`;
+}
+
 export const api = {
   // --- Token helpers ---
   getToken(): string | null {
@@ -309,6 +315,38 @@ export const api = {
       method: "POST",
       body: payload,
       auth: true,
+      
+    
     });
   },
+// ... otros métodos de la API relacionados con Configuracion, Usuarios, Roles, etc.
+  // --- Generic helpers (para Settings UI, sin romper lo existente) ---
+  async get<T = any>(path: string, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), { method: "GET", auth: opts?.auth ?? true });
+  },
+
+  async post<T = any>(path: string, body?: any, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), {
+      method: "POST",
+      body,
+      auth: opts?.auth ?? true,
+    });
+  },
+
+  async put<T = any>(path: string, body?: any, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), {
+      method: "PUT",
+      body,
+      auth: opts?.auth ?? true,
+    });
+  },
+
+  async delete<T = any>(path: string, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), {
+      method: "DELETE",
+      auth: opts?.auth ?? true,
+    });
+  },
+
+
 };
