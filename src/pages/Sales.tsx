@@ -70,7 +70,6 @@ function safeFileLabel(name: string) {
 function normalizeDateOnly(d: any): string {
   const s = String(d ?? "");
   if (!s) return "";
-  // soporta "YYYY-MM-DD", "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DDTHH:mm:ssZ"
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
@@ -96,10 +95,10 @@ function formatSaleDateTime(sale: any): string {
     return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
   }
 
-  // fallback
   return s.length >= 16 ? s.slice(0, 16) : s;
 }
 
+// ✅ fecha LOCAL (evita UTC que te pone "mañana")
 function localISODate(d = new Date()) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -115,17 +114,13 @@ const Sales: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
-  // const [selectedDate, setSelectedDate] = useState<string>(
-  //   new Date().toISOString().split("T")[0],
-  // );
+
   const today = localISODate();
   const [selectedDate, setSelectedDate] = useState<string>(today);
 
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // ✅ estado inicial reusable (evita cargar datos de la última venta al abrir modal)
-  //const today = new Date().toISOString().split("T")[0];
   const initialNewSale: NewSaleState = useMemo(
     () => ({
       date: today,
@@ -142,7 +137,6 @@ const Sales: React.FC = () => {
     [today],
   );
 
-  // ✅ inicializa con el estado limpio
   const [newSale, setNewSale] = useState<NewSaleState>(initialNewSale);
 
   type SaleVisibility = "active" | "all" | "cancelled";
@@ -180,6 +174,12 @@ const Sales: React.FC = () => {
       setBranches(Array.isArray(b) ? b : []);
       setProducts(Array.isArray(p) ? p : []);
       setLeads(Array.isArray(l) ? l : []);
+    } catch (err) {
+      console.error("Sales fetchData error:", err);
+      setSales([]);
+      setBranches([]);
+      setProducts([]);
+      setLeads([]);
     } finally {
       setLoading(false);
     }
@@ -252,7 +252,7 @@ const Sales: React.FC = () => {
   }, [visibleSales]);
 
   const availableProducts = useMemo(
-    () => products.filter((p: any) => Number(p.stock) > 0),
+    () => products.filter((p: any) => Number((p as any).stock) > 0),
     [products],
   );
 
@@ -327,7 +327,7 @@ const Sales: React.FC = () => {
       ...prev,
       ...recalcTotals({
         product_id: String(p.id),
-        service_rendered: p.name,
+        service_rendered: (p as any).name,
         unit_price: salesPrice ? money(salesPrice) : "",
       }),
     }));
@@ -405,7 +405,6 @@ const Sales: React.FC = () => {
         product_id: newSale.product_id || null,
       });
 
-      // ✅ cierra y resetea para que al abrir vuelva limpio
       setIsModalOpen(false);
       setNewSale(initialNewSale);
 
@@ -480,7 +479,6 @@ const Sales: React.FC = () => {
             <Download size={18} /> Exportar
           </button>
 
-          {/* ✅ al abrir: resetea la venta */}
           <button
             onClick={() => {
               setNewSale(initialNewSale);
@@ -546,7 +544,7 @@ const Sales: React.FC = () => {
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             title="Filtrar por fecha"
-            max={new Date().toISOString().slice(0, 10)}
+            max={localISODate()} // ✅ local
           />
 
           {/* FILTRO SUCURSAL */}
@@ -582,6 +580,7 @@ const Sales: React.FC = () => {
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold">
               <tr>
                 <th className="px-6 py-4">Fecha</th>
+                <th className="px-6 py-4">Vendedor(a)</th>
                 <th className="px-6 py-4">Sucursal</th>
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Servicio/Producto</th>
@@ -597,7 +596,7 @@ const Sales: React.FC = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     Cargando datos...
@@ -606,7 +605,7 @@ const Sales: React.FC = () => {
               ) : visibleSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     No hay ventas para los filtros seleccionados.
@@ -622,6 +621,13 @@ const Sales: React.FC = () => {
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {formatSaleDateTime(sale)}
+                    </td>
+
+                    {/* ✅ Vendedor(a) */}
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold">
+                        {sale?.seller_name || "—"}
+                      </span>
                     </td>
 
                     <td className="px-6 py-4">
@@ -643,19 +649,16 @@ const Sales: React.FC = () => {
                       {sale.service_rendered}
                     </td>
 
-                    {/* PRECIO UNITARIO */}
                     <td className="px-6 py-4 text-right text-gray-700">
                       {toNumber(sale?.unit_price ?? 0) > 0
                         ? `$${money(toNumber(sale?.unit_price ?? 0))}`
                         : "—"}
                     </td>
 
-                    {/* CANTIDAD */}
                     <td className="px-6 py-4 text-right font-bold text-gray-700">
                       {Number(sale?.quantity ?? 0) || 0}
                     </td>
 
-                    {/* MONTO TOTAL */}
                     <td className="px-6 py-4 text-right font-bold text-gray-900">
                       ${money(saleAmount(sale))}
                     </td>
@@ -693,7 +696,6 @@ const Sales: React.FC = () => {
             <div className="px-6 py-4 border-b flex justify-between items-center">
               <h3 className="font-bold text-lg">Nueva Venta</h3>
 
-              {/* ✅ al cerrar: resetea */}
               <button
                 type="button"
                 onClick={() => {
@@ -744,6 +746,7 @@ const Sales: React.FC = () => {
                     onChange={(e) =>
                       setNewSale((prev) => ({ ...prev, date: e.target.value }))
                     }
+                    max={localISODate()}
                   />
                 </div>
               </div>
@@ -853,7 +856,6 @@ const Sales: React.FC = () => {
               </div>
 
               <div className="pt-4 flex gap-3">
-                {/* ✅ al cancelar modal: resetea */}
                 <button
                   type="button"
                   onClick={() => {

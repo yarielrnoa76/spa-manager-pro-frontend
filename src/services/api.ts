@@ -315,14 +315,15 @@ export const api = {
       method: "POST",
       body: payload,
       auth: true,
-      
-    
     });
   },
-// ... otros métodos de la API relacionados con Configuracion, Usuarios, Roles, etc.
+  // ... otros métodos de la API relacionados con Configuracion, Usuarios, Roles, etc.
   // --- Generic helpers (para Settings UI, sin romper lo existente) ---
   async get<T = any>(path: string, opts?: { auth?: boolean }) {
-    return request<T>(normalizeApiPath(path), { method: "GET", auth: opts?.auth ?? true });
+    return request<T>(normalizeApiPath(path), {
+      method: "GET",
+      auth: opts?.auth ?? true,
+    });
   },
 
   async post<T = any>(path: string, body?: any, opts?: { auth?: boolean }) {
@@ -347,6 +348,4 @@ export const api = {
       auth: opts?.auth ?? true,
     });
   },
-
-
 };

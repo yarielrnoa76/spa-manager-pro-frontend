@@ -14,7 +14,6 @@ import {
   Users,
   DollarSign,
   ShoppingBag,
-  ArrowRight,
   Filter,
 } from "lucide-react";
 import { api } from "../services/api";
@@ -36,13 +35,14 @@ type DashboardStats = {
   salesCount: number;
   lowStockCount: number;
 };
+
 type Product = {
   id: number | string;
   name: string;
   salesprice: number;
 };
 
-// Ventas (DailyLog) — lo tipamos “suave” para no romper si backend cambia keys
+// Ventas (DailyLog) — tipado “suave”
 type Sale = {
   id: number;
   date: string;
@@ -51,7 +51,6 @@ type Sale = {
   seller_name?: string | null;
   seller?: { id?: number | string; name?: string | null } | null;
 
-  // ✅ producto (soft typing)
   product_id?: number | string | null;
   product_name?: string | null;
   product?: { id?: number | string; name?: string | null } | null;
@@ -85,11 +84,11 @@ function normalizeDate(d: any): string {
 function isSaleCancelled(sale: any) {
   return Boolean(
     sale?.deleted_at ||
-    sale?.deletedAt ||
-    sale?.is_deleted ||
-    sale?.isDeleted ||
-    String(sale?.status || "").toLowerCase() === "cancelled" ||
-    String(sale?.status || "").toLowerCase() === "canceled",
+      sale?.deletedAt ||
+      sale?.is_deleted ||
+      sale?.isDeleted ||
+      String(sale?.status || "").toLowerCase() === "cancelled" ||
+      String(sale?.status || "").toLowerCase() === "canceled",
   );
 }
 
@@ -97,15 +96,43 @@ function toISODate(dt: Date) {
   return dt.toISOString().slice(0, 10);
 }
 
+function toNum(v: any) {
+  const n = Number(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+const MONTHS = [
+  { value: 1, label: "Enero", short: "Ene" },
+  { value: 2, label: "Febrero", short: "Feb" },
+  { value: 3, label: "Marzo", short: "Mar" },
+  { value: 4, label: "Abril", short: "Abr" },
+  { value: 5, label: "Mayo", short: "May" },
+  { value: 6, label: "Junio", short: "Jun" },
+  { value: 7, label: "Julio", short: "Jul" },
+  { value: 8, label: "Agosto", short: "Ago" },
+  { value: 9, label: "Septiembre", short: "Sep" },
+  { value: 10, label: "Octubre", short: "Oct" },
+  { value: 11, label: "Noviembre", short: "Nov" },
+  { value: 12, label: "Diciembre", short: "Dic" },
+];
+
+type MonthFilter = number | "all";
+
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
 
+  // ✅ Mes/Año (por defecto: actual)
+  const nowInit = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(
+    nowInit.getMonth() + 1,
+  ); // 1-12 o "all"
+  const [selectedYear, setSelectedYear] = useState<number>(nowInit.getFullYear());
+
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // ✅ ventas para armar gráficos
   const [sales, setSales] = useState<Sale[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
@@ -119,13 +146,13 @@ const Dashboard: React.FC = () => {
       setErrorMsg("");
 
       try {
-        const [statsRes, branchesRes, salesRes, productsRes] = await Promise.all([
-          api.getDashboardStats(selectedBranch),
-          api.listBranches(),
-          // ✅ traemos ventas (incluye canceladas) y filtramos en frontend según selector
-          api.listSales("all", { include_cancelled: true } as any),
-          api.listProducts(),
-        ]);
+        const [statsRes, branchesRes, salesRes, productsRes] =
+          await Promise.all([
+            api.getDashboardStats(selectedBranch),
+            api.listBranches(),
+            api.listSales("all", { include_cancelled: true } as any),
+            api.listProducts(),
+          ]);
 
         if (cancelled) return;
 
@@ -137,6 +164,7 @@ const Dashboard: React.FC = () => {
         if (cancelled) return;
         setStats(null);
         setSales([]);
+        setProducts([]);
         setErrorMsg(e?.message || "Failed to load dashboard data");
       } finally {
         if (!cancelled) {
@@ -152,42 +180,68 @@ const Dashboard: React.FC = () => {
     };
   }, [selectedBranch]);
 
-  const soldLeads = useMemo(() => {
-    return (stats?.recentLeads || [])
-      .filter((l) => l.status === "sold")
-      .slice(0, 10);
-  }, [stats]);
-
   const productNameById = useMemo(() => {
     const map = new Map<string, string>();
-
-    products.forEach((p) => {
-      map.set(String(p.id), p.name);
-    });
-
+    products.forEach((p) => map.set(String(p.id), p.name));
     return map;
   }, [products]);
 
-  // -----------------------------
-  // ✅ Ventas MTD filtradas (para gráficas)
-  // - mes actual hasta hoy
-  // - sucursal seleccionada
-  // - solo activas (no canceladas) para contar “ventas reales”
-  // -----------------------------
-  const mtdSales = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startStr = toISODate(start);
-    const endStr = toISODate(now);
+  const yearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    const arr: number[] = [];
+    for (let yy = y - 6; yy <= y + 1; yy++) arr.push(yy);
+    return arr;
+  }, []);
 
+  // ✅ período seleccionado:
+  // - Mes específico: ese mes (si es mes actual -> hasta hoy)
+  // - Mes = "all": todo el año (si es año actual -> hasta hoy)
+  const period = useMemo(() => {
+    const now = new Date();
+    const isCurrentYear = now.getFullYear() === selectedYear;
+
+    if (selectedMonth === "all") {
+      const start = new Date(selectedYear, 0, 1);
+      const end = isCurrentYear ? now : new Date(selectedYear, 11, 31);
+      return {
+        mode: "year" as const,
+        start,
+        end,
+        startStr: toISODate(start),
+        endStr: toISODate(end),
+        isCurrentYear,
+      };
+    }
+
+    const start = new Date(selectedYear, selectedMonth - 1, 1);
+    const endOfMonth = new Date(selectedYear, selectedMonth, 0);
+
+    const isCurrentMonth =
+      isCurrentYear && now.getMonth() + 1 === selectedMonth;
+
+    const end = isCurrentMonth ? now : endOfMonth;
+
+    return {
+      mode: "month" as const,
+      start,
+      end,
+      startStr: toISODate(start),
+      endStr: toISODate(end),
+      isCurrentYear,
+      isCurrentMonth,
+      daysInMonth: endOfMonth.getDate(),
+      daysInRange: isCurrentMonth ? end.getDate() : endOfMonth.getDate(),
+    };
+  }, [selectedMonth, selectedYear]);
+
+  // ✅ Ventas del período (activas, filtradas por branch)
+  const periodSales = useMemo(() => {
     return (sales || []).filter((s) => {
       const d = normalizeDate(s.date);
       if (!d) return false;
 
-      // rango MTD
-      if (d < startStr || d > endStr) return false;
+      if (d < period.startStr || d > period.endStr) return false;
 
-      // sucursal
       if (
         selectedBranch !== "all" &&
         String(s.branch_id ?? "") !== String(selectedBranch)
@@ -195,31 +249,53 @@ const Dashboard: React.FC = () => {
         return false;
       }
 
-      // solo activas
       if (isSaleCancelled(s)) return false;
 
       return true;
     });
-  }, [sales, selectedBranch]);
+  }, [sales, selectedBranch, period.startStr, period.endStr]);
+
+  // ✅ KPIs del período
+  const kpi = useMemo(() => {
+    const totalSales = periodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
+    const salesCount = periodSales.length;
+    const productsSold = periodSales.reduce(
+      (acc, s) => acc + Math.max(1, toNum(s.quantity)),
+      0,
+    );
+    return { totalSales, salesCount, productsSold };
+  }, [periodSales]);
+
+  // ✅ Label del período (para títulos)
+  const periodLabel = useMemo(() => {
+    if (selectedMonth === "all") return `Año ${selectedYear}`;
+    const m = MONTHS.find((x) => x.value === selectedMonth)?.label || "Mes";
+    return `${m} ${selectedYear}`;
+  }, [selectedMonth, selectedYear]);
+
+  // ✅ Profit: NO inventamos fuera del mes actual (porque backend está MTD).
+  const profitDisplay = useMemo(() => {
+    if (!stats) return "—";
+    // solo confiable cuando el filtro está en el mes actual
+    if (selectedMonth === "all") return "—";
+    const now = new Date();
+    const isCurrent =
+      selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
+    return isCurrent
+      ? `$${Number(stats.profit || 0).toLocaleString()}`
+      : "—";
+  }, [stats, selectedMonth, selectedYear]);
 
   // -----------------------------
-  // ✅ CAMBIO: Lead vendidos (MTD)
-  // -----------------------------
-  const soldLeadsCount = useMemo(() => {
-    // ✅ “leads vendidos” = cantidad de ventas activas del mes (MTD)
-    return mtdSales.length;
-  }, [mtdSales]);
-
-  // -----------------------------
-  // ✅ Chart 1: Ventas por día del mes (hasta hoy)
+  // ✅ Chart 1:
+  // - si mes específico => ventas por día
+  // - si "all" => ventas por mes (del año)
   // -----------------------------
   const salesByDayChartData = useMemo(() => {
-    const now = new Date();
-    const daysInRange = now.getDate(); // hasta hoy
-    const year = now.getFullYear();
-    const month = now.getMonth(); // 0-11
+    if (period.mode !== "month") return [];
 
-    // init { day: 1..N, count: 0 }
+    const daysInRange = period.daysInRange;
+
     const base = Array.from({ length: daysInRange }, (_, i) => ({
       day: String(i + 1),
       count: 0,
@@ -228,11 +304,14 @@ const Dashboard: React.FC = () => {
     const indexByDay = new Map<string, number>();
     base.forEach((row, idx) => indexByDay.set(row.day, idx));
 
-    mtdSales.forEach((s) => {
-      const d = normalizeDate(s.date); // YYYY-MM-DD
+    periodSales.forEach((s) => {
+      const d = normalizeDate(s.date);
       if (!d) return;
+
       const dd = new Date(d + "T00:00:00");
-      if (dd.getFullYear() !== year || dd.getMonth() !== month) return;
+      if (dd.getFullYear() !== period.start.getFullYear()) return;
+      if (dd.getMonth() !== period.start.getMonth()) return;
+
       const dayNumber = String(dd.getDate());
       const idx = indexByDay.get(dayNumber);
       if (idx === undefined) return;
@@ -240,11 +319,32 @@ const Dashboard: React.FC = () => {
     });
 
     return base;
-  }, [mtdSales]);
+  }, [period.mode, periodSales, period.start, (period as any).daysInRange]);
 
-  // -----------------------------
-  // ✅ Chart 2: Ventas por vendedora
-  // -----------------------------
+  const salesByMonthChartData = useMemo(() => {
+    if (period.mode !== "year") return [];
+
+    const base = MONTHS.map((m) => ({ month: m.short, count: 0 }));
+    const idxByMonth = new Map<number, number>();
+    MONTHS.forEach((m, idx) => idxByMonth.set(m.value, idx));
+
+    periodSales.forEach((s) => {
+      const d = normalizeDate(s.date);
+      if (!d) return;
+      const dd = new Date(d + "T00:00:00");
+      if (dd.getFullYear() !== selectedYear) return;
+
+      const m = dd.getMonth() + 1;
+      const idx = idxByMonth.get(m);
+      if (idx === undefined) return;
+
+      base[idx].count += 1;
+    });
+
+    return base;
+  }, [period.mode, periodSales, selectedYear]);
+
+  // ✅ Chart 2: Ventas por vendedora (del período)
   const salesBySellerChartData = useMemo(() => {
     const map = new Map<string, number>();
 
@@ -257,43 +357,35 @@ const Dashboard: React.FC = () => {
       return String(name || "Sin vendedora");
     };
 
-    mtdSales.forEach((s) => {
+    periodSales.forEach((s) => {
       const label = getSellerLabel(s);
       map.set(label, (map.get(label) || 0) + 1);
     });
 
-    // orden desc por count
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-  }, [mtdSales]);
+  }, [periodSales]);
 
+  // ✅ Chart 3: Top 10 productos (del período)
   const topProducts = useMemo(() => {
     const map = new Map<string, number>();
 
     const getProductLabel = (s: Sale) => {
-      // 1️⃣ si el backend ya mandó el nombre, lo usamos
       if (s?.product?.name) return s.product.name;
       if (s?.product_name) return s.product_name;
 
-      // 2️⃣ resolver por product_id contra products
       if (s?.product_id != null) {
         const name = productNameById.get(String(s.product_id));
         if (name) return name;
       }
 
-      // 3️⃣ fallback final
       return "Producto sin nombre";
     };
 
-    const toNum = (v: any) => {
-      const n = Number(String(v ?? "").replace(",", "."));
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    mtdSales.forEach((s) => {
+    periodSales.forEach((s) => {
       const name = getProductLabel(s);
-      const qty = Math.max(1, toNum(s.quantity)); // si no viene, asumimos 1
+      const qty = Math.max(1, toNum(s.quantity));
       map.set(name, (map.get(name) || 0) + qty);
     });
 
@@ -301,10 +393,10 @@ const Dashboard: React.FC = () => {
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
-  }, [mtdSales]);
+  }, [periodSales, productNameById]);
 
-  if (loading)
-    return <div className="p-8 font-semibold">Loading dashboard...</div>;
+  if (loading) return <div className="p-8 font-semibold">Loading dashboard...</div>;
+
   if (!stats)
     return (
       <div className="p-8 font-semibold text-red-600">
@@ -320,19 +412,58 @@ const Dashboard: React.FC = () => {
           <p className="text-gray-500 text-sm">
             Resumen de actividad para tus sucursales.
           </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Período: <span className="font-bold text-gray-600">{periodLabel}</span>
+          </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+        {/* FILTROS */}
+        <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-wrap">
           <Filter size={18} className="text-gray-400" />
+
+          {/* Branch */}
           <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-8"
+            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
+            title="Filtrar por sucursal"
           >
             <option value="all">All Branches</option>
             {branches.map((b) => (
               <option key={b.id} value={String(b.id)}>
                 {b.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Month (incluye Todos) */}
+          <select
+            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
+            value={String(selectedMonth)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedMonth(v === "all" ? "all" : Number(v));
+            }}
+            title="Filtrar por mes"
+          >
+            <option value="all">Todos</option>
+            {MONTHS.map((m) => (
+              <option key={m.value} value={String(m.value)}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Year */}
+          <select
+            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-2"
+            value={String(selectedYear)}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            title="Filtrar por año"
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
               </option>
             ))}
           </select>
@@ -342,43 +473,47 @@ const Dashboard: React.FC = () => {
       {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Valor de Ventas (MTD)"
-          value={`$${Number(stats.totalSales || 0).toLocaleString()}`}
+          title={`Valor de Ventas (${periodLabel})`}
+          value={`$${Number(kpi.totalSales || 0).toLocaleString()}`}
           icon={DollarSign}
           color="bg-indigo-600"
         />
+
         <StatCard
-          title="Ganancia Neta (MTD)"
-          value={`$${Number(stats.profit || 0).toLocaleString()}`}
+          title={`Ganancia Neta (${selectedMonth === "all" ? "—" : "Mes actual"})`}
+          value={profitDisplay}
           icon={TrendingUp}
           color="bg-emerald-600"
         />
 
-        {/* ✅ CAMBIO: ahora es “Leads Vendidos (MTD)” */}
         <StatCard
-          title="Cantidad de Ventas (MTD)"
-          value={soldLeadsCount}
+          title={`Cantidad de Ventas (${periodLabel})`}
+          value={kpi.salesCount}
           icon={Users}
           color="bg-amber-500"
         />
 
         <StatCard
-          title="Productos Vendidos (MTD)"
-          value={stats.salesCount}
+          title={`Productos Vendidos (${periodLabel})`}
+          value={kpi.productsSold}
           icon={ShoppingBag}
           color="bg-rose-500"
         />
       </div>
 
-      {/* CHARTS + RECENT SOLD LEADS */}
+      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ✅ Chart 1: Ventas por día */}
+        {/* Chart 1 dinámico */}
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
           <h3 className="text-lg font-bold mb-2">
-            Ventas por día (Mes actual)
+            {selectedMonth === "all"
+              ? `Ventas por mes (${selectedYear})`
+              : `Ventas por día (${periodLabel})`}
           </h3>
           <p className="text-xs text-gray-500 mb-6">
-            Conteo de ventas desde el día 1 hasta hoy.
+            {selectedMonth === "all"
+              ? "Conteo de ventas activas por mes del año seleccionado."
+              : "Conteo de ventas activas por día del mes seleccionado."}
           </p>
 
           <div className="h-80">
@@ -386,6 +521,48 @@ const Dashboard: React.FC = () => {
               <div className="h-full flex items-center justify-center text-gray-400">
                 Cargando gráfico...
               </div>
+            ) : selectedMonth === "all" ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ReBarChart data={salesByMonthChartData}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f3f4f6"
+                  />
+                  <XAxis
+                    dataKey="month"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#9ca3af", fontSize: 12 }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#9ca3af", fontSize: 12 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                    }}
+                    formatter={(value: any) => [value, "Ventas"]}
+                  />
+                  <Bar
+                    dataKey="count"
+                    fill="#4f46e5"
+                    radius={[4, 4, 0, 0]}
+                    barSize={18}
+                  >
+                    <LabelList
+                      dataKey="count"
+                      position="top"
+                      style={{ fill: "#111827", fontSize: 12 }}
+                    />
+                  </Bar>
+                </ReBarChart>
+              </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <ReBarChart data={salesByDayChartData}>
@@ -421,7 +598,6 @@ const Dashboard: React.FC = () => {
                     radius={[4, 4, 0, 0]}
                     barSize={18}
                   >
-                    {/* ✅ label arriba de cada barra */}
                     <LabelList
                       dataKey="count"
                       position="top"
@@ -434,9 +610,11 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* ✅ Chart 2: Ventas por vendedora */}
+        {/* Chart 2: Ventas por vendedora */}
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold mb-2">Ventas por vendedora (MTD)</h3>
+          <h3 className="text-lg font-bold mb-2">
+            Ventas por vendedora ({periodLabel})
+          </h3>
           <p className="text-xs text-gray-500 mb-6">
             Conteo de ventas activas agrupadas por vendedora.
           </p>
@@ -448,7 +626,7 @@ const Dashboard: React.FC = () => {
               </div>
             ) : salesBySellerChartData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-gray-400">
-                No hay ventas en el mes actual para graficar.
+                No hay ventas en el período seleccionado.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -487,7 +665,6 @@ const Dashboard: React.FC = () => {
                     radius={[4, 4, 0, 0]}
                     barSize={40}
                   >
-                    {/* ✅ label arriba de cada barra */}
                     <LabelList
                       dataKey="count"
                       position="top"
@@ -501,13 +678,13 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* TOP PRODUCTOS (CHART) */}
+      {/* TOP PRODUCTOS */}
       <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
         <h3 className="text-lg font-bold mb-2">
-          Productos más vendidos (Top 10)
+          Productos más vendidos (Top 10) — {periodLabel}
         </h3>
         <p className="text-xs text-gray-500 mb-6">
-          Cantidad vendida (MTD), ordenado de mayor a menor.
+          Cantidad vendida, ordenado de mayor a menor.
         </p>
 
         <div className="h-96">
@@ -517,7 +694,7 @@ const Dashboard: React.FC = () => {
             </div>
           ) : topProducts.length === 0 ? (
             <div className="h-full flex items-center justify-center text-gray-400">
-              No hay ventas en el mes actual para graficar.
+              No hay ventas en el período seleccionado.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -532,17 +709,15 @@ const Dashboard: React.FC = () => {
                   stroke="#f3f4f6"
                 />
 
-                {/* ✅ nombres a la izquierda */}
                 <YAxis
                   type="category"
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  width={140}
+                  width={160}
                   tick={{ fill: "#6b7280", fontSize: 12 }}
                 />
 
-                {/* ✅ cantidades abajo */}
                 <XAxis
                   type="number"
                   allowDecimals={false}
@@ -560,7 +735,6 @@ const Dashboard: React.FC = () => {
                   formatter={(value: any) => [value, "Cantidad"]}
                 />
 
-                {/* ✅ bar horizontal: qty */}
                 <Bar
                   dataKey="qty"
                   fill="#6366f1"
