@@ -67,10 +67,44 @@ function safeFileLabel(name: string) {
     .replace(/[^\w-]/g, "");
 }
 
-function normalizeDate(d: any): string {
+function normalizeDateOnly(d: any): string {
   const s = String(d ?? "");
   if (!s) return "";
+  // soporta "YYYY-MM-DD", "YYYY-MM-DD HH:mm:ss", "YYYY-MM-DDTHH:mm:ssZ"
   return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+// ✅ muestra "YYYY-MM-DD HH:mm"
+function formatSaleDateTime(sale: any): string {
+  const raw = sale?.created_at ?? sale?.createdAt ?? sale?.date ?? "";
+  const s = String(raw ?? "").trim();
+  if (!s) return "—";
+
+  // Caso "YYYY-MM-DD HH:mm:ss"
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
+    return s.slice(0, 16); // YYYY-MM-DD HH:mm
+  }
+
+  // Caso ISO "YYYY-MM-DDTHH:mm:ss..."
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) {
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const mi = String(dt.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  // fallback
+  return s.length >= 16 ? s.slice(0, 16) : s;
+}
+
+function localISODate(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 const Sales: React.FC = () => {
@@ -81,14 +115,17 @@ const Sales: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
-  );
+  // const [selectedDate, setSelectedDate] = useState<string>(
+  //   new Date().toISOString().split("T")[0],
+  // );
+  const today = localISODate();
+  const [selectedDate, setSelectedDate] = useState<string>(today);
+
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   // ✅ estado inicial reusable (evita cargar datos de la última venta al abrir modal)
-  const today = new Date().toISOString().split("T")[0];
+  //const today = new Date().toISOString().split("T")[0];
   const initialNewSale: NewSaleState = useMemo(
     () => ({
       date: today,
@@ -164,7 +201,7 @@ const Sales: React.FC = () => {
   const availableDates = useMemo(() => {
     const set = new Set<string>();
     (sales as any[]).forEach((s: any) => {
-      const d = normalizeDate(s.date);
+      const d = normalizeDateOnly(s.date);
       if (d) set.add(d);
     });
     const arr = Array.from(set);
@@ -182,7 +219,7 @@ const Sales: React.FC = () => {
 
   const dateBranchFilteredSales = useMemo(() => {
     return (sales as any[]).filter((s: any) => {
-      const saleDate = normalizeDate(s.date);
+      const saleDate = normalizeDateOnly(s.date);
       const matchesDate = saleDate === String(selectedDate);
       const matchesBranch =
         selectedBranch === "all" ||
@@ -382,7 +419,7 @@ const Sales: React.FC = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
     const rows = visibleSales.map((s: any) =>
       [
-        normalizeDate(s.date),
+        normalizeDateOnly(s.date),
         "",
         branches.find((b) => String(b.id) === String(s.branch_id))?.name ||
           s.branch_id,
@@ -584,7 +621,7 @@ const Sales: React.FC = () => {
                     }`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {normalizeDate(sale.date)}
+                      {formatSaleDateTime(sale)}
                     </td>
 
                     <td className="px-6 py-4">

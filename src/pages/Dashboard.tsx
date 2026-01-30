@@ -36,6 +36,11 @@ type DashboardStats = {
   salesCount: number;
   lowStockCount: number;
 };
+type Product = {
+  id: number | string;
+  name: string;
+  salesprice: number;
+};
 
 // Ventas (DailyLog) — lo tipamos “suave” para no romper si backend cambia keys
 type Sale = {
@@ -45,9 +50,16 @@ type Sale = {
   seller_id?: number | string | null;
   seller_name?: string | null;
   seller?: { id?: number | string; name?: string | null } | null;
+
+  // ✅ producto (soft typing)
+  product_id?: number | string | null;
+  product_name?: string | null;
+  product?: { id?: number | string; name?: string | null } | null;
+
   quantity?: number | string | null;
   unit_price?: number | string | null;
   amount?: number | string | null;
+
   deleted_at?: string | null;
   deletedAt?: string | null;
   is_deleted?: boolean | null;
@@ -96,6 +108,7 @@ const Dashboard: React.FC = () => {
   // ✅ ventas para armar gráficos
   const [sales, setSales] = useState<Sale[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
+  const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,11 +119,12 @@ const Dashboard: React.FC = () => {
       setErrorMsg("");
 
       try {
-        const [statsRes, branchesRes, salesRes] = await Promise.all([
+        const [statsRes, branchesRes, salesRes, productsRes] = await Promise.all([
           api.getDashboardStats(selectedBranch),
           api.listBranches(),
           // ✅ traemos ventas (incluye canceladas) y filtramos en frontend según selector
           api.listSales("all", { include_cancelled: true } as any),
+          api.listProducts(),
         ]);
 
         if (cancelled) return;
@@ -118,6 +132,7 @@ const Dashboard: React.FC = () => {
         setStats(statsRes as DashboardStats);
         setBranches(normalizeArray<Branch>(branchesRes));
         setSales(normalizeArray<Sale>(salesRes));
+        setProducts(normalizeArray<Product>(productsRes));
       } catch (e: any) {
         if (cancelled) return;
         setStats(null);
@@ -142,6 +157,16 @@ const Dashboard: React.FC = () => {
       .filter((l) => l.status === "sold")
       .slice(0, 10);
   }, [stats]);
+
+  const productNameById = useMemo(() => {
+    const map = new Map<string, string>();
+
+    products.forEach((p) => {
+      map.set(String(p.id), p.name);
+    });
+
+    return map;
+  }, [products]);
 
   // -----------------------------
   // ✅ Ventas MTD filtradas (para gráficas)
@@ -241,6 +266,41 @@ const Dashboard: React.FC = () => {
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
+  }, [mtdSales]);
+
+  const topProducts = useMemo(() => {
+    const map = new Map<string, number>();
+
+    const getProductLabel = (s: Sale) => {
+      // 1️⃣ si el backend ya mandó el nombre, lo usamos
+      if (s?.product?.name) return s.product.name;
+      if (s?.product_name) return s.product_name;
+
+      // 2️⃣ resolver por product_id contra products
+      if (s?.product_id != null) {
+        const name = productNameById.get(String(s.product_id));
+        if (name) return name;
+      }
+
+      // 3️⃣ fallback final
+      return "Producto sin nombre";
+    };
+
+    const toNum = (v: any) => {
+      const n = Number(String(v ?? "").replace(",", "."));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    mtdSales.forEach((s) => {
+      const name = getProductLabel(s);
+      const qty = Math.max(1, toNum(s.quantity)); // si no viene, asumimos 1
+      map.set(name, (map.get(name) || 0) + qty);
+    });
+
+    return Array.from(map.entries())
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 10);
   }, [mtdSales]);
 
   if (loading)
@@ -441,40 +501,80 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* RECENT SOLD LEADS */}
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold">Recent Sold Leads</h3>
-          <button className="text-indigo-600 text-sm font-semibold flex items-center gap-1 hover:underline">
-            View All <ArrowRight size={14} />
-          </button>
-        </div>
+      {/* TOP PRODUCTOS (CHART) */}
+      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <h3 className="text-lg font-bold mb-2">
+          Productos más vendidos (Top 10)
+        </h3>
+        <p className="text-xs text-gray-500 mb-6">
+          Cantidad vendida (MTD), ordenado de mayor a menor.
+        </p>
 
-        <div className="flex-1 space-y-4">
-          {soldLeads.length > 0 ? (
-            soldLeads.map((lead) => (
-              <div
-                key={lead.id}
-                className="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-medium">
-                  {(lead.name || "?").charAt(0)}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{lead.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {lead.source ?? "Venta Directa"}
-                  </p>
-                </div>
-                <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase bg-green-100 text-green-700">
-                  Vendido
-                </span>
-              </div>
-            ))
+        <div className="h-96">
+          {loadingCharts ? (
+            <div className="h-full flex items-center justify-center text-gray-400">
+              Cargando gráfico...
+            </div>
+          ) : topProducts.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-gray-400">
+              No hay ventas en el mes actual para graficar.
+            </div>
           ) : (
-            <p className="text-gray-400 text-sm italic text-center py-10">
-              No hay ventas recientes para mostrar.
-            </p>
+            <ResponsiveContainer width="100%" height="100%">
+              <ReBarChart
+                data={topProducts}
+                layout="vertical"
+                margin={{ top: 8, right: 16, left: 24, bottom: 8 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                  stroke="#f3f4f6"
+                />
+
+                {/* ✅ nombres a la izquierda */}
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  width={140}
+                  tick={{ fill: "#6b7280", fontSize: 12 }}
+                />
+
+                {/* ✅ cantidades abajo */}
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#9ca3af", fontSize: 12 }}
+                />
+
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                  }}
+                  formatter={(value: any) => [value, "Cantidad"]}
+                />
+
+                {/* ✅ bar horizontal: qty */}
+                <Bar
+                  dataKey="qty"
+                  fill="#6366f1"
+                  radius={[0, 6, 6, 0]}
+                  barSize={18}
+                >
+                  <LabelList
+                    dataKey="qty"
+                    position="right"
+                    style={{ fill: "#111827", fontSize: 12 }}
+                  />
+                </Bar>
+              </ReBarChart>
+            </ResponsiveContainer>
           )}
         </div>
       </div>
