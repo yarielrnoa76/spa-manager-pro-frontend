@@ -98,6 +98,6 @@ export interface Appointment {
   client_name: string;
   date: string;
   time: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
+  status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
   service_type: string;
 }

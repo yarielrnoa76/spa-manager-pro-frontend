@@ -195,6 +195,14 @@ export const api = {
     });
   },
 
+  async updateAppointment(appointmentId: number, payload: any) {
+    return request(`/api/appointments/${appointmentId}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
+
   // --- Leads ---
   async listLeads() {
     return request(`/api/leads`, { method: "GET", auth: true });

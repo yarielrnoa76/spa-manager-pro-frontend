@@ -27,6 +27,11 @@ function toYMD(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+function toDateFromYMD(dateStr: string) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -108,6 +113,9 @@ const Appointments: React.FC = () => {
   // Modal agenda
   const [openAgenda, setOpenAgenda] = useState(false);
 
+  // Modal change status
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+
   const [form, setForm] = useState<CreateAppointmentPayload>(() => {
     const now = new Date();
     return {
@@ -170,7 +178,7 @@ const Appointments: React.FC = () => {
   const appsByDay = useMemo(() => {
     const map = new Map<string, Appointment[]>();
     for (const a of appointments) {
-      const d = new Date(a.date);
+      const d = toDateFromYMD(a.date);
       const key = toYMD(d);
       const arr = map.get(key) ?? [];
       arr.push(a);
@@ -198,12 +206,12 @@ const Appointments: React.FC = () => {
     const last = endOfMonth(viewDate);
     const rows: Appointment[] = [];
     for (const a of appointments) {
-      const d = new Date(a.date);
+      const d = toDateFromYMD(a.date);
       if (d >= first && d <= last) rows.push(a);
     }
     rows.sort((x, y) => {
-      const dx = new Date(x.date).getTime();
-      const dy = new Date(y.date).getTime();
+      const dx = toDateFromYMD(x.date).getTime();
+      const dy = toDateFromYMD(y.date).getTime();
       if (dx !== dy) return dx - dy;
       return String(x.time ?? "").localeCompare(String(y.time ?? ""));
     });
@@ -223,12 +231,20 @@ const Appointments: React.FC = () => {
     setOpenCreate(true);
   };
 
+  const isFormValid = useMemo(() => {
+    return (
+      form.client_name.trim() !== "" &&
+      form.service_type.trim() !== "" &&
+      form.date &&
+      form.time &&
+      form.branch_id !== null &&
+      form.branch_id !== undefined &&
+      form.branch_id !== ""
+    );
+  }, [form]);
+
   const handleCreate = async () => {
-    // validación mínima
-    if (!form.client_name.trim()) return setError("Client name is required.");
-    if (!form.service_type.trim()) return setError("Service type is required.");
-    if (!form.date) return setError("Date is required.");
-    if (!form.time) return setError("Time is required.");
+    if (!isFormValid) return;
 
     try {
       setError(null);
@@ -240,6 +256,56 @@ const Appointments: React.FC = () => {
       await loadData();
     } catch (e: any) {
       setError(e?.message ?? "Error creating appointment");
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!selectedAppointment) return;
+
+    const appId = selectedAppointment.id;
+
+    try {
+      setError(null);
+      await api.updateAppointment(Number(appId), { status: newStatus });
+      
+      setAppointments((prev) =>
+        prev.map((app) =>
+          String(app.id) === String(appId) ? { ...app, status: newStatus as Appointment["status"] } : app
+        )
+      );
+      setSelectedAppointment(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Error updating status");
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "scheduled":
+        return "bg-blue-100 text-blue-700";
+      case "confirmed":
+        return "bg-amber-100 text-amber-700";
+      case "completed":
+        return "bg-emerald-100 text-emerald-700";
+      case "cancelled":
+        return "bg-red-100 text-red-700";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const getStatusBorderColor = (status: string) => {
+    switch (status) {
+      case "scheduled":
+        return "border-l-blue-500";
+      case "confirmed":
+        return "border-l-amber-500";
+      case "completed":
+        return "border-l-emerald-500";
+      case "cancelled":
+        return "border-l-red-500";
+      default:
+        return "border-l-gray-500";
     }
   };
 
@@ -361,7 +427,13 @@ const Appointments: React.FC = () => {
                         {dayApps.slice(0, 3).map((a) => (
                           <div
                             key={a.id}
-                            className="px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] rounded-md font-bold truncate"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAppointment(a);
+                            }}
+                            className={`px-2 py-1 text-[10px] rounded-md font-bold truncate cursor-pointer border-l-2 ${getStatusBorderColor(
+                              a.status || "scheduled",
+                            )} ${getStatusColor(a.status || "scheduled")}`}
                             title={`${a.time} - ${a.client_name}`}
                           >
                             {a.time} - {a.client_name}
@@ -398,13 +470,21 @@ const Appointments: React.FC = () => {
               {selectedDayAppointments.map((app) => (
                 <div
                   key={app.id}
-                  className="border-l-4 border-indigo-600 pl-4 py-1"
+                  onClick={() => setSelectedAppointment(app)}
+                  className="border-l-4 border-indigo-600 pl-4 py-1 cursor-pointer hover:bg-gray-50 rounded transition"
                 >
                   <p className="text-sm font-bold">{app.client_name}</p>
                   <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
                     <Clock size={12} />
                     {app.time} • {app.service_type}
                   </div>
+                  <span
+                    className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
+                      app.status || "scheduled",
+                    )}`}
+                  >
+                    {app.status || "scheduled"}
+                  </span>
                 </div>
               ))}
               {selectedDayAppointments.length === 0 && (
@@ -554,7 +634,8 @@ const Appointments: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCreate}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
+                disabled={!isFormValid}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
               >
                 Create
               </button>
@@ -597,7 +678,7 @@ const Appointments: React.FC = () => {
                             month: "short",
                             day: "2-digit",
                             year: "numeric",
-                          }).format(new Date(a.date))}{" "}
+                          }).format(toDateFromYMD(a.date))}{" "}
                           • {a.time}
                         </div>
                       </div>
@@ -617,6 +698,58 @@ const Appointments: React.FC = () => {
                 className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold hover:bg-gray-50"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STATUS CHANGE MODAL */}
+      {selectedAppointment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-gray-100">
+            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+              <h3 className="font-bold">Change Status</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedAppointment(null)}
+                className="p-2 rounded hover:bg-gray-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Select new status for{" "}
+                <span className="font-bold">{selectedAppointment.client_name}</span>
+              </p>
+
+              <div className="space-y-2">
+                {["scheduled", "confirmed", "completed", "cancelled"].map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => handleStatusChange(status)}
+                    className={`w-full px-4 py-2 rounded-lg text-sm font-medium text-left capitalize transition ${
+                      (selectedAppointment.status || "scheduled") === status
+                        ? "ring-2 ring-indigo-500 bg-indigo-50"
+                        : "hover:bg-gray-50 border border-gray-200"
+                    } ${getStatusColor(status)}`}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAppointment(null)}
+                className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold hover:bg-gray-50"
+              >
+                Cerrar
               </button>
             </div>
           </div>
