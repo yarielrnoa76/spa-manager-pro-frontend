@@ -43,7 +43,8 @@ const LeadCard: React.FC<{
   lead: Lead;
   onStatusChange: (id: string, status: LeadStatus) => void;
   onDeleteRequest: (lead: Lead) => void;
-}> = ({ lead, onStatusChange, onDeleteRequest }) => {
+  onEdit: (lead: Lead) => void;
+}> = ({ lead, onStatusChange, onDeleteRequest, onEdit }) => {
   const getSourceIcon = (source: string) => {
     switch (source) {
       case "whatsapp":
@@ -65,7 +66,10 @@ const LeadCard: React.FC<{
     <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between min-h-[160px]">
       <div>
         <div className="flex justify-between items-start gap-2">
-          <h3 className="font-bold text-sm mb-2">{lead.name}</h3>
+          <div>
+            <h3 className="font-bold text-sm">{lead.name}</h3>
+            <p className="text-xs text-gray-500">{lead.phone}</p>
+          </div>
           <div className="flex gap-1">
             <button
               onClick={() => onDeleteRequest(lead)}
@@ -78,7 +82,11 @@ const LeadCard: React.FC<{
             >
               <Trash2 size={16} />
             </button>
-            <button className="text-gray-400 hover:text-gray-600">
+            <button
+              className="text-gray-400 hover:text-gray-600"
+              onClick={() => onEdit(lead)}
+              title="Editar lead"
+            >
               <MoreHorizontal size={16} />
             </button>
           </div>
@@ -147,6 +155,7 @@ const Leads: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const initialFormState = {
@@ -217,7 +226,10 @@ const Leads: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingLead(null);
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
           >
             <Plus size={18} /> Nuevo Lead
@@ -266,6 +278,10 @@ const Leads: React.FC = () => {
                     lead={lead}
                     onStatusChange={handleStatusChange}
                     onDeleteRequest={handleDeleteRequest}
+                    onEdit={(l) => {
+                      setEditingLead(l);
+                      setIsModalOpen(true);
+                    }}
                   />
                 ))}
             </div>
@@ -276,8 +292,15 @@ const Leads: React.FC = () => {
       {/* Uso del componente compartido LeadModal */}
       <LeadModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={() => fetchData()} // Recargamos lista al crear
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingLead(null);
+        }}
+        onSuccess={() => {
+          fetchData();
+          setEditingLead(null);
+        }} // Recargamos lista al crear/editar
+        leadToEdit={editingLead}
       />
     </div>
   );

@@ -9,6 +9,7 @@ type LeadModalProps = {
     onSuccess: (newLead: any) => void;
     initialBranchId?: string;
     initialName?: string;
+    leadToEdit?: Lead | null;
 };
 
 const LeadModal: React.FC<LeadModalProps> = ({
@@ -17,6 +18,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     onSuccess,
     initialBranchId,
     initialName,
+    leadToEdit,
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
@@ -35,14 +37,29 @@ const LeadModal: React.FC<LeadModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             loadBranches();
-            // Pre-llenar datos si vienen en props
-            setFormData((prev) => ({
-                ...prev,
-                branch_id: initialBranchId || prev.branch_id,
-                name: initialName || prev.name,
-            }));
+            if (leadToEdit) {
+                setFormData({
+                    name: leadToEdit.name,
+                    phone: leadToEdit.phone,
+                    email: leadToEdit.email || "",
+                    branch_id: String(leadToEdit.branch_id),
+                    source: leadToEdit.source,
+                    message: leadToEdit.message || "",
+                });
+            } else {
+                // Pre-llenar datos si vienen en props (solo si no es edit)
+                setFormData((prev) => ({
+                    ...prev,
+                    name: initialName || "",
+                    phone: "",
+                    email: "",
+                    branch_id: initialBranchId || prev.branch_id,
+                    source: "other",
+                    message: "",
+                }));
+            }
         }
-    }, [isOpen, initialBranchId, initialName]);
+    }, [isOpen, initialBranchId, initialName, leadToEdit]);
 
     const loadBranches = async () => {
         try {
@@ -64,20 +81,27 @@ const LeadModal: React.FC<LeadModalProps> = ({
         e.preventDefault();
         setLoading(true);
         try {
-            const created = await api.createLead(formData);
-            onSuccess(created);
+            let result;
+            if (leadToEdit) {
+                result = await api.updateLead(leadToEdit.id, formData);
+            } else {
+                result = await api.createLead(formData);
+            }
+            onSuccess(result);
             onClose();
             // Resetear para la próxima
-            setFormData({
-                name: "",
-                phone: "",
-                email: "",
-                branch_id: "",
-                source: "other",
-                message: "",
-            });
+            if (!leadToEdit) {
+                setFormData({
+                    name: "",
+                    phone: "",
+                    email: "",
+                    branch_id: "",
+                    source: "other",
+                    message: "",
+                });
+            }
         } catch (err: any) {
-            alert(err?.message || "Error al crear el lead.");
+            alert(err?.message || "Error al procesar el lead.");
         } finally {
             setLoading(false);
         }
@@ -91,7 +115,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                    <h3 className="font-bold text-lg text-gray-800">Crear Nuevo Lead</h3>
+                    <h3 className="font-bold text-lg text-gray-800">
+                        {leadToEdit ? "Editar Lead" : "Crear Nuevo Lead"}
+                    </h3>
                     <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-200"
@@ -219,7 +245,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             {loading ? (
                                 <span className="animate-pulse">Guardando...</span>
                             ) : (
-                                "Guardar Lead"
+                                leadToEdit ? "Actualizar Lead" : "Guardar Lead"
                             )}
                         </button>
                     </div>

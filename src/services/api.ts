@@ -227,6 +227,14 @@ export const api = {
     });
   },
 
+  async updateLead(leadId: string | number, payload: any) {
+    return request(`/api/leads/${encodeURIComponent(String(leadId))}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
+
   // --- Sales ---
   async listSales(
     branch_id: string | number = "all",
