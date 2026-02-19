@@ -10,8 +10,8 @@ const Refunds: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const r = await api.getRefunds();
-      const b = await api.getBranches();
+      const r = await api.get<RefundLog[]>('/refunds');
+      const b = await api.listBranches();
       setRefunds(r);
       setBranches(b);
     };
@@ -53,9 +53,8 @@ const Refunds: React.FC = () => {
                 </td>
                 <td className="px-6 py-4">{refund.reason}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                    refund.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${refund.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
                     {refund.status}
                   </span>
                 </td>

@@ -1,6 +1,18 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 console.log("API_URL =", API_URL);
 
+import {
+  User,
+  Branch,
+  Role,
+  Product,
+  DailyLog,
+  Lead,
+  RefundLog,
+  MonthlyExpense,
+  Appointment,
+} from "../types";
+
 export type LoginPayload = { email: string; password: string };
 
 export type DashboardStats = {
@@ -93,7 +105,7 @@ async function request<T>(
   if (!res.ok) {
     // ✅ Caso 503 DB down (tu backend ya responde code)
     if (res.status === 503 && data?.code === "DB_CONNECTION_ERROR") {
-      throw new ApiError("Connection to DB Server Error", {
+      throw new ApiError("Connection to DB Server Error.Check Backend is running", {
         code: "DB_CONNECTION_ERROR",
         status: 503,
         data,
@@ -175,7 +187,7 @@ export const api = {
 
   // --- Branches ---
   async listBranches() {
-    const res: any = await request(`/api/branches`, {
+    const res: any = await request<Branch[]>(`/api/branches`, {
       method: "GET",
       auth: true,
     });
@@ -184,7 +196,7 @@ export const api = {
 
   // --- Appointments ---
   async listAppointments() {
-    return request(`/api/appointments`, { method: "GET", auth: true });
+    return request<Appointment[]>(`/api/appointments`, { method: "GET", auth: true });
   },
 
   async createAppointment(payload: any) {
@@ -205,7 +217,7 @@ export const api = {
 
   // --- Leads ---
   async listLeads() {
-    return request(`/api/leads`, { method: "GET", auth: true });
+    return request<Lead[]>(`/api/leads`, { method: "GET", auth: true });
   },
 
   async createLead(payload: any) {
@@ -253,7 +265,7 @@ export const api = {
 
     const q = params.toString() ? `?${params.toString()}` : "";
 
-    const res: any = await request(`/api/sales${q}`, {
+    const res: any = await request<DailyLog[]>(`/api/sales${q}`, {
       method: "GET",
       auth: true,
     });
@@ -296,7 +308,7 @@ export const api = {
   },
 
   async listProducts() {
-    const res: any = await request(`/api/products`, {
+    const res: any = await request<Product[]>(`/api/products`, {
       method: "GET",
       auth: true,
     });

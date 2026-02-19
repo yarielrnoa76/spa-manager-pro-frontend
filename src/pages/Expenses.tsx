@@ -10,8 +10,8 @@ const Expenses: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const e = await api.getExpenses();
-      const b = await api.getBranches();
+      const e = await api.get<MonthlyExpense[]>('/expenses');
+      const b = await api.listBranches();
       setExpenses(e);
       setBranches(b);
     };

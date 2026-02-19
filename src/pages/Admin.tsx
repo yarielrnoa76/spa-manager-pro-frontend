@@ -11,8 +11,8 @@ const Admin: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const u = await api.getUsers();
-      const b = await api.getBranches();
+      const u = await api.get<User[]>('/users');
+      const b = await api.listBranches();
       setUsers(u);
       setBranches(b);
     };
@@ -29,19 +29,17 @@ const Admin: React.FC = () => {
       </div>
 
       <div className="flex border-b border-gray-200">
-        <button 
+        <button
           onClick={() => setActiveTab('users')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
         >
           Users & Roles
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('branches')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'branches' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'branches' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
         >
           Branches
         </button>
@@ -79,9 +77,8 @@ const Admin: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
                         {u.role}
                       </span>
                     </td>
