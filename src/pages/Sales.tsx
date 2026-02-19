@@ -111,7 +111,9 @@ function localISODate(d = new Date()) {
 type SalesProps = { user?: any };
 
 const Sales: React.FC<SalesProps> = ({ user }) => {
-  const perms: string[] = user?.permissions ?? [];
+  // /api/user retorna permissions como array plano de strings ["view_branch", "view_leads", ...]
+  const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
+
   const isAdmin = user?.role?.name === "admin";
   const canViewLeads = isAdmin || perms.includes("view_leads");
   const canViewBranch = isAdmin || perms.includes("view_branch");
@@ -135,7 +137,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const initialNewSale: NewSaleState = useMemo(
     () => ({
       date: today,
-      branch_id: "",
+      // Si tiene sucursal asignada, la pre-seleccionamos. Si no, vacía.
+      branch_id: user?.branch?.id ? String(user.branch.id) : "",
       product_id: "",
       client_name: "",
       service_rendered: "",
@@ -176,7 +179,12 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
       const [s, b, p, l] = await Promise.all([
         api.listSales("all", salesOpts as any),
-        canViewBranch ? api.listBranches() : Promise.resolve([]),
+        // Si puede ver branches, las carga todas. Si no, carga SOLO la suya (array de 1).
+        canViewBranch
+          ? api.listBranches()
+          : user?.branch
+            ? Promise.resolve([user.branch])
+            : Promise.resolve([]),
         api.listProducts(),
         canViewLeads ? api.listLeads() : Promise.resolve([]),
       ]);
@@ -739,31 +747,26 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Sucursal
                   </label>
-                  {canViewBranch ? (
-                    <select
-                      required
-                      className="w-full border rounded-lg p-2 text-sm"
-                      value={newSale.branch_id}
-                      onChange={(e) =>
-                        setNewSale((prev) => ({
-                          ...prev,
-                          branch_id: e.target.value,
-                          client_name: "",
-                        }))
-                      }
-                    >
-                      <option value="">Seleccionar...</option>
-                      {branches.map((b) => (
-                        <option key={b.id} value={String(b.id)}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-sm text-gray-500 italic py-2">
-                      Sin permiso para ver sucursales
-                    </p>
-                  )}
+                  <select
+                    required={canViewBranch}
+                    disabled={!canViewBranch}
+                    className={`w-full border rounded-lg p-2 text-sm ${!canViewBranch ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
+                    value={newSale.branch_id}
+                    onChange={(e) =>
+                      setNewSale((prev) => ({
+                        ...prev,
+                        branch_id: e.target.value,
+                        client_name: "",
+                      }))
+                    }
+                  >
+                    <option value="">Seleccionar...</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={String(b.id)}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

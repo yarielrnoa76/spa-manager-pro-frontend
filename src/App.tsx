@@ -61,7 +61,8 @@ const App: React.FC = () => {
 
   const navigate = useNavigate();
 
-  const perms: string[] = user?.permissions ?? [];
+  // /api/user retorna permissions como array plano de strings ["view_branch", "view_leads", ...]
+  const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
   const hasPerm = (p: string) =>
     perms.includes(p) || user?.role?.name === "admin";
 
