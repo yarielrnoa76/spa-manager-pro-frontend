@@ -108,7 +108,13 @@ function localISODate(d = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-const Sales: React.FC = () => {
+type SalesProps = { user?: any };
+
+const Sales: React.FC<SalesProps> = ({ user }) => {
+  const perms: string[] = user?.permissions ?? [];
+  const isAdmin = user?.role?.name === "admin";
+  const canViewLeads = isAdmin || perms.includes("view_leads");
+  const canViewBranch = isAdmin || perms.includes("view_branch");
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -170,9 +176,9 @@ const Sales: React.FC = () => {
 
       const [s, b, p, l] = await Promise.all([
         api.listSales("all", salesOpts as any),
-        api.listBranches(),
+        canViewBranch ? api.listBranches() : Promise.resolve([]),
         api.listProducts(),
-        api.listLeads(),
+        canViewLeads ? api.listLeads() : Promise.resolve([]),
       ]);
 
       setSales(Array.isArray(s) ? s : []);
@@ -733,25 +739,31 @@ const Sales: React.FC = () => {
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                     Sucursal
                   </label>
-                  <select
-                    required
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={newSale.branch_id}
-                    onChange={(e) =>
-                      setNewSale((prev) => ({
-                        ...prev,
-                        branch_id: e.target.value,
-                        client_name: "",
-                      }))
-                    }
-                  >
-                    <option value="">Seleccionar...</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={String(b.id)}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
+                  {canViewBranch ? (
+                    <select
+                      required
+                      className="w-full border rounded-lg p-2 text-sm"
+                      value={newSale.branch_id}
+                      onChange={(e) =>
+                        setNewSale((prev) => ({
+                          ...prev,
+                          branch_id: e.target.value,
+                          client_name: "",
+                        }))
+                      }
+                    >
+                      <option value="">Seleccionar...</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={String(b.id)}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic py-2">
+                      Sin permiso para ver sucursales
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -820,8 +832,8 @@ const Sales: React.FC = () => {
                         }))
                       }
                     />
-                    {/* Lista de sugerencias */}
-                    {showSuggestions && (
+                    {/* Lista de sugerencias — solo si tiene permiso view_leads */}
+                    {canViewLeads && showSuggestions && (
                       <div className="absolute top-100 left-0 w-full bg-white border rounded shadow-lg z-50 max-h-40 overflow-auto">
                         {leadSuggestions.map((lead) => (
                           <div

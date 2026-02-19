@@ -61,16 +61,21 @@ const App: React.FC = () => {
 
   const navigate = useNavigate();
 
-  const canSeeSettings =
-    (user?.permissions ?? []).includes("manage_settings") ||
-    user?.role?.name === "admin";
+  const perms: string[] = user?.permissions ?? [];
+  const hasPerm = (p: string) =>
+    perms.includes(p) || user?.role?.name === "admin";
+
+  const canSeeDashboard = hasPerm("view_dashboard");
+  const canSeeSettings = hasPerm("manage_settings");
 
   const isVendedora = user?.role?.name === "vendedora";
 
   const navItems = isVendedora
     ? [{ to: "/sales", icon: DollarSign, label: "Ventas Diarias" }]
     : [
-      { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+      ...(canSeeDashboard
+        ? [{ to: "/", icon: LayoutDashboard, label: "Dashboard" }]
+        : []),
       { to: "/sales", icon: DollarSign, label: "Ventas Diarias" },
       { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
       { to: "/leads", icon: UserPlus, label: "Leads" },
@@ -194,13 +199,13 @@ const App: React.FC = () => {
             {/* Si es vendedora, SOLO ve /sales. Cualquier otra cosa -> /sales */}
             {user?.role?.name === "vendedora" ? (
               <>
-                <Route path="/sales" element={<Sales />} />
+                <Route path="/sales" element={<Sales user={user} />} />
                 <Route path="*" element={<Navigate to="/sales" replace />} />
               </>
             ) : (
               <>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/sales" element={<Sales />} />
+                <Route path="/sales" element={<Sales user={user} />} />
                 <Route path="/stocks" element={<Stocks />} />
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/appointments" element={<Appointments />} />
