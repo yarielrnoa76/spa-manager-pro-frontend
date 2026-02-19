@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../services/api";
 import { Lead, Branch } from "../types";
+import LeadModal from "../components/LeadModal";
 import {
   Globe,
   MessageSquare,
@@ -197,18 +198,6 @@ const Leads: React.FC = () => {
     }
   };
 
-  const handleCreateLead = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api.createLead(newLead);
-      setIsModalOpen(false);
-      setNewLead(initialFormState);
-      fetchData();
-    } catch (err: any) {
-      alert(err?.message || "Error al crear el lead.");
-    }
-  };
-
   const filteredLeads = useMemo(() => {
     const q = normalize(searchTerm);
     if (!q) return leads;
@@ -284,121 +273,12 @@ const Leads: React.FC = () => {
         ))}
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="font-bold text-lg">Crear Nuevo Lead</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateLead} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Nombre
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newLead.name}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, name: e.target.value })
-                    }
-                    className="w-full border rounded-lg p-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Teléfono
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={newLead.phone}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, phone: e.target.value })
-                    }
-                    className="w-full border rounded-lg p-2 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Sucursal
-                </label>
-                <select
-                  required
-                  value={newLead.branch_id}
-                  onChange={(e) =>
-                    setNewLead({ ...newLead, branch_id: e.target.value })
-                  }
-                  className="w-full border rounded-lg p-2 text-sm bg-white"
-                >
-                  <option value="">Seleccionar...</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Origen
-                </label>
-                <select
-                  value={newLead.source}
-                  onChange={(e) =>
-                    setNewLead({
-                      ...newLead,
-                      source: e.target.value as Lead["source"],
-                    })
-                  }
-                  className="w-full border rounded-lg p-2 text-sm bg-white"
-                >
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="call">Llamada</option>
-                  <option value="web">Web</option>
-                  <option value="other">Otro</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Mensaje
-                </label>
-                <textarea
-                  value={newLead.message}
-                  onChange={(e) =>
-                    setNewLead({ ...newLead, message: e.target.value })
-                  }
-                  className="w-full border rounded-lg p-2 text-sm"
-                  rows={3}
-                ></textarea>
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2 border rounded-lg text-sm font-bold hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-lg hover:bg-indigo-700"
-                >
-                  Guardar Lead
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Uso del componente compartido LeadModal */}
+      <LeadModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => fetchData()} // Recargamos lista al crear
+      />
     </div>
   );
 };

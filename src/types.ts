@@ -100,4 +100,5 @@ export interface Appointment {
   time: string;
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
   service_type: string;
+  notes?: string;
 }

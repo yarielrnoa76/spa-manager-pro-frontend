@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
+import LeadModal from "../components/LeadModal";
 import { DailyLog, Branch, Product } from "../types";
 import {
   Plus,
@@ -9,6 +10,7 @@ import {
   Package,
   DollarSign,
   ShoppingBag,
+  UserPlus,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -111,7 +113,10 @@ const Sales: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLeadModalOpen, setIsLeadModalOpen] = useState(false); // Para crear lead desde ventas
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
 
@@ -257,20 +262,23 @@ const Sales: React.FC = () => {
   );
 
   const leadSuggestions = useMemo(() => {
-    if (
-      !newSale.client_name ||
-      newSale.client_name.length < 2 ||
-      !newSale.branch_id
-    ) {
+    // Si no hay sucursal, no mostramos nada
+    if (!newSale.branch_id) {
       return [];
     }
+
+    // Si el input está vacío, devolvemos los reciente o vacio. 
+    // El usuario pidió "desplegarse la lista", así que si está vacío podríamos mostrar todos o los top 5.
+    const term = (newSale.client_name || "").toLowerCase();
+
     return leads
-      .filter(
-        (lead) =>
-          lead.name.toLowerCase().includes(newSale.client_name.toLowerCase()) &&
-          String(lead.branch_id) === String(newSale.branch_id) &&
-          (lead.status === "new" || lead.status === "contacted"),
-      )
+      .filter((lead) => {
+        const matchesBranch = String(lead.branch_id) === String(newSale.branch_id);
+        const matchesName = lead.name.toLowerCase().includes(term);
+        // Permitir buscar en cualquier lead/cliente de la sucursal, sin importar el estado.
+        // Esto corrige que clientes existentes (con estado 'won', 'converted', etc) no aparezcan.
+        return matchesBranch && matchesName;
+      })
       .slice(0, 5);
   }, [newSale.client_name, newSale.branch_id, leads]);
 
@@ -349,10 +357,8 @@ const Sales: React.FC = () => {
       if (!sale?.id) return;
 
       const ok = window.confirm(
-        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${
-          sale?.client_name || "—"
-        }\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${
-          sale?.quantity || "—"
+        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${sale?.client_name || "—"
+        }\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${sale?.quantity || "—"
         }\n\nEsto hará soft-delete y restaurará inventario.`,
       );
       if (!ok) return;
@@ -414,6 +420,14 @@ const Sales: React.FC = () => {
     }
   };
 
+  const handleLeadCreatedFromModal = (lead: any) => {
+    // Si se crea un lead exitosamente desde el modal,
+    // actualizamos la lista de leads y lo seleccionamos
+    setLeads((prev) => [lead, ...prev]);
+    setNewSale((prev) => ({ ...prev, client_name: lead.name }));
+    setIsLeadModalOpen(false);
+  };
+
   const exportToCSV = () => {
     const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
     const rows = visibleSales.map((s: any) =>
@@ -421,7 +435,7 @@ const Sales: React.FC = () => {
         normalizeDateOnly(s.date),
         "",
         branches.find((b) => String(b.id) === String(s.branch_id))?.name ||
-          s.branch_id,
+        s.branch_id,
         s.client_name,
         s.service_rendered,
         money(saleAmount(s)),
@@ -451,6 +465,13 @@ const Sales: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <LeadModal
+        isOpen={isLeadModalOpen}
+        onClose={() => setIsLeadModalOpen(false)}
+        onSuccess={handleLeadCreatedFromModal}
+        initialBranchId={newSale.branch_id}
+        initialName={newSale.client_name}
+      />
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -615,9 +636,8 @@ const Sales: React.FC = () => {
                 visibleSales.map((sale: any) => (
                   <tr
                     key={sale.id}
-                    className={`hover:bg-gray-50 ${
-                      isSaleCancelled(sale) ? "opacity-60" : ""
-                    }`}
+                    className={`hover:bg-gray-50 ${isSaleCancelled(sale) ? "opacity-60" : ""
+                      }`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {formatSaleDateTime(sale)}
@@ -770,60 +790,106 @@ const Sales: React.FC = () => {
                 </select>
               </div>
 
-              <div className="relative">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Nombre del Cliente
-                </label>
-                <input
-                  type="text"
-                  required
-                  disabled={!newSale.branch_id}
-                  placeholder={
-                    newSale.branch_id
-                      ? "Buscar en leads..."
-                      : "Elige sucursal primero"
-                  }
-                  className={`w-full border rounded-lg p-2 text-sm ${
-                    !newSale.branch_id ? "bg-gray-50" : ""
-                  }`}
-                  value={newSale.client_name}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() =>
-                    setTimeout(() => setShowSuggestions(false), 200)
-                  }
-                  onChange={(e) =>
-                    setNewSale((prev) => ({
-                      ...prev,
-                      client_name: e.target.value,
-                    }))
-                  }
-                />
+              <div className="flex gap-4">
+                <div className="flex-[2] relative">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Nombre del Cliente
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      disabled={!newSale.branch_id}
+                      placeholder={
+                        newSale.branch_id
+                          ? "Buscar en leads..."
+                          : "Elige sucursal primero"
+                      }
+                      className={`w-full border rounded-lg p-2 text-sm ${!newSale.branch_id ? "bg-gray-50" : ""
+                        }`}
+                      value={newSale.client_name}
+                      onFocus={() => setShowSuggestions(true)}
+                      // onBlur se maneja con delay para permitir clicks en sugerencias
+                      onBlur={() =>
+                        setTimeout(() => setShowSuggestions(false), 200)
+                      }
+                      onChange={(e) =>
+                        setNewSale((prev) => ({
+                          ...prev,
+                          client_name: e.target.value,
+                        }))
+                      }
+                    />
+                    {/* Lista de sugerencias */}
+                    {showSuggestions && (
+                      <div className="absolute top-100 left-0 w-full bg-white border rounded shadow-lg z-50 max-h-40 overflow-auto">
+                        {leadSuggestions.map((lead) => (
+                          <div
+                            key={lead.id}
+                            className="px-4 py-2 hover:bg-indigo-50 cursor-pointer text-sm flex justify-between"
+                            onClick={() => {
+                              setNewSale((prev) => ({
+                                ...prev,
+                                client_name: lead.name,
+                              }));
+                              setShowSuggestions(false);
+                            }}
+                          >
+                            <span>{lead.name}</span>
+                            <span className="text-gray-400 text-xs">
+                              {lead.status}
+                            </span>
+                          </div>
+                        ))}
 
-                {showSuggestions && leadSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto">
-                    {leadSuggestions.map((lead) => (
-                      <button
-                        key={lead.id}
-                        type="button"
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 flex justify-between items-center"
-                        onClick={() => {
-                          setNewSale((prev) => ({
-                            ...prev,
-                            client_name: lead.name,
-                          }));
-                          setShowSuggestions(false);
-                        }}
-                      >
-                        <span className="font-medium text-gray-900">
-                          {lead.name}
-                        </span>
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold">
-                          {lead.status}
-                        </span>
-                      </button>
-                    ))}
+                        {/* Opción de crear nuevo SOLO si NO hay coincidencias Y se ha escrito algo */}
+                        {leadSuggestions.length === 0 && newSale.client_name.trim().length > 0 && (
+                          <div
+                            className="px-4 py-2 border-t text-indigo-600 font-bold hover:bg-indigo-50 cursor-pointer flex items-center gap-2 text-sm"
+                            onClick={() => {
+                              setIsLeadModalOpen(true);
+                              setShowSuggestions(false);
+                            }}
+                          >
+                            <UserPlus size={14} /> Crear "{newSale.client_name}" como Lead
+                          </div>
+                        )}
+
+                        {/* Mensaje de ayuda si está vacío */}
+                        {leadSuggestions.length === 0 && newSale.client_name.trim().length === 0 && (
+                          <div className="px-4 py-2 text-gray-400 text-xs italic">
+                            Escribe para buscar...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Método de Pago
+                  </label>
+                  <select
+                    required
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={newSale.payment_method}
+                    onChange={(e) =>
+                      setNewSale((prev) => ({
+                        ...prev,
+                        payment_method: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                    <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Depósito">Depósito</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -870,18 +936,17 @@ const Sales: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${
-                    canSubmit ? "bg-indigo-600 shadow-lg" : "bg-gray-300"
-                  }`}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${canSubmit ? "bg-indigo-600 shadow-lg" : "bg-gray-300"
+                    }`}
                 >
                   Confirmar
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div >
       )}
-    </div>
+    </div >
   );
 };
 

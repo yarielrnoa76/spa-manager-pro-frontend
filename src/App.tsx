@@ -36,11 +36,10 @@ const SidebarItem = ({ to, icon: Icon, label, active, onClick }: any) => (
   <Link
     to={to}
     onClick={onClick}
-    className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-      active
-        ? "bg-indigo-600 text-white"
-        : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
-    }`}
+    className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${active
+      ? "bg-indigo-600 text-white"
+      : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
+      }`}
   >
     <Icon size={20} />
     <span className="font-medium">{label}</span>
@@ -66,19 +65,20 @@ const App: React.FC = () => {
     (user?.permissions ?? []).includes("manage_settings") ||
     user?.role?.name === "admin";
 
-  const navItems = [
-    { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/sales", icon: DollarSign, label: "Ventas Diarias" },
-    { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
-    { to: "/leads", icon: UserPlus, label: "Leads" },
-    { to: "/appointments", icon: Calendar, label: "Citas" },
-    // ...(user?.role === "admin"
-    //   ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
-    //   : []),
-    ...(canSeeSettings
-      ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
-      : []),
-  ];
+  const isVendedora = user?.role?.name === "vendedora";
+
+  const navItems = isVendedora
+    ? [{ to: "/sales", icon: DollarSign, label: "Ventas Diarias" }]
+    : [
+      { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+      { to: "/sales", icon: DollarSign, label: "Ventas Diarias" },
+      { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
+      { to: "/leads", icon: UserPlus, label: "Leads" },
+      { to: "/appointments", icon: Calendar, label: "Citas" },
+      ...(canSeeSettings
+        ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
+        : []),
+    ];
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -129,9 +129,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } z-30`}
+        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } z-30`}
       >
         <div className="h-full flex flex-col p-4">
           <h1 className="text-xl font-bold text-indigo-600 mb-8 px-4 flex items-center gap-2">
@@ -186,24 +185,34 @@ const App: React.FC = () => {
 
           {/* LADO DERECHO */}
           <div className="ml-auto text-xs text-gray-500">
-            {user?.email ?? ""}
+            {user?.email ?? ""} <span className="font-bold">({user?.role?.name ?? "No Role"})</span>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/stocks" element={<Stocks />} />
-            <Route path="/leads" element={<Leads />} />
-            <Route path="/appointments" element={<Appointments />} />
-            <Route
-              path="/settings"
-              element={
-                canSeeSettings ? <SettingsPage /> : <Navigate to="/" replace />
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Si es vendedora, SOLO ve /sales. Cualquier otra cosa -> /sales */}
+            {user?.role?.name === "vendedora" ? (
+              <>
+                <Route path="/sales" element={<Sales />} />
+                <Route path="*" element={<Navigate to="/sales" replace />} />
+              </>
+            ) : (
+              <>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/sales" element={<Sales />} />
+                <Route path="/stocks" element={<Stocks />} />
+                <Route path="/leads" element={<Leads />} />
+                <Route path="/appointments" element={<Appointments />} />
+                <Route
+                  path="/settings"
+                  element={
+                    canSeeSettings ? <SettingsPage /> : <Navigate to="/" replace />
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            )}
           </Routes>
         </div>
       </main>

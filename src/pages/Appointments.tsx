@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
-import { Appointment, Branch } from "../types";
+import { Appointment, Branch, Product } from "../types";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -95,6 +95,7 @@ async function createAppointment(payload: CreateAppointmentPayload) {
 const Appointments: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,8 +114,27 @@ const Appointments: React.FC = () => {
   // Modal agenda
   const [openAgenda, setOpenAgenda] = useState(false);
 
-  // Modal change status
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  // Modal edit appointment
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<Appointment | null>(null);
+  const [editForm, setEditForm] = useState<{
+    date: string;
+    time: string;
+    client_name: string;
+    service_type: string;
+    branch_id: number | null;
+    notes: string;
+    status: string;
+  }>({
+    date: "",
+    time: "",
+    client_name: "",
+    service_type: "",
+    branch_id: null,
+    notes: "",
+    status: "scheduled",
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const [form, setForm] = useState<CreateAppointmentPayload>(() => {
     const now = new Date();
@@ -134,12 +154,25 @@ const Appointments: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const [a, b] = await Promise.all([
-        api.listAppointments(),
+      const [rawApps, b, p] = await Promise.all([
+        api.listAppointments() as Promise<any[]>,
         api.listBranches(),
+        api.listProducts(),
       ]);
+      // Normalize: handle both camelCase and snake_case from backend
+      const a: Appointment[] = rawApps.map((r: any) => ({
+        id: r.id,
+        branch_id: String(r.branch_id ?? r.branchId ?? ""),
+        client_name: r.client_name ?? r.clientName ?? "",
+        date: r.date ?? "",
+        time: r.time ?? "",
+        status: r.status ?? "scheduled",
+        service_type: r.service_type ?? r.serviceType ?? "",
+        notes: r.notes ?? undefined,
+      }));
       setAppointments(a);
       setBranches(b);
+      setProducts(p);
     } catch (e: any) {
       setError(e?.message ?? "Error loading appointments");
     } finally {
@@ -237,9 +270,7 @@ const Appointments: React.FC = () => {
       form.service_type.trim() !== "" &&
       form.date &&
       form.time &&
-      form.branch_id !== null &&
-      form.branch_id !== undefined &&
-      form.branch_id !== ""
+      form.branch_id != null
     );
   }, [form]);
 
@@ -259,23 +290,83 @@ const Appointments: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
-    if (!selectedAppointment) return;
+  const buildEditForm = (app: Appointment) => {
+    // Handle both snake_case and camelCase fields from backend
+    const raw: any = app;
+    return {
+      date: raw.date ?? "",
+      time: raw.time ?? "",
+      client_name: raw.client_name ?? raw.clientName ?? "",
+      service_type: raw.service_type ?? raw.serviceType ?? "",
+      branch_id:
+        (raw.branch_id ?? raw.branchId)
+          ? Number(raw.branch_id ?? raw.branchId)
+          : null,
+      notes: raw.notes ?? "",
+      status: raw.status || "scheduled",
+    };
+  };
+
+  const openEditModal = (app: Appointment) => {
+    setSelectedAppointment(app);
+    setEditForm(buildEditForm(app));
+  };
+
+  // Backup sync: ensure editForm is always in sync with selectedAppointment
+  useEffect(() => {
+    if (selectedAppointment) {
+      setEditForm(buildEditForm(selectedAppointment));
+    }
+  }, [selectedAppointment]);
+
+  const isEditFormValid = useMemo(() => {
+    return (
+      editForm.client_name.trim() !== "" &&
+      editForm.service_type.trim() !== "" &&
+      editForm.date &&
+      editForm.time
+    );
+  }, [editForm]);
+
+  const handleEditSave = async () => {
+    if (!selectedAppointment || !isEditFormValid) return;
 
     const appId = selectedAppointment.id;
 
     try {
+      setEditSaving(true);
       setError(null);
-      await api.updateAppointment(Number(appId), { status: newStatus });
-      
+      await api.updateAppointment(Number(appId), {
+        date: editForm.date,
+        time: editForm.time,
+        client_name: editForm.client_name,
+        service_type: editForm.service_type,
+        branch_id: editForm.branch_id,
+        notes: editForm.notes || null,
+        status: editForm.status,
+      });
+
       setAppointments((prev) =>
         prev.map((app) =>
-          String(app.id) === String(appId) ? { ...app, status: newStatus as Appointment["status"] } : app
-        )
+          String(app.id) === String(appId)
+            ? {
+                ...app,
+                date: editForm.date,
+                time: editForm.time,
+                client_name: editForm.client_name,
+                service_type: editForm.service_type,
+                branch_id: String(editForm.branch_id ?? ""),
+                notes: editForm.notes || undefined,
+                status: editForm.status as Appointment["status"],
+              }
+            : app,
+        ),
       );
       setSelectedAppointment(null);
     } catch (e: any) {
-      setError(e?.message ?? "Error updating status");
+      setError(e?.message ?? "Error updating appointment");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -429,7 +520,7 @@ const Appointments: React.FC = () => {
                             key={a.id}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedAppointment(a);
+                              openEditModal(a);
                             }}
                             className={`px-2 py-1 text-[10px] rounded-md font-bold truncate cursor-pointer border-l-2 ${getStatusBorderColor(
                               a.status || "scheduled",
@@ -466,11 +557,11 @@ const Appointments: React.FC = () => {
               }).format(selectedDate)}
             </h3>
 
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
               {selectedDayAppointments.map((app) => (
                 <div
                   key={app.id}
-                  onClick={() => setSelectedAppointment(app)}
+                  onClick={() => openEditModal(app)}
                   className="border-l-4 border-indigo-600 pl-4 py-1 cursor-pointer hover:bg-gray-50 rounded transition"
                 >
                   <p className="text-sm font-bold">{app.client_name}</p>
@@ -478,6 +569,11 @@ const Appointments: React.FC = () => {
                     <Clock size={12} />
                     {app.time} • {app.service_type}
                   </div>
+                  {app.notes && (
+                    <p className="text-xs text-gray-500 mt-1 italic line-clamp-2">
+                      {app.notes}
+                    </p>
+                  )}
                   <span
                     className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
                       app.status || "scheduled",
@@ -575,14 +671,20 @@ const Appointments: React.FC = () => {
                 <label className="block text-xs font-bold text-gray-600 mb-1">
                   Service type
                 </label>
-                <input
+                <select
                   value={form.service_type}
                   onChange={(e) =>
                     setForm((p) => ({ ...p, service_type: e.target.value }))
                   }
-                  placeholder="Facial, Massage, Botox..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">Select a service</option>
+                  {products.map((prod: any) => (
+                    <option key={prod.id} value={prod.name}>
+                      {prod.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -707,9 +809,9 @@ const Appointments: React.FC = () => {
       {/* STATUS CHANGE MODAL */}
       {selectedAppointment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-gray-100">
+          <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-gray-100">
             <div className="flex items-center justify-between p-4 border-b border-gray-100">
-              <h3 className="font-bold">Change Status</h3>
+              <h3 className="font-bold">Edit Appointment</h3>
               <button
                 type="button"
                 onClick={() => setSelectedAppointment(null)}
@@ -719,37 +821,146 @@ const Appointments: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4">
-              <p className="text-sm text-gray-600 mb-4">
-                Select new status for{" "}
-                <span className="font-bold">{selectedAppointment.client_name}</span>
-              </p>
+            <div className="p-4 space-y-4 max-h-[65vh] overflow-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, date: e.target.value }))
+                    }
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editForm.time}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, time: e.target.value }))
+                    }
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
 
-              <div className="space-y-2">
-                {["scheduled", "confirmed", "completed", "cancelled"].map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => handleStatusChange(status)}
-                    className={`w-full px-4 py-2 rounded-lg text-sm font-medium text-left capitalize transition ${
-                      (selectedAppointment.status || "scheduled") === status
-                        ? "ring-2 ring-indigo-500 bg-indigo-50"
-                        : "hover:bg-gray-50 border border-gray-200"
-                    } ${getStatusColor(status)}`}
-                  >
-                    {status}
-                  </button>
-                ))}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Client name
+                </label>
+                <input
+                  value={editForm.client_name}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, client_name: e.target.value }))
+                  }
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Service type
+                </label>
+                <select
+                  value={editForm.service_type}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, service_type: e.target.value }))
+                  }
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">Select a service</option>
+                  {products.map((prod: any) => (
+                    <option key={prod.id} value={prod.name}>
+                      {prod.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Branch
+                </label>
+                <select
+                  value={editForm.branch_id ?? ""}
+                  onChange={(e) =>
+                    setEditForm((p) => ({
+                      ...p,
+                      branch_id: e.target.value ? Number(e.target.value) : null,
+                    }))
+                  }
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">(No branch)</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={(e) =>
+                    setEditForm((p) => ({ ...p, notes: e.target.value }))
+                  }
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[90px]"
+                  placeholder="Optional notes..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">
+                  Status
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["scheduled", "confirmed", "completed", "cancelled"].map(
+                    (status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setEditForm((p) => ({ ...p, status }))}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition ${
+                          editForm.status === status
+                            ? "ring-2 ring-indigo-500"
+                            : "border border-gray-200"
+                        } ${getStatusColor(status)}`}
+                      >
+                        {status}
+                      </button>
+                    ),
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-100 flex items-center justify-end">
+            <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedAppointment(null)}
                 className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold hover:bg-gray-50"
               >
-                Cerrar
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleEditSave}
+                disabled={!isEditFormValid || editSaving}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+              >
+                {editSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>
