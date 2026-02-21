@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
-import { Appointment, Branch, Product } from "../types";
+import { Appointment, Branch, Product, Lead } from "../types";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -14,6 +14,9 @@ type CreateAppointmentPayload = {
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   client_name: string;
+  client_phone?: string;
+  client_email?: string;
+  lead_id?: string | number | null;
   service_type: string;
   branch_id?: number | null;
   notes?: string | null;
@@ -96,6 +99,7 @@ const Appointments: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +125,8 @@ const Appointments: React.FC = () => {
     date: string;
     time: string;
     client_name: string;
+    client_phone: string;
+    client_email: string;
     service_type: string;
     branch_id: number | null;
     notes: string;
@@ -129,6 +135,8 @@ const Appointments: React.FC = () => {
     date: "",
     time: "",
     client_name: "",
+    client_phone: "",
+    client_email: "",
     service_type: "",
     branch_id: null,
     notes: "",
@@ -142,9 +150,12 @@ const Appointments: React.FC = () => {
       date: toYMD(now),
       time: `${pad2(now.getHours())}:${pad2(now.getMinutes())}`,
       client_name: "",
+      client_phone: "",
+      client_email: "",
       service_type: "",
       branch_id: null,
       notes: "",
+      lead_id: null,
     };
   });
 
@@ -154,10 +165,11 @@ const Appointments: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const [rawApps, b, p] = await Promise.all([
+      const [rawApps, b, p, l] = await Promise.all([
         api.listAppointments() as Promise<any[]>,
         api.listBranches(),
         api.listProducts(),
+        api.listLeads(),
       ]);
       // Normalize: handle both camelCase and snake_case from backend
       const a: Appointment[] = rawApps.map((r: any) => ({
@@ -173,6 +185,7 @@ const Appointments: React.FC = () => {
       setAppointments(a);
       setBranches(b);
       setProducts(p);
+      setLeads(l);
     } catch (e: any) {
       setError(e?.message ?? "Error loading appointments");
     } finally {
@@ -182,7 +195,7 @@ const Appointments: React.FC = () => {
 
   useEffect(() => {
     loadData();
-     
+
   }, []);
 
   // Si el user navega a otro mes, seleccionamos el 1 de ese mes (opcional pero consistente)
@@ -257,9 +270,12 @@ const Appointments: React.FC = () => {
       date: toYMD(d),
       time: prev.time || "09:00",
       client_name: "",
+      client_phone: "",
+      client_email: "",
       service_type: "",
       branch_id: prev.branch_id ?? null,
       notes: "",
+      lead_id: null,
     }));
     setOpenCreate(true);
   };
@@ -279,9 +295,71 @@ const Appointments: React.FC = () => {
 
     try {
       setError(null);
+      let finalLeadId = form.lead_id;
+
+      if (!finalLeadId) {
+        const queryName = (form.client_name || "").toLowerCase().trim();
+        const queryPhone = (form.client_phone || "").replace(/\D/g, "");
+        const queryEmail = (form.client_email || "").toLowerCase().trim();
+
+        const matches = leads.filter(lead => {
+          const leadName = (lead.name || "").toLowerCase().trim();
+          const leadPhone = (lead.phone || "").replace(/\D/g, "");
+          const leadEmail = (lead.email || "").toLowerCase().trim();
+          const leadBranch = String(lead.branch_id);
+          const formBranch = String(form.branch_id);
+
+          if (formBranch && leadBranch !== formBranch) return false;
+
+          return (queryName && leadName === queryName) ||
+            (queryPhone && queryPhone.length >= 7 && leadPhone === queryPhone) ||
+            (queryEmail && leadEmail === queryEmail);
+        });
+
+        if (matches.length > 0) {
+          const match = matches[0];
+          const confirmLinked = window.confirm(`Existe un contacto que coincide: ${match.name} ${match.phone ? '(' + match.phone + ')' : ''}.\n\n¿Deseas vincular esta cita a este contacto existente y actualizar sus datos? Haz clic en OK/Aceptar para vincular o en Cancelar para crear uno NUEVO independiente.`);
+
+          if (confirmLinked) {
+            finalLeadId = match.id;
+            // Optionally update the lead
+            if ((form.client_phone && form.client_phone !== match.phone) || (form.client_email && form.client_email !== match.email)) {
+              try {
+                await api.updateLead(match.id, { ...match, phone: form.client_phone || match.phone, email: form.client_email || match.email });
+              } catch (e) {
+                console.error("Could not update lead info", e);
+              }
+            }
+          } else {
+            const newLead: any = await api.createLead({
+              name: form.client_name,
+              phone: form.client_phone || "000000000",
+              email: form.client_email || "",
+              branch_id: String(form.branch_id),
+              source: "other",
+              message: "Creado desde cita nueva",
+              status: "new"
+            });
+            finalLeadId = newLead.id;
+          }
+        } else {
+          const newLead: any = await api.createLead({
+            name: form.client_name,
+            phone: form.client_phone || "000000000",
+            email: form.client_email || "",
+            branch_id: String(form.branch_id),
+            source: "other",
+            message: "Creado desde cita nueva automáticamente",
+            status: "new"
+          });
+          finalLeadId = newLead.id;
+        }
+      }
+
       await createAppointment({
         ...form,
         branch_id: form.branch_id ? Number(form.branch_id) : null,
+        lead_id: finalLeadId,
       });
       setOpenCreate(false);
       await loadData();
@@ -297,6 +375,8 @@ const Appointments: React.FC = () => {
       date: raw.date ?? "",
       time: raw.time ?? "",
       client_name: raw.client_name ?? raw.clientName ?? "",
+      client_phone: raw.client_phone ?? raw.clientPhone ?? "",
+      client_email: raw.client_email ?? raw.clientEmail ?? "",
       service_type: raw.service_type ?? raw.serviceType ?? "",
       branch_id:
         (raw.branch_id ?? raw.branchId)
@@ -340,6 +420,8 @@ const Appointments: React.FC = () => {
         date: editForm.date,
         time: editForm.time,
         client_name: editForm.client_name,
+        client_phone: editForm.client_phone,
+        client_email: editForm.client_email,
         service_type: editForm.service_type,
         branch_id: editForm.branch_id,
         notes: editForm.notes || null,
@@ -354,6 +436,8 @@ const Appointments: React.FC = () => {
               date: editForm.date,
               time: editForm.time,
               client_name: editForm.client_name,
+              client_phone: editForm.client_phone,
+              client_email: editForm.client_email,
               service_type: editForm.service_type,
               branch_id: String(editForm.branch_id ?? ""),
               notes: editForm.notes || undefined,
@@ -687,6 +771,36 @@ const Appointments: React.FC = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Client Phone
+                  </label>
+                  <input
+                    value={form.client_phone}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, client_phone: e.target.value }))
+                    }
+                    placeholder="+1 555 123 4567"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Client Email
+                  </label>
+                  <input
+                    type="email"
+                    value={form.client_email}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, client_email: e.target.value }))
+                    }
+                    placeholder="client@example.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">
                   Service type
@@ -882,6 +996,34 @@ const Appointments: React.FC = () => {
                   }
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Client Phone
+                  </label>
+                  <input
+                    value={editForm.client_phone}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, client_phone: e.target.value }))
+                    }
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Client Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editForm.client_email}
+                    onChange={(e) =>
+                      setEditForm((p) => ({ ...p, client_email: e.target.value }))
+                    }
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
 
               <div>
