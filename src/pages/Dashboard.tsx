@@ -273,18 +273,24 @@ const Dashboard: React.FC = () => {
     return `${m} ${selectedYear}`;
   }, [selectedMonth, selectedYear]);
 
-  // ✅ Profit: NO inventamos fuera del mes actual (porque backend está MTD).
+  // ✅ Profit calculated dynamically for the selected month using cost_price
   const profitDisplay = useMemo(() => {
-    if (!stats) return "—";
-    // solo confiable cuando el filtro está en el mes actual
     if (selectedMonth === "all") return "—";
-    const now = new Date();
-    const isCurrent =
-      selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
-    return isCurrent
-      ? `$${Number(stats.profit || 0).toLocaleString()}`
-      : "—";
-  }, [stats, selectedMonth, selectedYear]);
+
+    let totalProfit = 0;
+    periodSales.forEach((s) => {
+      let cost = 0;
+      if (s.product_id != null) {
+        const prod = products.find(p => String(p.id) === String(s.product_id));
+        if (prod && (prod as any).cost_price) {
+          cost = Number((prod as any).cost_price) * Math.max(1, toNum(s.quantity));
+        }
+      }
+      totalProfit += (toNum(s.amount) - cost);
+    });
+
+    return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, [periodSales, products, selectedMonth]);
 
   // -----------------------------
   // ✅ Chart 1:
@@ -480,7 +486,7 @@ const Dashboard: React.FC = () => {
         />
 
         <StatCard
-          title={`Ganancia Neta (${selectedMonth === "all" ? "—" : "Mes actual"})`}
+          title={`Ganancia Neta (${selectedMonth === "all" ? "Año" : "Mes"})`}
           value={profitDisplay}
           icon={TrendingUp}
           color="bg-emerald-600"
