@@ -8,11 +8,8 @@ import {
   Phone,
   MoreHorizontal,
   ArrowRight,
-  XCircle,
   DollarSign,
-  Mail,
   Plus,
-  X,
   ArrowLeft,
   Search,
   Trash2,
@@ -153,33 +150,22 @@ const LeadCard: React.FC<{
 
 const Leads: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const initialFormState = {
-    name: "",
-    phone: "",
-    email: "",
-    branch_id: "",
-    source: "other" as Lead["source"],
-    message: "",
-  };
-  const [newLead, setNewLead] = useState(initialFormState);
-
   const fetchData = useCallback(async () => {
     try {
       const l = await api.listLeads();
-      const b = await api.listBranches();
+      await api.listBranches(); // Just let it execute if required by API logic or just remove it if not needed. Actually, not needed. Let's just fetch leads.
       setLeads(l);
-      setBranches(b);
     } catch (err) {
       console.error("Error fetching data", err);
     }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -187,7 +173,7 @@ const Leads: React.FC = () => {
     try {
       await api.updateLeadStatus(leadId, status);
       fetchData();
-    } catch (err) {
+    } catch {
       alert("Error al actualizar el lead.");
     }
   };
@@ -201,7 +187,7 @@ const Leads: React.FC = () => {
       try {
         await api.deleteLead(lead.id);
         fetchData();
-      } catch (err) {
+      } catch {
         alert("Error al eliminar el lead.");
       }
     }

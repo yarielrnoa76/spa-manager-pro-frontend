@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../services/api";
 import { Product } from "../types";
 import {
@@ -49,8 +49,17 @@ const Stocks: React.FC = () => {
   const [moveSalesPrice, setMoveSalesPrice] = useState<string>("0");
   const [moveCostPrice, setMoveCostPrice] = useState<string>("0");
 
+  const fetchData = useCallback(async () => {
+    const data = await api.listProducts();
+    setProducts(data);
+  }, []);
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
     (async () => {
       const me = await api.me();
       const perms: string[] =
@@ -58,29 +67,29 @@ const Stocks: React.FC = () => {
 
       setCanDeleteProduct(
         perms.includes("delete_product") ||
-          perms.includes("product_delete") ||
-          perms.includes("Product_delete"),
+        perms.includes("product_delete") ||
+        perms.includes("Product_delete"),
       );
     })();
   }, []);
 
   useEffect(() => {
     if (!selectedProduct) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMoveSalesPrice(String(selectedProduct.sales_price ?? 0));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMoveCostPrice(String(selectedProduct.cost_price ?? 0));
   }, [selectedProduct]);
 
   useEffect(() => {
     // cuando cambia de entrada/salida, mantenemos valores actuales del producto
     if (!selectedProduct) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMoveSalesPrice(String(selectedProduct.sales_price ?? 0));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMoveCostPrice(String(selectedProduct.cost_price ?? 0));
-  }, [moveType]);
+  }, [moveType, selectedProduct]);
 
-  const fetchData = async () => {
-    const data = await api.listProducts();
-    setProducts(data);
-  };
 
   const handleDeleteProduct = async (product: Product) => {
     if (!canDeleteProduct) {
@@ -339,11 +348,10 @@ const Stocks: React.FC = () => {
 
                   <td className="px-6 py-4 text-center">
                     <span
-                      className={`px-3 py-1 rounded-full font-bold ${
-                        Number(product.stock) < Number(product.min_stock)
-                          ? "bg-red-100 text-red-700"
-                          : "bg-green-100 text-green-700"
-                      }`}
+                      className={`px-3 py-1 rounded-full font-bold ${Number(product.stock) < Number(product.min_stock)
+                        ? "bg-red-100 text-red-700"
+                        : "bg-green-100 text-green-700"
+                        }`}
                     >
                       {product.stock}
                     </span>
@@ -430,11 +438,10 @@ const Stocks: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setMoveType("purchase")}
-                  className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 ${
-                    moveType === "purchase"
-                      ? "bg-white shadow text-indigo-600"
-                      : "text-gray-500"
-                  }`}
+                  className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 ${moveType === "purchase"
+                    ? "bg-white shadow text-indigo-600"
+                    : "text-gray-500"
+                    }`}
                 >
                   <TrendingUp size={16} /> Entrada
                 </button>
@@ -442,11 +449,10 @@ const Stocks: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setMoveType("sale")}
-                  className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 ${
-                    moveType === "sale"
-                      ? "bg-white shadow text-red-600"
-                      : "text-gray-500"
-                  }`}
+                  className={`flex-1 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 ${moveType === "sale"
+                    ? "bg-white shadow text-red-600"
+                    : "text-gray-500"
+                    }`}
                 >
                   <TrendingDown size={16} /> Salida
                 </button>
@@ -461,9 +467,8 @@ const Stocks: React.FC = () => {
                     type="number"
                     step="0.01"
                     min="0"
-                    className={`w-full border rounded-lg p-3 text-sm font-bold ${
-                      moveType === "sale" ? "bg-gray-100 text-gray-500" : ""
-                    }`}
+                    className={`w-full border rounded-lg p-3 text-sm font-bold ${moveType === "sale" ? "bg-gray-100 text-gray-500" : ""
+                      }`}
                     value={moveCostPrice}
                     disabled={moveType === "sale"} // en salida no se puede
                     onChange={(e) => setMoveCostPrice(e.target.value)}

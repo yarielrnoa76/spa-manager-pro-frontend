@@ -30,13 +30,14 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       await onLoginSuccess?.();
       navigate("/", { replace: true });
-    } catch (err: any) {
-      if (err?.code === "DB_CONNECTION_ERROR") {
+    } catch (err: unknown) {
+      const e = err as Error & { code?: string; message?: string };
+      if (e?.code === "DB_CONNECTION_ERROR") {
         setError("Connection to DB Server Error");
-      } else if (err?.code === "VALIDATION_ERROR") {
+      } else if (e?.code === "VALIDATION_ERROR") {
         setError("Please check your email and password.");
       } else {
-        setError(err?.message || "Invalid credentials. Please try again.");
+        setError(e?.message || "Invalid credentials. Please try again.");
       }
       console.error(err);
     } finally {

@@ -163,7 +163,7 @@ const Appointments: React.FC = () => {
       const a: Appointment[] = rawApps.map((r: any) => ({
         id: r.id,
         branch_id: String(r.branch_id ?? r.branchId ?? ""),
-        client_name: r.client_name ?? r.clientName ?? "",
+        client_name: r.client_name || r.clientName || r.customer_name || "(Sin nombre)",
         date: r.date ?? "",
         time: r.time ?? "",
         status: r.status ?? "scheduled",
@@ -182,7 +182,7 @@ const Appointments: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Si el user navega a otro mes, seleccionamos el 1 de ese mes (opcional pero consistente)
@@ -350,21 +350,41 @@ const Appointments: React.FC = () => {
         prev.map((app) =>
           String(app.id) === String(appId)
             ? {
-                ...app,
-                date: editForm.date,
-                time: editForm.time,
-                client_name: editForm.client_name,
-                service_type: editForm.service_type,
-                branch_id: String(editForm.branch_id ?? ""),
-                notes: editForm.notes || undefined,
-                status: editForm.status as Appointment["status"],
-              }
+              ...app,
+              date: editForm.date,
+              time: editForm.time,
+              client_name: editForm.client_name,
+              service_type: editForm.service_type,
+              branch_id: String(editForm.branch_id ?? ""),
+              notes: editForm.notes || undefined,
+              status: editForm.status as Appointment["status"],
+            }
             : app,
         ),
       );
       setSelectedAppointment(null);
     } catch (e: any) {
       setError(e?.message ?? "Error updating appointment");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedAppointment) return;
+    if (!window.confirm("Are you sure you want to delete this appointment?")) return;
+
+    try {
+      setEditSaving(true);
+      setError(null);
+      await (api as any).deleteAppointment(selectedAppointment.id);
+
+      setAppointments((prev) =>
+        prev.filter((app) => String(app.id) !== String(selectedAppointment.id))
+      );
+      setSelectedAppointment(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Error deleting appointment");
     } finally {
       setEditSaving(false);
     }
@@ -932,11 +952,10 @@ const Appointments: React.FC = () => {
                         key={status}
                         type="button"
                         onClick={() => setEditForm((p) => ({ ...p, status }))}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition ${
-                          editForm.status === status
-                            ? "ring-2 ring-indigo-500"
-                            : "border border-gray-200"
-                        } ${getStatusColor(status)}`}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition ${editForm.status === status
+                          ? "ring-2 ring-indigo-500"
+                          : "border border-gray-200"
+                          } ${getStatusColor(status)}`}
                       >
                         {status}
                       </button>
@@ -946,22 +965,32 @@ const Appointments: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-100 flex items-center justify-end gap-2">
+            <div className="p-4 border-t border-gray-100 flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => setSelectedAppointment(null)}
-                className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold hover:bg-gray-50"
+                onClick={handleDelete}
+                disabled={editSaving}
+                className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50 transition"
               >
-                Cancel
+                Delete
               </button>
-              <button
-                type="button"
-                onClick={handleEditSave}
-                disabled={!isEditFormValid || editSaving}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
-              >
-                {editSaving ? "Saving..." : "Save Changes"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAppointment(null)}
+                  className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEditSave}
+                  disabled={!isEditFormValid || editSaving}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                >
+                  {editSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

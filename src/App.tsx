@@ -108,7 +108,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     bootstrapAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const isLoginRoute = location.pathname === "/login";

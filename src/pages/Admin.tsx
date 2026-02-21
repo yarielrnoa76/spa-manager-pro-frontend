@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { User, Branch, Role } from '../types';
-import { Users, Store, Shield, Edit2, Trash2, Plus } from 'lucide-react';
+import { Store, Edit2, Trash2, Plus } from 'lucide-react';
 
 const Admin: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);

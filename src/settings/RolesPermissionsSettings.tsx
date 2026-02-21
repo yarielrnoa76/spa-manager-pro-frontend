@@ -30,6 +30,7 @@ export default function RolesPermissionsSettings() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
 

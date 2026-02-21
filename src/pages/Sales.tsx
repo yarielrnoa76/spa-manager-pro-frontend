@@ -148,7 +148,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       payment_method: "Credit Card",
       notes: "",
     }),
-    [today],
+    [today, user?.branch?.id],
   );
 
   const [newSale, setNewSale] = useState<NewSaleState>(initialNewSale);

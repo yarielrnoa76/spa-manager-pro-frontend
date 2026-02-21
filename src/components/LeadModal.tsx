@@ -74,8 +74,28 @@ const LeadModal: React.FC<LeadModalProps> = ({
         field: keyof typeof formData,
         value: string
     ) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        if (field === "phone") {
+            // Only allow +, spaces, dashes, parentheses and numbers
+            const sanitized = value.replace(/[^\d+\s()-]/g, "");
+            setFormData((prev) => ({ ...prev, [field]: sanitized }));
+        } else {
+            setFormData((prev) => ({ ...prev, [field]: value }));
+        }
     };
+
+    const isFormValid = React.useMemo(() => {
+        // Phone must contain at least 7 digits to be considered "valid", if it has any text
+        const phoneDigitsLength = formData.phone.replace(/\D/g, "").length;
+        const validPhone = formData.phone.trim() === "" || phoneDigitsLength >= 7;
+
+        const hasContactInfo = Boolean(
+            formData.name.trim() || formData.phone.trim() || formData.email.trim()
+        );
+        const hasBranch = Boolean(formData.branch_id);
+        const hasSource = Boolean(formData.source);
+
+        return hasContactInfo && hasBranch && hasSource && validPhone;
+    }, [formData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -133,11 +153,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         {/* Nombre */}
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Nombre Completo <span className="text-red-500">*</span>
+                                Nombre Completo <span className="text-gray-400 font-normal normal-case">(Opcional si hay tel/email)</span>
                             </label>
                             <input
                                 type="text"
-                                required
                                 value={formData.name}
                                 onChange={(e) => handleChange("name", e.target.value)}
                                 className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
@@ -148,15 +167,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         {/* Teléfono */}
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Teléfono <span className="text-red-500">*</span>
+                                Teléfono <span className="text-gray-400 font-normal normal-case">(Opcional si hay nombre/email)</span>
                             </label>
                             <input
                                 type="tel"
-                                required
                                 value={formData.phone}
                                 onChange={(e) => handleChange("phone", e.target.value)}
                                 className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                placeholder="+52 55 1234 5678"
+                                placeholder="+1 555 1234 567"
+                                title="Ingresa un número de teléfono válido. Ej. +1 555 123 4567"
                             />
                         </div>
                     </div>
@@ -239,8 +258,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         </button>
                         <button
                             type="submit"
-                            disabled={loading}
-                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all disabled:opacity-70 flex justify-center items-center"
+                            disabled={loading || !isFormValid}
+                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all disabled:opacity-50 disabled:bg-gray-400 flex justify-center items-center"
                         >
                             {loading ? (
                                 <span className="animate-pulse">Guardando...</span>

@@ -84,11 +84,11 @@ function normalizeDate(d: any): string {
 function isSaleCancelled(sale: any) {
   return Boolean(
     sale?.deleted_at ||
-      sale?.deletedAt ||
-      sale?.is_deleted ||
-      sale?.isDeleted ||
-      String(sale?.status || "").toLowerCase() === "cancelled" ||
-      String(sale?.status || "").toLowerCase() === "canceled",
+    sale?.deletedAt ||
+    sale?.is_deleted ||
+    sale?.isDeleted ||
+    String(sale?.status || "").toLowerCase() === "cancelled" ||
+    String(sale?.status || "").toLowerCase() === "canceled",
   );
 }
 
@@ -319,7 +319,7 @@ const Dashboard: React.FC = () => {
     });
 
     return base;
-  }, [period.mode, periodSales, period.start, (period as any).daysInRange]);
+  }, [period.mode, periodSales, period.startStr, period.endStr, periodLabel]);
 
   const salesByMonthChartData = useMemo(() => {
     if (period.mode !== "year") return [];

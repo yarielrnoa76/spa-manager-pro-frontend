@@ -2,14 +2,10 @@ const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 console.log("API_URL =", API_URL);
 
 import {
-  User,
   Branch,
-  Role,
   Product,
   DailyLog,
   Lead,
-  RefundLog,
-  MonthlyExpense,
   Appointment,
 } from "../types";
 
@@ -24,7 +20,7 @@ export type DashboardStats = {
 };
 
 if (!API_URL) {
-  // eslint-disable-next-line no-console
+
   console.error(
     "VITE_API_URL is missing. Create frontend/.env with VITE_API_URL=http://127.0.0.1:8000 and restart npm run dev",
   );
@@ -211,6 +207,13 @@ export const api = {
     return request(`/api/appointments/${appointmentId}`, {
       method: "PUT",
       body: payload,
+      auth: true,
+    });
+  },
+
+  async deleteAppointment(appointmentId: number | string) {
+    return request(`/api/appointments/${appointmentId}`, {
+      method: "DELETE",
       auth: true,
     });
   },
