@@ -53,8 +53,8 @@ const SidebarItem = ({
     to={to}
     onClick={onClick}
     className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${active
-        ? "bg-indigo-600 text-white"
-        : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
+      ? "bg-indigo-600 text-white"
+      : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
       }`}
   >
     <Icon size={20} />
@@ -106,8 +106,8 @@ const TenantSelector: React.FC<{
                   setOpen(false);
                 }}
                 className={`w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition flex items-center justify-between ${t.id === currentTenantId
-                    ? "bg-indigo-50 text-indigo-700 font-semibold"
-                    : "text-gray-700"
+                  ? "bg-indigo-50 text-indigo-700 font-semibold"
+                  : "text-gray-700"
                   }`}
               >
                 <span className="truncate">{t.name}</span>
@@ -180,9 +180,6 @@ const App: React.FC = () => {
       { to: "/appointments", icon: Calendar, label: "Citas" },
       ...(canSeeSettings
         ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
-        : []),
-      ...(isSuperAdmin
-        ? [{ to: "/tenants", icon: Shield, label: "Tenants" }]
         : []),
     ];
 
@@ -328,21 +325,20 @@ const App: React.FC = () => {
 
           {/* RIGHT SIDE */}
           <div className="ml-auto flex items-center gap-4">
-            {/* Tenant badge */}
-            <div className="hidden sm:flex items-center gap-2 text-xs">
-              <span className="px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-full text-indigo-700 font-semibold flex items-center gap-1.5">
-                <Building2 size={12} />
-                {currentTenantName}
-              </span>
-            </div>
-
-            {/* SuperAdmin tenant selector */}
-            {isSuperAdmin && tenants.length > 0 && (
+            {/* Tenant indicator/selector */}
+            {isSuperAdmin && tenants.length > 0 ? (
               <TenantSelector
                 tenants={tenants}
                 currentTenantId={currentTenantId}
                 onSelect={handleTenantSelect}
               />
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-full text-indigo-700 font-semibold flex items-center gap-1.5">
+                  <Building2 size={12} />
+                  {currentTenantName}
+                </span>
+              </div>
             )}
 
             {/* User info */}
@@ -373,15 +369,15 @@ const App: React.FC = () => {
                   path="/settings"
                   element={
                     canSeeSettings ? (
-                      <SettingsPage />
+                      <SettingsPage
+                        isSuperAdmin={isSuperAdmin}
+                        currentTenantName={currentTenantName}
+                      />
                     ) : (
                       <Navigate to="/" replace />
                     )
                   }
                 />
-                {isSuperAdmin && (
-                  <Route path="/tenants" element={<Tenants />} />
-                )}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </>
             )}

@@ -267,26 +267,21 @@ const Tenants: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-                        <Shield className="text-indigo-600" size={28} />
-                        Tenant Management
-                    </h1>
-                    <p className="text-sm text-gray-500 mt-1">
-                        Manage all business tenants in the system. Only SuperAdmin can access this page.
-                    </p>
+                    <h3 className="text-gray-500 text-sm">
+                        Gestiona los tenants del sistema. Solo visible para SuperAdmin.
+                    </h3>
                 </div>
                 <button
                     onClick={() => {
                         setEditTenant(null);
                         setShowForm(true);
                     }}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition shadow-lg shadow-indigo-200"
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
                 >
                     <Plus size={18} />
-                    New Tenant
+                    Crear Tenant
                 </button>
             </div>
 
@@ -316,8 +311,8 @@ const Tenants: React.FC = () => {
                                 </div>
                                 <span
                                     className={`text-xs font-semibold px-2.5 py-1 rounded-full ${t.status === "active"
-                                            ? "bg-green-100 text-green-700"
-                                            : "bg-yellow-100 text-yellow-700"
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-yellow-100 text-yellow-700"
                                         }`}
                                 >
                                     {t.status}

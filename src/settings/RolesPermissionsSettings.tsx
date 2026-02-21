@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 type Permission = { id: number; name: string };
 type Role = { id: number; name: string; permissions?: Permission[] };
@@ -8,6 +9,9 @@ export default function RolesPermissionsSettings() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [perms, setPerms] = useState<Permission[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
+  const [newRoleName, setNewRoleName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selectedRole = useMemo(
     () => roles.find((r) => String(r.id) === String(selectedRoleId)) ?? null,
@@ -19,6 +23,30 @@ export default function RolesPermissionsSettings() {
     (selectedRole?.permissions ?? []).forEach((p) => set.add(p.id));
     return set;
   }, [selectedRole]);
+
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const groupedPerms = useMemo(() => {
+    const groups: Record<string, Permission[]> = {};
+    const lowerSearch = searchTerm.toLowerCase();
+
+    perms.forEach((p) => {
+      if (lowerSearch && !p.name.toLowerCase().includes(lowerSearch)) return;
+
+      const parts = p.name.split('_');
+      // If permission is "view_users", group is "users"
+      const groupName = parts.length > 1 ? parts.slice(1).join('_') : 'general';
+      if (!groups[groupName]) groups[groupName] = [];
+      groups[groupName].push(p);
+    });
+    return groups;
+  }, [perms, searchTerm]);
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const toggleAccordion = (group: string) => {
+    setOpenGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  };
 
   const load = async () => {
     const [rolesRes, permsRes] = await Promise.all([
@@ -49,28 +77,98 @@ export default function RolesPermissionsSettings() {
     await load();
   };
 
+  const toggleGroupPermissions = async (groupPerms: Permission[]) => {
+    if (!selectedRole) return;
+
+    const isAllSelected = groupPerms.every(p => selectedPermIds.has(p.id));
+    const next = new Set<number>(selectedPermIds);
+
+    if (isAllSelected) {
+      groupPerms.forEach(p => next.delete(p.id));
+    } else {
+      groupPerms.forEach(p => next.add(p.id));
+    }
+
+    await api.put(`/roles/${selectedRole.id}/permissions`, {
+      permission_ids: Array.from(next),
+    });
+
+    await load();
+  };
+
+  const createRole = async () => {
+    if (!newRoleName.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post("/roles", { name: newRoleName });
+      setNewRoleName("");
+      await load();
+      // Auto-select the newly created role
+      // Check if response has data property, or is direct object
+      const newRole = (res as any)?.data || res;
+      if (newRole?.id) {
+        setSelectedRoleId(String(newRole.id));
+      }
+    } catch (e: any) {
+      setError(e?.message || "Error al crear rol");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap items-center">
-        <select
-          className="border rounded-lg px-3 py-2"
-          value={selectedRoleId}
-          onChange={(e) => setSelectedRoleId(e.target.value)}
-        >
-          <option value="">Selecciona un rol...</option>
-          {roles.map((r) => (
-            <option key={r.id} value={String(r.id)}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+      {error && (
+        <div className="border rounded-lg p-3 bg-red-50 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
 
-        <button
-          className="px-4 py-2 rounded-lg border font-semibold hover:bg-gray-50"
-          onClick={load}
-        >
-          Recargar
-        </button>
+      <div className="flex gap-3 flex-wrap items-center bg-gray-50 border p-4 rounded-xl">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Seleccionar Rol Existente</label>
+          <select
+            className="border rounded-lg px-3 py-2 w-full"
+            value={selectedRoleId}
+            onChange={(e) => setSelectedRoleId(e.target.value)}
+          >
+            <option value="">Selecciona un rol...</option>
+            {roles.map((r) => (
+              <option key={r.id} value={String(r.id)}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex-1 min-w-[250px] flex items-end gap-2">
+          <div className="flex-1">
+            <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Crear Nuevo Rol</label>
+            <input
+              className="border rounded-lg px-3 py-2 w-full"
+              placeholder="Nombre del rol"
+              value={newRoleName}
+              onChange={(e) => setNewRoleName(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={createRole}
+            disabled={!newRoleName.trim() || loading}
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
+          >
+            Crear
+          </button>
+        </div>
+
+        <div className="flex items-end">
+          <button
+            className="px-4 py-2 mt-5 rounded-lg border font-semibold hover:bg-gray-100"
+            onClick={load}
+          >
+            Recargar
+          </button>
+        </div>
       </div>
 
       {!selectedRole ? (
@@ -79,26 +177,98 @@ export default function RolesPermissionsSettings() {
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="text-sm text-gray-600">
-            Permisos asignados a:{" "}
-            <span className="font-bold text-gray-900">{selectedRole.name}</span>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm text-gray-600">
+            <div>
+              Permisos asignados a:{" "}
+              <span className="font-bold text-gray-900">{selectedRole.name}</span>
+            </div>
+            <div className="relative w-full md:w-64">
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Buscar permiso o modelo..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {perms.map((p) => {
-              const checked = selectedPermIds.has(p.id);
+          <div className="space-y-3 mt-4">
+            {Object.entries(groupedPerms).map(([groupName, groupPerms]) => {
+              const isOpen = openGroups[groupName] ?? (searchTerm.trim().length > 0 ? true : false);
+              const isAllSelected = groupPerms.every((p) => selectedPermIds.has(p.id));
+              const isSomeSelected = groupPerms.some((p) => selectedPermIds.has(p.id));
+              const assignedCount = groupPerms.filter((p) => selectedPermIds.has(p.id)).length;
+
               return (
-                <label
-                  key={p.id}
-                  className="flex items-center gap-2 border rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => togglePermission(p.id)}
-                  />
-                  <span className="text-sm font-semibold">{p.name}</span>
-                </label>
+                <div key={groupName} className="border rounded-xl bg-white overflow-hidden shadow-sm">
+                  {/* Accordion Header */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+                    <button
+                      onClick={() => toggleAccordion(groupName)}
+                      className="flex items-center gap-2 flex-1 text-left"
+                    >
+                      {isOpen ? (
+                        <ChevronDown size={18} className="text-gray-500" />
+                      ) : (
+                        <ChevronRight size={18} className="text-gray-500" />
+                      )}
+                      <span className="font-bold text-gray-800 uppercase tracking-wide text-sm">
+                        {groupName}
+                      </span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">
+                        {groupPerms.length}
+                      </span>
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      <span className="hidden sm:inline-block text-xs font-semibold text-gray-500 tracking-wide uppercase">
+                        {assignedCount}/{groupPerms.length} asignados
+                      </span>
+                      <button
+                        onClick={() => toggleGroupPermissions(groupPerms)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${isAllSelected
+                          ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                          : isSomeSelected
+                            ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                            : "bg-white text-gray-600 hover:bg-gray-50"
+                          }`}
+                      >
+                        {isAllSelected ? "Desmarcar Todos" : "Seleccionar Todos"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Accordion Body */}
+                  {isOpen && (
+                    <div className="p-4 bg-white">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {groupPerms.map((p) => {
+                          const checked = selectedPermIds.has(p.id);
+                          return (
+                            <label
+                              key={p.id}
+                              className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer transition ${checked ? "bg-indigo-50/50 border-indigo-200" : "hover:bg-gray-50"
+                                }`}
+                            >
+                              <div className="relative flex items-center">
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600"
+                                  checked={checked}
+                                  onChange={() => togglePermission(p.id)}
+                                />
+                              </div>
+                              <span className={`text-sm font-semibold capitalize ${checked ? "text-indigo-900" : "text-gray-700"}`}>
+                                {p.name.replace("_", " ")}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

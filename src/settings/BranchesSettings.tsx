@@ -4,15 +4,33 @@ import { api } from "../services/api";
 type Branch = {
   id: number;
   name: string;
+  code: string;
+  address: string;
   deleted_at?: string | null;
 };
+
+// Error Helper
+type ApiValidationErrors = Record<string, string[]>;
+function getErrorMessage(e: any): string {
+  const status = e?.status;
+  const errors: ApiValidationErrors | undefined = e?.errors;
+  if (status === 422 && errors) {
+    const firstKey = Object.keys(errors)[0];
+    const firstMsg = firstKey ? errors[firstKey]?.[0] : null;
+    return firstMsg ?? "Validation failed.";
+  }
+  return e?.message ?? "Ocurrió un error.";
+}
 
 export default function BranchesSettings() {
   const [rows, setRows] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // formulario simple
+  // formulario
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [address, setAddress] = useState("");
   const [editing, setEditing] = useState<Branch | null>(null);
 
   const load = async () => {
@@ -31,19 +49,37 @@ export default function BranchesSettings() {
   }, []);
 
   const save = async () => {
-    const payload = { name };
-
-    if (!name.trim()) return;
-
-    if (editing) {
-      await api.put(`/branches/${editing.id}`, payload);
-    } else {
-      await api.post(`/branches`, payload);
+    setError(null);
+    if (!name.trim() || !code.trim() || !address.trim()) {
+      setError("Nombre, código y dirección son obligatorios.");
+      return;
     }
 
-    setName("");
-    setEditing(null);
-    await load();
+    const payload = {
+      name: name.trim(),
+      code: code.trim(),
+      address: address.trim()
+    };
+
+    setLoading(true);
+    try {
+      if (editing) {
+        await api.put(`/branches/${editing.id}`, payload);
+      } else {
+        await api.post(`/branches`, payload);
+      }
+
+      setName("");
+      setCode("");
+      setAddress("");
+      setEditing(null);
+      await load();
+    } catch (e: any) {
+      setError(getErrorMessage(e));
+      console.error("SAVE BRANCH ERROR =>", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const softDelete = async (id: number) => {
@@ -58,30 +94,55 @@ export default function BranchesSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {error && (
+        <div className="border rounded-lg p-3 bg-red-50 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <input
           className="border rounded-lg px-3 py-2"
-          placeholder="Nombre de la sucursal"
+          placeholder="Nombre"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <button
-          onClick={save}
-          className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
-        >
-          {editing ? "Guardar cambios" : "Agregar sucursal"}
-        </button>
-        {editing && (
+        <input
+          className="border rounded-lg px-3 py-2"
+          placeholder="Código (ej. HIA)"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+        <input
+          className="border rounded-lg px-3 py-2"
+          placeholder="Dirección"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+        />
+
+        <div className="flex gap-2">
           <button
-            onClick={() => {
-              setEditing(null);
-              setName("");
-            }}
-            className="px-4 py-2 rounded-lg border font-semibold hover:bg-gray-50"
+            onClick={save}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
           >
-            Cancelar
+            {editing ? "Guardar" : "Agregar"}
           </button>
-        )}
+
+          {editing && (
+            <button
+              onClick={() => {
+                setEditing(null);
+                setName("");
+                setCode("");
+                setAddress("");
+              }}
+              className="px-4 py-2 rounded-lg border font-semibold hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto border rounded-xl">
@@ -131,6 +192,8 @@ export default function BranchesSettings() {
                             onClick={() => {
                               setEditing(b);
                               setName(b.name);
+                              setCode(b.code || "");
+                              setAddress(b.address || "");
                             }}
                           >
                             Editar
