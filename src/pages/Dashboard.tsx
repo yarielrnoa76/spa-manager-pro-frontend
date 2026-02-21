@@ -273,10 +273,8 @@ const Dashboard: React.FC = () => {
     return `${m} ${selectedYear}`;
   }, [selectedMonth, selectedYear]);
 
-  // ✅ Profit calculated dynamically for the selected month using cost_price
+  // ✅ Profit calculated dynamically for the selected period using cost_price
   const profitDisplay = useMemo(() => {
-    if (selectedMonth === "all") return "—";
-
     let totalProfit = 0;
     periodSales.forEach((s) => {
       let cost = 0;
