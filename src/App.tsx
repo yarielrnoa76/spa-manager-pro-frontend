@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Routes,
   Route,
@@ -17,9 +17,13 @@ import {
   Store,
   Package,
   Settings,
+  Shield,
+  ChevronDown,
+  Building2,
 } from "lucide-react";
 
 import { api } from "./services/api";
+import { Tenant } from "./types";
 
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
@@ -27,18 +31,30 @@ import Leads from "./pages/Leads";
 import Appointments from "./pages/Appointments";
 import Stocks from "./pages/Stocks";
 import Login from "./pages/Login";
-
 import SettingsPage from "./pages/Settings";
+import Tenants from "./pages/Tenants";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 
-const SidebarItem = ({ to, icon: Icon, label, active, onClick }: any) => (
+const SidebarItem = ({
+  to,
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  to: string;
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  onClick?: () => void;
+}) => (
   <Link
     to={to}
     onClick={onClick}
     className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${active
-      ? "bg-indigo-600 text-white"
-      : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
+        ? "bg-indigo-600 text-white"
+        : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
       }`}
   >
     <Icon size={20} />
@@ -52,19 +68,100 @@ const FullScreenLoading = ({ text = "Loading..." }: { text?: string }) => (
   </div>
 );
 
+/* ───────── TENANT SELECTOR (SuperAdmin Only) ───────── */
+const TenantSelector: React.FC<{
+  tenants: Tenant[];
+  currentTenantId: number | null;
+  onSelect: (tenantId: number) => void;
+}> = ({ tenants, currentTenantId, onSelect }) => {
+  const [open, setOpen] = useState(false);
+
+  const currentTenant = tenants.find((t) => t.id === currentTenantId);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition"
+      >
+        <Building2 size={14} />
+        <span className="max-w-[140px] truncate">
+          {currentTenant?.name || "Select Tenant"}
+        </span>
+        <ChevronDown size={14} />
+      </button>
+
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border z-50 py-1 max-h-64 overflow-y-auto">
+            {tenants.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  onSelect(t.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition flex items-center justify-between ${t.id === currentTenantId
+                    ? "bg-indigo-50 text-indigo-700 font-semibold"
+                    : "text-gray-700"
+                  }`}
+              >
+                <span className="truncate">{t.name}</span>
+                {t.status === "suspended" && (
+                  <span className="text-xs text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded">
+                    suspended
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ───────── MAIN APP ───────── */
+interface UserData {
+  id: string;
+  name: string;
+  email: string;
+  tenant_id?: number | null;
+  tenant?: { id: number; name: string; slug?: string } | null;
+  is_super_admin?: boolean;
+  branch?: { id: number; name: string } | null;
+  role: { id: number; name: string };
+  permissions: string[];
+}
+
 const App: React.FC = () => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   const [booting, setBooting] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
-  const location = useLocation();
+  // Tenant state
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [currentTenantId, setCurrentTenantId] = useState<number | null>(
+    (() => {
+      const stored = localStorage.getItem("current_tenant_id");
+      return stored ? parseInt(stored, 10) : null;
+    })()
+  );
 
+  const location = useLocation();
   const navigate = useNavigate();
 
-  // /api/user retorna permissions como array plano de strings ["view_branch", "view_leads", ...]
-  const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
+  const isSuperAdmin = user?.is_super_admin === true;
+
+  const perms: string[] = Array.isArray(user?.permissions)
+    ? user.permissions
+    : [];
   const hasPerm = (p: string) =>
-    perms.includes(p) || user?.role?.name === "admin";
+    perms.includes(p) || user?.role?.name === "admin" || isSuperAdmin;
 
   const canSeeDashboard = hasPerm("view_dashboard");
   const canSeeSettings = hasPerm("manage_settings");
@@ -84,9 +181,30 @@ const App: React.FC = () => {
       ...(canSeeSettings
         ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
         : []),
+      ...(isSuperAdmin
+        ? [{ to: "/tenants", icon: Shield, label: "Tenants" }]
+        : []),
     ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  // Load tenants list for SuperAdmin
+  const loadTenants = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    try {
+      const data = await api.listTenants();
+      setTenants(Array.isArray(data) ? data : []);
+    } catch {
+      // Ignore
+    }
+  }, [isSuperAdmin]);
+
+  const handleTenantSelect = (tenantId: number) => {
+    setCurrentTenantId(tenantId);
+    api.setCurrentTenantId(tenantId);
+    // Force reload current page data
+    window.location.reload();
+  };
 
   const bootstrapAuth = async () => {
     setBooting(true);
@@ -99,8 +217,14 @@ const App: React.FC = () => {
     }
 
     try {
-      const me = await api.me(); // si falla, api.me limpia token y devuelve null
+      const me = await api.me();
       setUser(me);
+
+      // For non-SuperAdmin, always set their tenant
+      if (me && !me.is_super_admin && me.tenant_id) {
+        setCurrentTenantId(me.tenant_id);
+        api.setCurrentTenantId(me.tenant_id);
+      }
     } finally {
       setBooting(false);
     }
@@ -108,14 +232,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
     bootstrapAuth();
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (user && isSuperAdmin) {
+      loadTenants();
+    }
+  }, [user, isSuperAdmin, loadTenants]);
 
   const isLoginRoute = location.pathname === "/login";
 
   if (booting) return <FullScreenLoading text="Checking session..." />;
 
-  // Sin user -> forzar /login
   if (!user) {
     if (!isLoginRoute) return <Navigate to="/login" replace />;
     return (
@@ -129,8 +258,15 @@ const App: React.FC = () => {
     );
   }
 
-  // Con user -> si está en /login, manda al dashboard
   if (user && isLoginRoute) return <Navigate to="/" replace />;
+
+  // Determine display tenant name
+  const currentTenantName =
+    isSuperAdmin
+      ? tenants.find((t) => t.id === currentTenantId)?.name ||
+      user?.tenant?.name ||
+      "No Tenant Selected"
+      : user?.tenant?.name || "—";
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -158,6 +294,7 @@ const App: React.FC = () => {
             <button
               onClick={() => {
                 api.clearToken();
+                api.clearCurrentTenantId();
                 setUser(null);
                 navigate("/login", { replace: true });
               }}
@@ -181,23 +318,45 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b flex items-center px-6">
-          {/* LADO IZQUIERDO */}
+        <header className="h-16 bg-white border-b flex items-center px-6 gap-4">
+          {/* LEFT SIDE */}
           <div className="flex items-center gap-4">
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
               <Menu />
             </button>
           </div>
 
-          {/* LADO DERECHO */}
-          <div className="ml-auto text-xs text-gray-500">
-            {user?.email ?? ""} <span className="font-bold">({user?.role?.name ?? "No Role"})</span>
+          {/* RIGHT SIDE */}
+          <div className="ml-auto flex items-center gap-4">
+            {/* Tenant badge */}
+            <div className="hidden sm:flex items-center gap-2 text-xs">
+              <span className="px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-full text-indigo-700 font-semibold flex items-center gap-1.5">
+                <Building2 size={12} />
+                {currentTenantName}
+              </span>
+            </div>
+
+            {/* SuperAdmin tenant selector */}
+            {isSuperAdmin && tenants.length > 0 && (
+              <TenantSelector
+                tenants={tenants}
+                currentTenantId={currentTenantId}
+                onSelect={handleTenantSelect}
+              />
+            )}
+
+            {/* User info */}
+            <div className="text-xs text-gray-500">
+              {user?.email ?? ""}{" "}
+              <span className="font-bold">
+                ({user?.role?.name ?? "No Role"})
+              </span>
+            </div>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
           <Routes>
-            {/* Si es vendedora, SOLO ve /sales. Cualquier otra cosa -> /sales */}
             {user?.role?.name === "vendedora" ? (
               <>
                 <Route path="/sales" element={<Sales user={user} />} />
@@ -213,9 +372,16 @@ const App: React.FC = () => {
                 <Route
                   path="/settings"
                   element={
-                    canSeeSettings ? <SettingsPage /> : <Navigate to="/" replace />
+                    canSeeSettings ? (
+                      <SettingsPage />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
                   }
                 />
+                {isSuperAdmin && (
+                  <Route path="/tenants" element={<Tenants />} />
+                )}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </>
             )}

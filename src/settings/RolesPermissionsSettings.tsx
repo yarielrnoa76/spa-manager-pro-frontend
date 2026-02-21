@@ -22,11 +22,11 @@ export default function RolesPermissionsSettings() {
 
   const load = async () => {
     const [rolesRes, permsRes] = await Promise.all([
-      api.get("/roles?with_permissions=1"),
-      api.get("/permissions"),
+      api.get<Role[]>("/roles?with_permissions=1"),
+      api.get<Permission[]>("/permissions"),
     ]);
-    setRoles(rolesRes.data ?? rolesRes);
-    setPerms(permsRes.data ?? permsRes);
+    setRoles(Array.isArray(rolesRes) ? rolesRes : []);
+    setPerms(Array.isArray(permsRes) ? permsRes : []);
   };
 
   useEffect(() => {

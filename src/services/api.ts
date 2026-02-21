@@ -7,6 +7,7 @@ import {
   DailyLog,
   Lead,
   Appointment,
+  Tenant,
 } from "../types";
 
 export type LoginPayload = { email: string; password: string };
@@ -14,13 +15,12 @@ export type LoginPayload = { email: string; password: string };
 export type DashboardStats = {
   totalSales: number;
   profit: number;
-  recentLeads: Array<any>;
+  recentLeads: Array<Lead>;
   salesCount: number;
   lowStockCount: number;
 };
 
 if (!API_URL) {
-
   console.error(
     "VITE_API_URL is missing. Create frontend/.env with VITE_API_URL=http://127.0.0.1:8000 and restart npm run dev",
   );
@@ -28,7 +28,6 @@ if (!API_URL) {
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-//  Error enriquecido (sin romper: sigue siendo Error)
 type ApiErrorPayload = {
   ok?: boolean;
   code?: string;
@@ -40,7 +39,7 @@ class ApiError extends Error {
   code?: string;
   status?: number;
   errors?: Record<string, string[]>;
-  data?: any;
+  data?: ApiErrorPayload;
 
   constructor(
     message: string,
@@ -48,7 +47,7 @@ class ApiError extends Error {
       code?: string;
       status?: number;
       errors?: Record<string, string[]>;
-      data?: any;
+      data?: ApiErrorPayload;
     },
   ) {
     super(message);
@@ -60,7 +59,7 @@ class ApiError extends Error {
   }
 }
 
-function safeJsonParse(text: string): any {
+function safeJsonParse(text: string): ApiErrorPayload {
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -70,7 +69,7 @@ function safeJsonParse(text: string): any {
 
 async function request<T>(
   path: string,
-  options: { method?: HttpMethod; body?: any; auth?: boolean } = {},
+  options: { method?: HttpMethod; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
   const auth = options.auth ?? true;
@@ -81,6 +80,12 @@ async function request<T>(
   if (auth) {
     const token = localStorage.getItem("auth_token");
     if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    // === MULTI-TENANT: Add X-Tenant-ID header ===
+    const tenantId = localStorage.getItem("current_tenant_id");
+    if (tenantId) {
+      headers["X-Tenant-ID"] = tenantId;
+    }
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -89,26 +94,22 @@ async function request<T>(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  // ✅ 204 = No Content (DELETE típico)
   if (res.status === 204) return null as unknown as T;
 
-  // ✅ Lee body UNA sola vez
   const rawText = await res.text().catch(() => "");
-  const data: ApiErrorPayload | any = safeJsonParse(rawText);
+  const data = safeJsonParse(rawText);
 
   if (res.status === 401) localStorage.removeItem("auth_token");
 
   if (!res.ok) {
-    // ✅ Caso 503 DB down (tu backend ya responde code)
     if (res.status === 503 && data?.code === "DB_CONNECTION_ERROR") {
-      throw new ApiError("Connection to DB Server Error.Check Backend is running", {
+      throw new ApiError("Connection to DB Server Error. Check Backend is running", {
         code: "DB_CONNECTION_ERROR",
         status: 503,
         data,
       });
     }
 
-    // ✅ Caso 422 Validation (si quieres usarlo en UI)
     if (res.status === 422) {
       throw new ApiError(data?.message || "Validation failed.", {
         code: data?.code || "VALIDATION_ERROR",
@@ -118,7 +119,6 @@ async function request<T>(
       });
     }
 
-    // ✅ Fallback: comportamiento anterior (pero mejorado)
     throw new ApiError(data?.message || `Request failed (${res.status})`, {
       code: data?.code,
       status: res.status,
@@ -126,12 +126,10 @@ async function request<T>(
     });
   }
 
-  // ✅ soporta body vacío aunque status sea 200/201
-  return (rawText ? (data as T) : (null as any)) as T;
+  return (rawText ? (data as T) : (null as unknown as T)) as T;
 }
 
 function normalizeApiPath(path: string): string {
-  // permite pasar "/branches" y lo convierte en "/api/branches"
   if (!path.startsWith("/")) path = `/${path}`;
   return path.startsWith("/api/") ? path : `/api${path}`;
 }
@@ -148,19 +146,46 @@ export const api = {
     localStorage.removeItem("auth_token");
   },
 
+  // --- Tenant Context helpers ---
+  getCurrentTenantId(): string | null {
+    return localStorage.getItem("current_tenant_id");
+  },
+  setCurrentTenantId(tenantId: number | string) {
+    localStorage.setItem("current_tenant_id", String(tenantId));
+  },
+  clearCurrentTenantId() {
+    localStorage.removeItem("current_tenant_id");
+  },
+
   // --- Auth ---
   async login(payload: LoginPayload) {
-    const data = await request<{ token: string; user: any }>(`/api/login`, {
+    const data = await request<{ token: string; user: unknown; tenant?: { id: number; name: string } }>(`/api/login`, {
       method: "POST",
       body: payload,
       auth: false,
     });
     if (data?.token) this.setToken(data.token);
+
+    // Auto-set tenant context for non-SuperAdmin users
+    if (data?.tenant?.id) {
+      this.setCurrentTenantId(data.tenant.id);
+    }
+
     return data;
   },
 
   async me() {
-    return request<any>(`/api/user`, { method: "GET", auth: true }).catch(
+    return request<{
+      id: string;
+      name: string;
+      email: string;
+      tenant_id?: number | null;
+      tenant?: { id: number; name: string; slug?: string } | null;
+      is_super_admin?: boolean;
+      branch?: { id: number; name: string } | null;
+      role: { id: number; name: string };
+      permissions: string[];
+    }>(`/api/user`, { method: "GET", auth: true }).catch(
       () => null,
     );
   },
@@ -170,7 +195,39 @@ export const api = {
       await request(`/api/logout`, { method: "POST", auth: true });
     } finally {
       this.clearToken();
+      this.clearCurrentTenantId();
     }
+  },
+
+  // --- Tenants (SuperAdmin only) ---
+  async listTenants() {
+    return request<Tenant[]>(`/api/tenants`, { method: "GET", auth: true });
+  },
+
+  async createTenant(payload: { name: string; slug?: string; status?: string }) {
+    return request<Tenant>(`/api/tenants`, { method: "POST", body: payload, auth: true });
+  },
+
+  async updateTenant(tenantId: number, payload: { name?: string; slug?: string; status?: string }) {
+    return request<Tenant>(`/api/tenants/${tenantId}`, { method: "PUT", body: payload, auth: true });
+  },
+
+  async deleteTenant(tenantId: number, confirmName: string, confirmPhrase: string) {
+    return request(`/api/tenants/${tenantId}`, {
+      method: "DELETE",
+      body: { confirm_name: confirmName, confirm_phrase: confirmPhrase },
+      auth: true,
+    });
+  },
+
+  async switchTenant(tenantId: number) {
+    const data = await request<{ tenant: Tenant }>(`/api/tenant/switch`, {
+      method: "POST",
+      body: { tenant_id: tenantId },
+      auth: true,
+    });
+    this.setCurrentTenantId(tenantId);
+    return data;
   },
 
   // --- Dashboard ---
@@ -183,11 +240,11 @@ export const api = {
 
   // --- Branches ---
   async listBranches() {
-    const res: any = await request<Branch[]>(`/api/branches`, {
+    const res = await request<Branch[]>(`/api/branches`, {
       method: "GET",
       auth: true,
     });
-    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    return Array.isArray(res) ? res : [];
   },
 
   // --- Appointments ---
@@ -195,7 +252,7 @@ export const api = {
     return request<Appointment[]>(`/api/appointments`, { method: "GET", auth: true });
   },
 
-  async createAppointment(payload: any) {
+  async createAppointment(payload: unknown) {
     return request(`/api/appointments`, {
       method: "POST",
       body: payload,
@@ -203,7 +260,7 @@ export const api = {
     });
   },
 
-  async updateAppointment(appointmentId: number, payload: any) {
+  async updateAppointment(appointmentId: number, payload: unknown) {
     return request(`/api/appointments/${appointmentId}`, {
       method: "PUT",
       body: payload,
@@ -223,7 +280,7 @@ export const api = {
     return request<Lead[]>(`/api/leads`, { method: "GET", auth: true });
   },
 
-  async createLead(payload: any) {
+  async createLead(payload: unknown) {
     return request(`/api/leads`, { method: "POST", body: payload, auth: true });
   },
 
@@ -242,7 +299,7 @@ export const api = {
     });
   },
 
-  async updateLead(leadId: string | number, payload: any) {
+  async updateLead(leadId: string | number, payload: unknown) {
     return request(`/api/leads/${encodeURIComponent(String(leadId))}`, {
       method: "PUT",
       body: payload,
@@ -268,15 +325,15 @@ export const api = {
 
     const q = params.toString() ? `?${params.toString()}` : "";
 
-    const res: any = await request<DailyLog[]>(`/api/sales${q}`, {
+    const res = await request<DailyLog[]>(`/api/sales${q}`, {
       method: "GET",
       auth: true,
     });
 
-    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    return Array.isArray(res) ? res : [];
   },
 
-  async createSale(payload: any) {
+  async createSale(payload: unknown) {
     return request(`/api/sales`, { method: "POST", body: payload, auth: true });
   },
   async cancelSale(saleId: string | number) {
@@ -311,11 +368,11 @@ export const api = {
   },
 
   async listProducts() {
-    const res: any = await request<Product[]>(`/api/products`, {
+    const res = await request<Product[]>(`/api/products`, {
       method: "GET",
       auth: true,
     });
-    return Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    return Array.isArray(res) ? res : [];
   },
   async updateProduct(
     productId: number,
@@ -348,16 +405,16 @@ export const api = {
       auth: true,
     });
   },
-  // ... otros métodos de la API relacionados con Configuracion, Usuarios, Roles, etc.
-  // --- Generic helpers (para Settings UI, sin romper lo existente) ---
-  async get<T = any>(path: string, opts?: { auth?: boolean }) {
+
+  // --- Generic helpers ---
+  async get<T = unknown>(path: string, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "GET",
       auth: opts?.auth ?? true,
     });
   },
 
-  async post<T = any>(path: string, body?: any, opts?: { auth?: boolean }) {
+  async post<T = unknown>(path: string, body?: unknown, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "POST",
       body,
@@ -365,7 +422,7 @@ export const api = {
     });
   },
 
-  async put<T = any>(path: string, body?: any, opts?: { auth?: boolean }) {
+  async put<T = unknown>(path: string, body?: unknown, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "PUT",
       body,
@@ -373,7 +430,7 @@ export const api = {
     });
   },
 
-  async delete<T = any>(path: string, opts?: { auth?: boolean }) {
+  async delete<T = unknown>(path: string, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "DELETE",
       auth: opts?.auth ?? true,

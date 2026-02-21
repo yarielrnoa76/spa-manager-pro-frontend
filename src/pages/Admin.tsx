@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { User, Branch, Role } from '../types';
+import { User, Branch } from '../types';
 import { Store, Edit2, Trash2, Plus } from 'lucide-react';
 
 const Admin: React.FC = () => {
@@ -77,9 +77,9 @@ const Admin: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${u.role?.name === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                         }`}>
-                        {u.role}
+                        {u.role?.name ?? 'No Role'}
                       </span>
                     </td>
                     <td className="px-6 py-4">

@@ -1,5 +1,5 @@
 
-import { Role, Branch, User, DailyLog, RefundLog, MonthlyExpense, Lead, Appointment } from '../types';
+import { Branch, User, DailyLog, RefundLog, MonthlyExpense, Lead, Appointment } from '../types';
 
 export const MOCK_BRANCHES: Branch[] = [
   { id: '1', name: 'Hialeah', code: 'HIA', address: '123 Hialeah Dr' },
@@ -7,9 +7,9 @@ export const MOCK_BRANCHES: Branch[] = [
 ];
 
 export const MOCK_USERS: User[] = [
-  { id: 'u1', name: 'Admin User', email: 'admin@spa.com', role: Role.ADMIN, branch_id: '1', permissions: ['*'] },
-  { id: 'u2', name: 'Manager Maria', email: 'manager@spa.com', role: Role.MANAGER, branch_id: '1', permissions: ['sales.view.all', 'reports.view'] },
-  { id: 'u3', name: 'Seller Sarah', email: 'sarah@spa.com', role: Role.SELLER, branch_id: '2', permissions: ['sales.create', 'sales.view.branch'] },
+  { id: 'u1', name: 'Admin User', email: 'admin@spa.com', role: { id: 1, name: 'admin' }, branch_id: '1', permissions: ['*'] },
+  { id: 'u2', name: 'Manager Maria', email: 'manager@spa.com', role: { id: 2, name: 'manager' }, branch_id: '1', permissions: ['sales.view.all', 'reports.view'] },
+  { id: 'u3', name: 'Seller Sarah', email: 'sarah@spa.com', role: { id: 3, name: 'sales' }, branch_id: '2', permissions: ['sales.create', 'sales.view.branch'] },
 ];
 
 export const MOCK_SALES: DailyLog[] = Array.from({ length: 50 }, (_, i) => ({

@@ -19,8 +19,8 @@ export default function BranchesSettings() {
     setLoading(true);
     try {
       // endpoint sugerido: GET /branches?with_deleted=1 (o sin borradas)
-      const res = await api.get("/branches");
-      setRows(res.data ?? res);
+      const res = await api.get<Branch[]>("/branches");
+      setRows(Array.isArray(res) ? res : []);
     } finally {
       setLoading(false);
     }
