@@ -32,6 +32,7 @@ const LogManagement: React.FC = () => {
         event: '',
         model_type: '',
         branch_id: '',
+        search: '',
     });
 
     const [exportDays, setExportDays] = useState(30);
@@ -214,20 +215,20 @@ const LogManagement: React.FC = () => {
 
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1">
-                            <Database className="w-3 h-3" /> Modelo
+                            <Search className="w-3 h-3" /> Búsqueda General
                         </label>
                         <input
                             type="text"
-                            placeholder="Ej: Product"
-                            value={filters.model_type}
-                            onChange={(e) => setFilters({ ...filters, model_type: e.target.value })}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                            placeholder="Nombre, descripción, ID..."
+                            value={filters.search}
+                            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium"
                         />
                     </div>
 
                     <div className="flex items-end">
                         <button
-                            onClick={() => { setFilters({ user_id: '', event: '', model_type: '', branch_id: '' }); setCurrentPage(1); }}
+                            onClick={() => { setFilters({ user_id: '', event: '', model_type: '', branch_id: '', search: '' }); setCurrentPage(1); }}
                             className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl px-4 py-2 font-medium text-sm transition-all flex items-center justify-center gap-2 h-[38px]"
                         >
                             <Trash2 className="w-4 h-4" />
@@ -290,9 +291,12 @@ const LogManagement: React.FC = () => {
                                             {getEventBadge(log.event)}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="text-sm">
-                                                <span className="font-bold text-slate-800">{formatModelPath(log.model_type)}</span>
-                                                <span className="bg-slate-50 text-slate-400 px-1.5 py-0.5 rounded text-[10px] border border-slate-100 ml-1.5 font-mono">ID {log.model_id}</span>
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-slate-800">{log.subject_label || formatModelPath(log.model_type)}</span>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{formatModelPath(log.model_type)}</span>
+                                                    <span className="bg-slate-50 text-slate-400 px-1.5 py-0.5 rounded text-[10px] border border-slate-100 font-mono">ID {log.model_id}</span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">

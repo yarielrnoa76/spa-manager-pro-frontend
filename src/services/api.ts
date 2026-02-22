@@ -26,6 +26,7 @@ export interface ActivityLog {
   user?: { id: number; name: string };
   tenant?: { id: number; name: string };
   branch?: { id: number; name: string };
+  subject_label?: string;
 }
 
 export type LoginPayload = { email: string; password: string };
@@ -467,7 +468,7 @@ export const api = {
     });
   },
 
-  listLogs(params: { user_id?: number; event?: string; model_type?: string; tenant_id?: number; branch_id?: number; page?: number } = {}) {
+  listLogs(params: { user_id?: number; event?: string; model_type?: string; tenant_id?: number; branch_id?: number; page?: number; search?: string } = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) searchParams.append(key, value.toString());
