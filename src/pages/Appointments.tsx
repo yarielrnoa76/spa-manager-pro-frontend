@@ -176,6 +176,8 @@ const Appointments: React.FC = () => {
         id: r.id,
         branch_id: String(r.branch_id ?? r.branchId ?? ""),
         client_name: r.client_name || r.clientName || r.customer_name || "(Sin nombre)",
+        client_phone: r.client_phone || r.clientPhone || r.customer_phone || "",
+        client_email: r.client_email || r.clientEmail || r.customer_email || "",
         date: r.date ?? "",
         time: r.time ?? "",
         status: r.status ?? "scheduled",
@@ -669,6 +671,18 @@ const Appointments: React.FC = () => {
                   className="border-l-4 border-indigo-600 pl-4 py-1 cursor-pointer hover:bg-gray-50 rounded transition"
                 >
                   <p className="text-sm font-bold">{app.client_name}</p>
+                  <div className="flex flex-col gap-0.5 mt-1">
+                    {app.client_phone && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <span className="opacity-70">Tel:</span> {app.client_phone}
+                      </div>
+                    )}
+                    {app.client_email && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <span className="opacity-70">Email:</span> {app.client_email}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
                     <Clock size={12} />
                     {app.time} • {app.service_type}

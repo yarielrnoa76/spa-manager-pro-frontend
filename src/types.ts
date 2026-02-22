@@ -114,6 +114,8 @@ export interface Appointment {
   id: string;
   branch_id: string;
   client_name: string;
+  client_phone?: string;
+  client_email?: string;
   date: string;
   time: string;
   status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
