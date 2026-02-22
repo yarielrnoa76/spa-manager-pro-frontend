@@ -12,7 +12,8 @@ import {
     ChevronLeft,
     ChevronRight,
     AlertTriangle,
-    MapPin
+    MapPin,
+    X
 } from 'lucide-react';
 import { api, ActivityLog } from '../services/api';
 import { Branch } from '../types';
@@ -353,9 +354,10 @@ const LogManagement: React.FC = () => {
                             </div>
                             <button
                                 onClick={() => setSelectedLog(null)}
-                                className="w-10 h-10 flex items-center justify-center hover:bg-white border border-transparent hover:border-slate-200 rounded-2xl transition-all shadow-none hover:shadow-sm"
+                                className="w-10 h-10 flex items-center justify-center hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-2xl transition-all shadow-none hover:shadow-sm group/close"
+                                title="Cerrar detalles"
                             >
-                                <ChevronRight className="w-6 h-6 rotate-90 text-slate-400" />
+                                <X className="w-6 h-6 text-slate-400 group-hover/close:text-rose-500 transition-colors" />
                             </button>
                         </div>
 
@@ -401,6 +403,16 @@ const LogManagement: React.FC = () => {
                                     <p className="text-sm font-bold text-slate-700">{selectedLog.branch?.name || 'Global'}</p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex items-center justify-end bg-slate-50/30">
+                            <button
+                                onClick={() => setSelectedLog(null)}
+                                className="px-8 py-3 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-bold text-sm transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                            >
+                                <X className="w-4 h-4" />
+                                Cerrar Ventana
+                            </button>
                         </div>
                     </div>
                 </div>
