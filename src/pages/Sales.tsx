@@ -122,6 +122,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false); // Para crear lead desde ventas
@@ -146,7 +147,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       quantity: "1",
       unit_price: "",
       amount: "",
-      payment_method: "Credit Card",
+      payment_method: "",
       notes: "",
     }),
     [today, user?.branch?.id],
@@ -168,6 +169,19 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleVisibility]);
 
+  useEffect(() => {
+    if (paymentMethods.length > 0) {
+      if (!newSale.payment_method) {
+        setNewSale(prev => ({ ...prev, payment_method: paymentMethods[0].name }));
+      }
+    } else {
+      // Fallback if API hasn't returned yet or is empty
+      if (!newSale.payment_method) {
+        setNewSale(prev => ({ ...prev, payment_method: "Efectivo" }));
+      }
+    }
+  }, [paymentMethods, newSale.payment_method]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -178,7 +192,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             ? { include_cancelled: true }
             : undefined;
 
-      const [s, b, p, l] = await Promise.all([
+      const [s, b, p, l, m] = await Promise.all([
         api.listSales("all", salesOpts as any),
         // Si puede ver branches, las carga todas. Si no, carga SOLO la suya (array de 1).
         canViewBranch
@@ -188,12 +202,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             : Promise.resolve([]),
         api.listProducts(),
         canViewLeads ? api.listLeads() : Promise.resolve([]),
+        api.listPaymentMethods(),
       ]);
 
       setSales(Array.isArray(s) ? s : []);
       setBranches(Array.isArray(b) ? b : []);
       setProducts(Array.isArray(p) ? p : []);
       setLeads(Array.isArray(l) ? l : []);
+      setPaymentMethods(Array.isArray(m) ? m : []);
     } catch (err) {
       console.error("Sales fetchData error:", err);
       setSales([]);
@@ -897,13 +913,24 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                       }))
                     }
                   >
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
-                    <option value="Tarjeta de Débito">Tarjeta de Débito</option>
-                    <option value="Transferencia">Transferencia</option>
-                    <option value="Depósito">Depósito</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Otro">Otro</option>
+                    {paymentMethods.length > 0 ? (
+                      paymentMethods.map((pm) => (
+                        <option key={pm.id} value={pm.name}>
+                          {pm.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                        <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                        <option value="Transferencia">Transferencia</option>
+                        <option value="Depósito">Depósito</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Zelle">Zelle</option>
+                        <option value="Otro">Otro</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>

@@ -253,13 +253,9 @@ export const api = {
     return request<any[]>(`/api/users`, { method: "GET", auth: true });
   },
 
-  async listBranches() {
-    return request<Branch[]>(`/api/branches`, { method: "GET", auth: true });
-  },
-
   // --- Dashboard ---
   async getDashboardStats(branch_id: string | number = "all") {
-    const q = branch_id
+    const q = branch_id && branch_id !== "all"
       ? `?branch_id=${encodeURIComponent(String(branch_id))}`
       : "";
     return request(`/api/dashboard/stats${q}`, { method: "GET", auth: true });
@@ -366,6 +362,13 @@ export const api = {
   async cancelSale(saleId: string | number) {
     return request(`/api/sales/${encodeURIComponent(String(saleId))}/cancel`, {
       method: "POST",
+      auth: true,
+    });
+  },
+
+  async listPaymentMethods() {
+    return request<{ id: number; name: string }[]>(`/api/payment-methods`, {
+      method: "GET",
       auth: true,
     });
   },
