@@ -96,7 +96,23 @@ const LogManagement: React.FC = () => {
         }
     };
 
-    const getEventBadge = (event: string) => {
+    const getEventBadge = (log: ActivityLog) => {
+        const event = log.event;
+        const model = formatModelPath(log.model_type);
+
+        let label = event.toUpperCase();
+        if (event === 'created') {
+            label = model === 'DailyLog' ? 'NUEVA VENTA' : 'CREACIÓN';
+        } else if (event === 'updated') {
+            label = model === 'DailyLog' ? 'VENTA MODIFICADA' : 'MODIFICACIÓN';
+        } else if (event === 'deleted') {
+            label = model === 'DailyLog' ? 'VENTA ELIMINADA' : 'ELIMINACIÓN';
+        } else if (event === 'login') {
+            label = 'INGRESO';
+        } else if (event === 'logout') {
+            label = 'SALIDA';
+        }
+
         const colors: any = {
             created: 'bg-emerald-100 text-emerald-700 border-emerald-200',
             updated: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -104,9 +120,10 @@ const LogManagement: React.FC = () => {
             login: 'bg-indigo-100 text-indigo-700 border-indigo-200',
             logout: 'bg-slate-100 text-slate-700 border-slate-200',
         };
+
         return (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${colors[event] || 'bg-gray-100 text-gray-700'}`}>
-                {event.toUpperCase()}
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${colors[event] || 'bg-gray-100 text-gray-700'}`}>
+                {label}
             </span>
         );
     };
@@ -288,7 +305,7 @@ const LogManagement: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            {getEventBadge(log.event)}
+                                            {getEventBadge(log)}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
@@ -351,7 +368,7 @@ const LogManagement: React.FC = () => {
                                 <div>
                                     <h3 className="text-xl font-bold text-slate-800 tracking-tight">Detalle de Actividad #{selectedLog.id}</h3>
                                     <div className="flex items-center gap-2 mt-0.5">
-                                        {getEventBadge(selectedLog.event)}
+                                        {getEventBadge(selectedLog)}
                                         <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">{formatModelPath(selectedLog.model_type)}</span>
                                     </div>
                                 </div>

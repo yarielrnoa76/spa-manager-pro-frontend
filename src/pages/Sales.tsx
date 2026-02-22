@@ -147,7 +147,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       quantity: "1",
       unit_price: "",
       amount: "",
-      payment_method: "",
+      payment_method: "Zelle",
       notes: "",
     }),
     [today, user?.branch?.id],
@@ -177,7 +177,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     } else {
       // Fallback if API hasn't returned yet or is empty
       if (!newSale.payment_method) {
-        setNewSale(prev => ({ ...prev, payment_method: "Efectivo" }));
+        setNewSale((prev) => ({ ...prev, payment_method: "Zelle" }));
       }
     }
   }, [paymentMethods, newSale.payment_method]);
