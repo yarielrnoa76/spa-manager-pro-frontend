@@ -8,7 +8,25 @@ import {
   Lead,
   Appointment,
   Tenant,
+  ActivityLog,
 } from "../types";
+
+export interface ActivityLog {
+  id: number;
+  user_id: number;
+  tenant_id: number;
+  model_type: string;
+  model_id: number;
+  event: 'created' | 'updated' | 'deleted' | 'login' | 'logout';
+  old_values: any;
+  new_values: any;
+  ip_address: string;
+  user_agent: string;
+  created_at: string;
+  user?: { id: number; name: string };
+  tenant?: { id: number; name: string };
+  branch?: { id: number; name: string };
+}
 
 export type LoginPayload = { email: string; password: string };
 
@@ -91,6 +109,7 @@ async function request<T>(
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers,
+    cache: "no-store", // Prevent browser from caching cross-tenant GET requests
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -228,6 +247,14 @@ export const api = {
     });
     this.setCurrentTenantId(tenantId);
     return data;
+  },
+
+  async listUsers() {
+    return request<any[]>(`/api/users`, { method: "GET", auth: true });
+  },
+
+  async listBranches() {
+    return request<Branch[]>(`/api/branches`, { method: "GET", auth: true });
   },
 
   // --- Dashboard ---
@@ -435,5 +462,24 @@ export const api = {
       method: "DELETE",
       auth: opts?.auth ?? true,
     });
+  },
+
+  listLogs(params: { user_id?: number; event?: string; model_type?: string; tenant_id?: number; branch_id?: number; page?: number } = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) searchParams.append(key, value.toString());
+    });
+    return request<{ data: ActivityLog[]; current_page: number; last_page: number }>(`/api/logs?${searchParams.toString()}`, { auth: true });
+  },
+
+  async exportLogs(retentionDays: number = 30, deleteAfter: boolean = false) {
+    const res = await fetch(`${API_URL}/api/logs/export?retention_days=${retentionDays}&delete_after_export=${deleteAfter}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        'X-Tenant-ID': localStorage.getItem('current_tenant_id') || '',
+      }
+    });
+    if (!res.ok) throw new Error('Export failed');
+    return res.blob();
   },
 };

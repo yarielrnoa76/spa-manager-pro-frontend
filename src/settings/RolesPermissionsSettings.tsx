@@ -34,8 +34,20 @@ export default function RolesPermissionsSettings() {
       if (lowerSearch && !p.name.toLowerCase().includes(lowerSearch)) return;
 
       const parts = p.name.split('_');
-      // If permission is "view_users", group is "users"
-      const groupName = parts.length > 1 ? parts.slice(1).join('_') : 'general';
+      // If permission is "view_users", rawGroup is "users"
+      const rawGroup = parts.length > 1 ? parts.slice(1).join('_') : 'general';
+
+      const groupMap: Record<string, string> = {
+        user: "users",
+        lead: "leads",
+        sale: "sales",
+        product: "products",
+        appointment: "appointments",
+        branch: "branches",
+      };
+
+      const groupName = groupMap[rawGroup] || rawGroup;
+
       if (!groups[groupName]) groups[groupName] = [];
       groups[groupName].push(p);
     });

@@ -20,6 +20,7 @@ import {
   Shield,
   ChevronDown,
   Building2,
+  History,
 } from "lucide-react";
 
 import { api } from "./services/api";
@@ -33,6 +34,7 @@ import Stocks from "./pages/Stocks";
 import Login from "./pages/Login";
 import SettingsPage from "./pages/Settings";
 import Tenants from "./pages/Tenants";
+import LogManagement from "./pages/LogManagement";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 
@@ -180,6 +182,9 @@ const App: React.FC = () => {
       { to: "/appointments", icon: Calendar, label: "Citas" },
       ...(canSeeSettings
         ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
+        : []),
+      ...(isSuperAdmin || hasPerm("view_logs")
+        ? [{ to: "/logs", icon: History, label: "Auditoría (Logs)" }]
         : []),
     ];
 
@@ -373,6 +378,16 @@ const App: React.FC = () => {
                         isSuperAdmin={isSuperAdmin}
                         currentTenantName={currentTenantName}
                       />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+                <Route
+                  path="/logs"
+                  element={
+                    isSuperAdmin || hasPerm("view_logs") ? (
+                      <LogManagement />
                     ) : (
                       <Navigate to="/" replace />
                     )

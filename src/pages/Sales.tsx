@@ -114,7 +114,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   // /api/user retorna permissions como array plano de strings ["view_branch", "view_leads", ...]
   const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
 
-  const isAdmin = user?.role?.name === "admin";
+  const isSuperAdmin = user?.is_super_admin === true;
+  const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
   const canViewLeads = isAdmin || perms.includes("view_leads");
   const canViewBranch = isAdmin || perms.includes("view_branch");
   const [sales, setSales] = useState<DailyLog[]>([]);
