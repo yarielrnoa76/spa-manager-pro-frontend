@@ -22,6 +22,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<'details' | 'tickets'>('details');
+    const [leadTickets, setLeadTickets] = useState<any[]>([]);
+    const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -33,10 +36,30 @@ const LeadModal: React.FC<LeadModalProps> = ({
         message: "",
     });
 
+    // Nuevo: Estado para creación de ticket rápido
+    const [isCreatingTicket, setIsCreatingTicket] = useState(false);
+    const [isEditingSelectedTicket, setIsEditingSelectedTicket] = useState(false);
+    const [categories, setCategories] = useState<any[]>([]);
+    const [priorities, setPriorities] = useState<any[]>([]);
+    const [ticketData, setTicketData] = useState({
+        subject: "",
+        category_id: "",
+        priority_id: "",
+        description: "",
+    });
+    const [editTicketData, setEditTicketData] = useState({
+        subject: "",
+        description: "",
+    });
+
     // Cargar sucursales al montar o abrir
     useEffect(() => {
         if (isOpen) {
             loadBranches();
+            setActiveTab('details');
+            setIsCreatingTicket(false);
+            setSelectedTicket(null);
+            setIsEditingSelectedTicket(false);
             if (leadToEdit) {
                 setFormData({
                     name: leadToEdit.name,
@@ -46,6 +69,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     source: leadToEdit.source,
                     message: leadToEdit.message || "",
                 });
+                loadLeadTickets(leadToEdit.id);
             } else {
                 // Pre-llenar datos si vienen en props (solo si no es edit)
                 setFormData((prev) => ({
@@ -57,6 +81,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     source: "other",
                     message: "",
                 }));
+                setLeadTickets([]);
             }
         }
     }, [isOpen, initialBranchId, initialName, leadToEdit]);
@@ -67,6 +92,79 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setBranches(b);
         } catch (err) {
             console.error("Error loading branches", err);
+        }
+    };
+
+    const loadLeadTickets = async (leadId: string | number) => {
+        try {
+            const res = await api.listTickets({ lead_id: leadId });
+            setLeadTickets(res.data);
+        } catch (err) {
+            console.error("Error loading lead tickets", err);
+        }
+    };
+
+    const handleOpenTicket = async (ticketId: number) => {
+        setLoading(true);
+        try {
+            const ticket = await api.getTicket(ticketId);
+            setSelectedTicket(ticket);
+            setEditTicketData({
+                subject: ticket.subject,
+                description: ticket.description || "",
+            });
+            setIsEditingSelectedTicket(false);
+        } catch (err: any) {
+            console.error("Error fetching ticket", err);
+            alert("No se pudo cargar el detalle del ticket: " + (err?.message || "Error desconocido"));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateTicket = async () => {
+        if (!selectedTicket) return;
+        setLoading(true);
+        try {
+            await api.updateTicket(selectedTicket.id, editTicketData);
+            setIsEditingSelectedTicket(false);
+            handleOpenTicket(selectedTicket.id);
+            if (leadToEdit) loadLeadTickets(leadToEdit.id);
+        } catch (err: any) {
+            alert(err?.message || "Error al actualizar ticket");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleStatusUpdate = async (ticketId: number, status: string) => {
+        setLoading(true);
+        // Optimistic update
+        if (selectedTicket && selectedTicket.id === ticketId) {
+            setSelectedTicket({ ...selectedTicket, status });
+        }
+        try {
+            await api.updateTicketStatus(ticketId, status);
+            await handleOpenTicket(ticketId); // Refresh detail from server
+            if (leadToEdit) loadLeadTickets(leadToEdit.id); // Refresh count
+        } catch (err) {
+            alert("Error al actualizar estado");
+            // Revert on error if necessary, though handleOpenTicket will do it
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAddComment = async (ticketId: number, comment: string) => {
+        if (!comment.trim()) return;
+        setLoading(true);
+        try {
+            await api.addTicketComment(ticketId, comment);
+            await handleOpenTicket(ticketId); // Refresh detail
+        } catch (err) {
+            alert("Error al añadir comentario");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -127,17 +225,55 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    const handleCreateTicket = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!leadToEdit) return;
+        setLoading(true);
+        try {
+            await api.createTicket({
+                ...ticketData,
+                lead_id: leadToEdit.id,
+                branch_id: leadToEdit.branch_id,
+            });
+            setIsCreatingTicket(false);
+            setTicketData({ subject: "", category_id: "", priority_id: "", description: "" });
+            loadLeadTickets(leadToEdit.id);
+        } catch (err: any) {
+            alert(err?.message || "Error al crear ticket.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadTicketConfigs = async () => {
+        try {
+            const [cats, prios] = await Promise.all([
+                api.listTicketCategories(),
+                api.listTicketPriorities()
+            ]);
+            setCategories(cats);
+            setPriorities(prios);
+            if (cats.length > 0) setTicketData(prev => ({ ...prev, category_id: String(cats[0].id) }));
+            if (prios.length > 0) setTicketData(prev => ({ ...prev, priority_id: String(prios[0].id) }));
+        } catch (err) {
+            console.error("Error loading ticket configs", err);
+        }
+    }
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm transition-opacity">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
 
                 {/* Header */}
-                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                    <h3 className="font-bold text-lg text-gray-800">
-                        {leadToEdit ? "Editar Lead" : "Crear Nuevo Lead"}
-                    </h3>
+                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50 flex-shrink-0">
+                    <div>
+                        <h3 className="font-bold text-lg text-gray-800">
+                            {leadToEdit ? "Detalle del Lead" : "Crear Nuevo Lead"}
+                        </h3>
+                        {leadToEdit && <p className="text-xs text-gray-500">#{leadToEdit.id}</p>}
+                    </div>
                     <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-200"
@@ -146,129 +282,430 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     </button>
                 </div>
 
-                {/* Form Body */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Nombre */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Nombre Completo <span className="text-gray-400 font-normal normal-case">(Opcional si hay tel/email)</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={formData.name}
-                                onChange={(e) => handleChange("name", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                placeholder="Ej. María López"
-                            />
-                        </div>
-
-                        {/* Teléfono */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Teléfono <span className="text-gray-400 font-normal normal-case">(Opcional si hay nombre/email)</span>
-                            </label>
-                            <input
-                                type="tel"
-                                value={formData.phone}
-                                onChange={(e) => handleChange("phone", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                placeholder="+1 555 1234 567"
-                                title="Ingresa un número de teléfono válido. Ej. +1 555 123 4567"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                            Email (Opcional)
-                        </label>
-                        <input
-                            type="email"
-                            value={formData.email}
-                            onChange={(e) => handleChange("email", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                            placeholder="cliente@email.com"
-                        />
-                    </div>
-
-                    {/* Sucursal y Origen */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Sucursal <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                                required
-                                value={formData.branch_id}
-                                onChange={(e) => handleChange("branch_id", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            >
-                                <option value="">-- Seleccionar --</option>
-                                {branches.map((b) => (
-                                    <option key={b.id} value={b.id}>
-                                        {b.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                Origen
-                            </label>
-                            <select
-                                value={formData.source}
-                                onChange={(e) => handleChange("source", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                            >
-                                <option value="whatsapp">WhatsApp</option>
-                                <option value="call">Llamada</option>
-                                <option value="web">Web</option>
-                                <option value="other">Otro</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Mensaje */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                            Notas Adicionales
-                        </label>
-                        <textarea
-                            value={formData.message}
-                            onChange={(e) => handleChange("message", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
-                            rows={3}
-                            placeholder="Detalles sobre el lead..."
-                        ></textarea>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="pt-4 flex gap-3">
+                {/* Tabs for Edit Mode */}
+                {leadToEdit && (
+                    <div className="flex border-b px-6 bg-white flex-shrink-0">
                         <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-                            disabled={loading}
+                            onClick={() => setActiveTab('details')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
                         >
-                            Cancelar
+                            Detalles
                         </button>
                         <button
-                            type="submit"
-                            disabled={loading || !isFormValid}
-                            className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all disabled:opacity-50 disabled:bg-gray-400 flex justify-center items-center"
+                            onClick={() => setActiveTab('tickets')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'tickets' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
                         >
-                            {loading ? (
-                                <span className="animate-pulse">Guardando...</span>
-                            ) : (
-                                leadToEdit ? "Actualizar Lead" : "Guardar Lead"
+                            Tickets
+                            {leadTickets.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadTickets.length}</span>}
+                        </button>
+                    </div>
+                )}
+
+                <div className="overflow-y-auto flex-1">
+                    {activeTab === 'details' ? (
+                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Nombre */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Nombre Completo <span className="text-gray-400 font-normal normal-case">(Opcional si hay tel/email)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.name}
+                                        onChange={(e) => handleChange("name", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Ej. María López"
+                                    />
+                                </div>
+
+                                {/* Teléfono */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Teléfono <span className="text-gray-400 font-normal normal-case">(Opcional si hay nombre/email)</span>
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        value={formData.phone}
+                                        onChange={(e) => handleChange("phone", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="+1 555 1234 567"
+                                        title="Ingresa un número de teléfono válido. Ej. +1 555 123 4567"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Email */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Email (Opcional)
+                                </label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => handleChange("email", e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                    placeholder="cliente@email.com"
+                                />
+                            </div>
+
+                            {/* Sucursal y Origen */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Sucursal <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        required
+                                        value={formData.branch_id}
+                                        onChange={(e) => handleChange("branch_id", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    >
+                                        <option value="">-- Seleccionar --</option>
+                                        {branches.map((b) => (
+                                            <option key={b.id} value={b.id}>
+                                                {b.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Origen
+                                    </label>
+                                    <select
+                                        value={formData.source}
+                                        onChange={(e) => handleChange("source", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    >
+                                        <option value="whatsapp">WhatsApp</option>
+                                        <option value="call">Llamada</option>
+                                        <option value="web">Web</option>
+                                        <option value="other">Otro</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Mensaje */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Notas Adicionales
+                                </label>
+                                <textarea
+                                    value={formData.message}
+                                    onChange={(e) => handleChange("message", e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
+                                    rows={3}
+                                    placeholder="Detalles sobre el lead..."
+                                ></textarea>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="pt-4 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                    disabled={loading}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={loading || !isFormValid}
+                                    className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all disabled:opacity-50 disabled:bg-gray-400 flex justify-center items-center"
+                                >
+                                    {loading ? (
+                                        <span className="animate-pulse">Guardando...</span>
+                                    ) : (
+                                        leadToEdit ? "Actualizar Lead" : "Guardar Lead"
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <div className="p-6 space-y-4 relative">
+                            {loading && !leadTickets.length && (
+                                <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                                    <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                </div>
                             )}
-                        </button>
-                    </div>
-                </form>
+                            {selectedTicket ? (
+                                /* TICKET DETAIL VIEW */
+                                <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex gap-4">
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedTicket(null);
+                                                    setIsEditingSelectedTicket(false);
+                                                }}
+                                                className="text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline"
+                                            >
+                                                ← Ver lista
+                                            </button>
+                                            {!isEditingSelectedTicket && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setIsEditingSelectedTicket(true);
+                                                    }}
+                                                    className="text-[11px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-md hover:bg-indigo-100 hover:text-indigo-700 transition-all"
+                                                >
+                                                    Editar
+                                                </button>
+                                            )}
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${selectedTicket.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-100' :
+                                            selectedTicket.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                'bg-amber-50 text-amber-700 border-amber-100'
+                                            }`}>
+                                            {selectedTicket.status}
+                                        </span>
+                                    </div>
+
+                                    {isEditingSelectedTicket ? (
+                                        <div className="space-y-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 animate-in fade-in zoom-in-95">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-indigo-400 uppercase mb-1">Asunto</label>
+                                                <input
+                                                    type="text"
+                                                    value={editTicketData.subject}
+                                                    onChange={e => setEditTicketData({ ...editTicketData, subject: e.target.value })}
+                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-indigo-400 uppercase mb-1">Descripción / Notas</label>
+                                                <textarea
+                                                    value={editTicketData.description}
+                                                    onChange={e => setEditTicketData({ ...editTicketData, description: e.target.value })}
+                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
+                                                    rows={3}
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setIsEditingSelectedTicket(false)}
+                                                    className="flex-1 py-2 text-xs font-bold text-gray-500 hover:bg-white rounded-xl transition-all"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    onClick={handleUpdateTicket}
+                                                    disabled={loading || !editTicketData.subject}
+                                                    className="flex-1 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                                >
+                                                    {loading ? 'Guardando...' : 'Guardar Cambios'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <p className="text-[10px] font-mono font-black text-gray-400 mb-1">{selectedTicket.ticket_number}</p>
+                                            <h4 className="text-lg font-black text-gray-900 leading-tight">{selectedTicket.subject}</h4>
+                                            <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">
+                                                {selectedTicket.description || <span className="italic text-gray-400 text-xs">Sin descripción detallada</span>}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {/* Actions */}
+                                    {!isEditingSelectedTicket && (
+                                        <div className="flex gap-2">
+                                            {selectedTicket.status === 'New' && (
+                                                <button
+                                                    onClick={() => handleStatusUpdate(selectedTicket.id, 'InProgress')}
+                                                    className="flex-1 bg-indigo-600 text-white py-2 rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm"
+                                                >
+                                                    Empezar a tratar
+                                                </button>
+                                            )}
+                                            {['New', 'InProgress'].includes(selectedTicket.status) && (
+                                                <button
+                                                    onClick={() => handleStatusUpdate(selectedTicket.id, 'Completed')}
+                                                    className="flex-1 bg-green-600 text-white py-2 rounded-xl text-xs font-bold hover:bg-green-700 shadow-sm"
+                                                >
+                                                    Finalizar
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <hr className="border-gray-100" />
+
+                                    {/* Comments list inside lead modal */}
+                                    <div className="space-y-3">
+                                        <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Comentarios</h5>
+                                        <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                            {selectedTicket.comments?.length === 0 && (
+                                                <p className="text-[11px] text-gray-400 italic">No hay comentarios aún.</p>
+                                            )}
+                                            {selectedTicket.comments?.map((c: any) => (
+                                                <div key={c.id} className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-[10px] font-black text-indigo-700">{c.creator?.name || 'Sistema'}</span>
+                                                        <span className="text-[9px] text-gray-400">{new Date(c.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-700">{c.comment}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2 pt-1">
+                                            <input
+                                                id="new-comment-input"
+                                                type="text"
+                                                placeholder="Añadir comentario..."
+                                                className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && e.currentTarget.value) {
+                                                        handleAddComment(selectedTicket.id, e.currentTarget.value);
+                                                        e.currentTarget.value = '';
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    const input = document.getElementById('new-comment-input') as HTMLInputElement;
+                                                    if (input && input.value) {
+                                                        handleAddComment(selectedTicket.id, input.value);
+                                                        input.value = '';
+                                                    }
+                                                }}
+                                                disabled={loading}
+                                                className="bg-indigo-600 text-white px-3 py-1 rounded-xl text-[10px] font-bold hover:bg-indigo-700 disabled:opacity-50"
+                                            >
+                                                {loading ? '...' : 'Enviar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* TICKETS LIST VIEW */
+                                <>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="text-sm font-black text-gray-800 uppercase tracking-wider">Historial de Tickets</h4>
+                                        {!isCreatingTicket && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsCreatingTicket(true);
+                                                    loadTicketConfigs();
+                                                }}
+                                                className="text-[11px] font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 transition-all border border-indigo-500"
+                                            >
+                                                + Nuevo Ticket
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {isCreatingTicket ? (
+                                        <form onSubmit={handleCreateTicket} className="bg-gray-50 p-5 rounded-2xl border border-indigo-100 space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                                            <h5 className="text-xs font-black text-indigo-600 uppercase">Nuevo Ticket para {leadToEdit?.name}</h5>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Asunto</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={ticketData.subject}
+                                                    onChange={e => setTicketData({ ...ticketData, subject: e.target.value })}
+                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    placeholder="Ej. Seguimiento de cotización"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Categoría</label>
+                                                    <select
+                                                        value={ticketData.category_id}
+                                                        onChange={e => setTicketData({ ...ticketData, category_id: e.target.value })}
+                                                        className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    >
+                                                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Prioridad</label>
+                                                    <select
+                                                        value={ticketData.priority_id}
+                                                        onChange={e => setTicketData({ ...ticketData, priority_id: e.target.value })}
+                                                        className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    >
+                                                        {priorities.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Descripción (Opcional)</label>
+                                                <textarea
+                                                    value={ticketData.description}
+                                                    onChange={e => setTicketData({ ...ticketData, description: e.target.value })}
+                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
+                                                    rows={2}
+                                                    placeholder="Detalles adicionales..."
+                                                />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsCreatingTicket(false)}
+                                                    className="flex-1 py-2 text-xs font-bold text-gray-500 hover:bg-white rounded-xl transition-all"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    disabled={loading || !ticketData.subject}
+                                                    className="flex-1 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                                >
+                                                    {loading ? 'Creando...' : 'Crear Ticket'}
+                                                </button>
+                                            </div>
+                                        </form>
+                                    ) : (
+                                        <>
+                                            {leadTickets.length === 0 ? (
+                                                <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed">
+                                                    <p className="text-sm">Este lead no tiene tickets asociados aún.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {leadTickets.map(ticket => (
+                                                        <div
+                                                            key={ticket.id}
+                                                            className="p-4 border border-gray-100 rounded-2xl hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer group bg-white"
+                                                            onClick={() => handleOpenTicket(ticket.id)}
+                                                        >
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <span className="text-[10px] font-mono font-black text-gray-400 bg-gray-50 px-2 py-1 rounded-lg group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                                                    {ticket.ticket_number}
+                                                                </span>
+                                                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${ticket.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-100' :
+                                                                    ticket.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                                        'bg-amber-50 text-amber-700 border-amber-100'
+                                                                    }`}>
+                                                                    {ticket.status}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-sm font-bold text-gray-800 group-hover:text-indigo-600 transition-colors">{ticket.subject}</p>
+                                                            <div className="mt-2 flex items-center justify-between text-[10px] font-bold text-gray-400">
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
+                                                                    {ticket.category?.name}
+                                                                </span>
+                                                                <span>Vence: {ticket.due_date ? new Date(ticket.due_date).toLocaleDateString() : 'N/A'}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

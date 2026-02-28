@@ -21,7 +21,13 @@ import {
   ChevronDown,
   Building2,
   History,
+  Ticket,
+  HelpCircle,
 } from "lucide-react";
+
+import NotificationBell from "./components/NotificationBell";
+import Tickets from "./pages/Tickets";
+import Help from "./pages/Help";
 
 import { api } from "./services/api";
 import { Tenant } from "./types";
@@ -178,8 +184,12 @@ const App: React.FC = () => {
         : []),
       { to: "/sales", icon: DollarSign, label: "Ventas Diarias" },
       { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
-      { to: "/leads", icon: UserPlus, label: "Leads" },
+      { to: "/leads", icon: UserPlus, label: "Leads / Contacts" },
       { to: "/appointments", icon: Calendar, label: "Citas" },
+      ...(hasPerm("view_ticket")
+        ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
+        : []),
+      { to: "/help", icon: HelpCircle, label: "Ayuda" },
       ...(canSeeSettings
         ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
         : []),
@@ -346,6 +356,8 @@ const App: React.FC = () => {
               </div>
             )}
 
+            <NotificationBell />
+
             {/* User info */}
             <div className="text-xs text-gray-500">
               {user?.email ?? ""}{" "}
@@ -370,6 +382,8 @@ const App: React.FC = () => {
                 <Route path="/stocks" element={<Stocks />} />
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/appointments" element={<Appointments />} />
+                <Route path="/tickets" element={<Tickets />} />
+                <Route path="/help" element={<Help />} />
                 <Route
                   path="/settings"
                   element={

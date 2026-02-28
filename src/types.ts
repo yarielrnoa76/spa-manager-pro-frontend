@@ -123,3 +123,71 @@ export interface Appointment {
   notes?: string;
   tenant_id?: number;
 }
+
+export interface TicketCategory {
+  id: number;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface TicketPriority {
+  id: number;
+  name: string;
+  sla_minutes: number;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface TicketComment {
+  id: number;
+  ticket_id: number;
+  comment: string;
+  created_by: string;
+  created_at: string;
+  creator?: { id: number; name: string };
+}
+
+export interface Ticket {
+  id: number;
+  ticket_number: string;
+  lead_id: string;
+  lead?: Lead;
+  category_id: number;
+  category?: TicketCategory;
+  responsable_id?: string;
+  responsable?: User;
+  subject: string;
+  description?: string;
+  status: 'New' | 'InProgress' | 'Cancelled' | 'Completed';
+  priority_id: number;
+  priority?: TicketPriority;
+  due_date?: string;
+  is_overdue: boolean;
+  origin: 'system' | 'manual';
+  source_channel?: string;
+  cancel_reason?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+  assigned_at?: string;
+  assigned_by?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+  comments?: TicketComment[];
+}
+
+export interface Notification {
+  id: number;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: any;
+  url?: string;
+  read_at?: string;
+  created_at: string;
+}

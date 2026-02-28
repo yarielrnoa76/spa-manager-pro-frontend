@@ -486,4 +486,69 @@ export const api = {
     if (!res.ok) throw new Error('Export failed');
     return res.blob();
   },
+
+  // --- Tickets Module ---
+  async listTickets(params: any = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        if (Array.isArray(value)) {
+          value.forEach(v => searchParams.append(`${key}[]`, v));
+        } else {
+          searchParams.append(key, value.toString());
+        }
+      }
+    });
+    return request<{ data: any[]; last_page: number; total: number }>(`/api/tickets?${searchParams.toString()}`, { method: "GET", auth: true });
+  },
+
+  async getTicket(id: number) {
+    return request<any>(`/api/tickets/${id}`, { method: "GET", auth: true });
+  },
+
+  async createTicket(payload: any) {
+    return request<any>(`/api/tickets`, { method: "POST", body: payload, auth: true });
+  },
+
+  async updateTicket(id: number, payload: any) {
+    return request<any>(`/api/tickets/${id}`, { method: "PUT", body: payload, auth: true });
+  },
+
+  async deleteTicket(id: number) {
+    return request(`/api/tickets/${id}`, { method: "DELETE", auth: true });
+  },
+
+  async updateTicketStatus(id: number, status: string, cancel_reason?: string) {
+    return request(`/api/tickets/${id}/status`, { method: "POST", body: { status, cancel_reason }, auth: true });
+  },
+
+  async assignTicket(id: number, responsable_id: number) {
+    return request(`/api/tickets/${id}/assign`, { method: "POST", body: { responsable_id }, auth: true });
+  },
+
+  async addTicketComment(id: number, comment: string) {
+    return request(`/api/tickets/${id}/comments`, { method: "POST", body: { comment }, auth: true });
+  },
+
+  // --- Ticket Categories & Priorities ---
+  async listTicketCategories() {
+    return request<any[]>(`/api/ticket-categories`, { method: "GET", auth: true });
+  },
+
+  async listTicketPriorities() {
+    return request<any[]>(`/api/ticket-priorities`, { method: "GET", auth: true });
+  },
+
+  // --- Notifications ---
+  async listNotifications() {
+    return request<{ notifications: any[]; unread_count: number }>(`/api/notifications`, { method: "GET", auth: true });
+  },
+
+  async markNotificationAsRead(id: number) {
+    return request(`/api/notifications/${id}/read`, { method: "POST", auth: true });
+  },
+
+  async markAllNotificationsAsRead() {
+    return request(`/api/notifications/read-all`, { method: "POST", auth: true });
+  },
 };

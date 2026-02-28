@@ -44,6 +44,7 @@ export default function RolesPermissionsSettings() {
         product: "products",
         appointment: "appointments",
         branch: "branches",
+        ticket: "tickets",
       };
 
       const groupName = groupMap[rawGroup] || rawGroup;
