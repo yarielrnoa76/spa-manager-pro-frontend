@@ -173,8 +173,8 @@ const Tickets: React.FC = () => {
                 <button
                     onClick={() => setFilters({ ...filters, is_overdue: !filters.is_overdue })}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${filters.is_overdue
-                            ? 'bg-red-50 border-red-200 text-red-700'
-                            : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                        ? 'bg-red-50 border-red-200 text-red-700'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
                         }`}
                 >
                     Vencidos
@@ -343,6 +343,26 @@ const Tickets: React.FC = () => {
                                 <div>
                                     <label className="text-xs text-gray-400 font-bold uppercase">Creado el</label>
                                     <p className="text-gray-600">{format(new Date(selectedTicket.created_at), 'dd/MM/yyyy')}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="text-xs text-gray-400 font-bold uppercase">Responsable Asignado</label>
+                                    <div className="mt-1 flex gap-2">
+                                        <select
+                                            className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={selectedTicket.responsable_id || ''}
+                                            onChange={(e) => {
+                                                const userId = e.target.value;
+                                                if (userId) {
+                                                    api.assignTicket(selectedTicket.id, Number(userId)).then(() => fetchData());
+                                                }
+                                            }}
+                                        >
+                                            <option value="">-- Sin asignar --</option>
+                                            {users.map(u => (
+                                                <option key={u.id} value={u.id}>{u.name} ({u.role?.name})</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 

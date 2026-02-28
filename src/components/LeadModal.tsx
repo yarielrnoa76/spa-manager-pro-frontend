@@ -41,6 +41,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [isEditingSelectedTicket, setIsEditingSelectedTicket] = useState(false);
     const [categories, setCategories] = useState<any[]>([]);
     const [priorities, setPriorities] = useState<any[]>([]);
+    const [responsibles, setResponsibles] = useState<any[]>([]);
     const [ticketData, setTicketData] = useState({
         subject: "",
         category_id: "",
@@ -50,12 +51,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [editTicketData, setEditTicketData] = useState({
         subject: "",
         description: "",
+        responsable_id: "",
     });
 
     // Cargar sucursales al montar o abrir
     useEffect(() => {
         if (isOpen) {
             loadBranches();
+            loadResponsibles();
             setActiveTab('details');
             setIsCreatingTicket(false);
             setSelectedTicket(null);
@@ -95,6 +98,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    const loadResponsibles = async () => {
+        try {
+            const users = await api.listUsers();
+            setResponsibles(users);
+        } catch (err) {
+            console.error("Error loading responsibles", err);
+        }
+    };
+
     const loadLeadTickets = async (leadId: string | number) => {
         try {
             const res = await api.listTickets({ lead_id: leadId });
@@ -112,6 +124,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setEditTicketData({
                 subject: ticket.subject,
                 description: ticket.description || "",
+                responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : "",
             });
             setIsEditingSelectedTicket(false);
         } catch (err: any) {
@@ -485,6 +498,19 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                     rows={3}
                                                 />
                                             </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-indigo-400 uppercase mb-1">Responsable</label>
+                                                <select
+                                                    value={editTicketData.responsable_id}
+                                                    onChange={e => setEditTicketData({ ...editTicketData, responsable_id: e.target.value })}
+                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                >
+                                                    <option value="">-- Sin asignar --</option>
+                                                    {responsibles.map(r => (
+                                                        <option key={r.id} value={r.id}>{r.name} ({r.role?.name})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={() => setIsEditingSelectedTicket(false)}
@@ -505,7 +531,19 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         <div>
                                             <p className="text-[10px] font-mono font-black text-gray-400 mb-1">{selectedTicket.ticket_number}</p>
                                             <h4 className="text-lg font-black text-gray-900 leading-tight">{selectedTicket.subject}</h4>
-                                            <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">
+
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                                                    <span className="text-[10px] font-bold text-gray-600">Cat: {selectedTicket.category?.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+                                                    <span className="text-[10px] font-bold text-gray-600">Resp: {selectedTicket.responsable?.name || 'No asignado'}</span>
+                                                </div>
+                                            </div>
+
+                                            <p className="text-sm text-gray-600 mt-3 bg-gray-50 p-3 rounded-xl border border-gray-100 whitespace-pre-wrap">
                                                 {selectedTicket.description || <span className="italic text-gray-400 text-xs">Sin descripción detallada</span>}
                                             </p>
                                         </div>
