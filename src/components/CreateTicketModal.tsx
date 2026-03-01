@@ -7,10 +7,15 @@ interface CreateTicketModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
-    initialLeadId?: number;
+    initialLeadId?: number | string;
+    initialData?: Partial<{
+        branch_id: string | number;
+        subject: string;
+        description: string;
+    }>;
 }
 
-const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, onSuccess, initialLeadId }) => {
+const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, onSuccess, initialLeadId, initialData }) => {
     const [categories, setCategories] = useState<TicketCategory[]>([]);
     const [priorities, setPriorities] = useState<TicketPriority[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -19,11 +24,11 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
 
     const [formData, setFormData] = useState({
         lead_id: initialLeadId || '',
-        branch_id: '',
+        branch_id: initialData?.branch_id || '',
         category_id: '',
         priority_id: '',
-        subject: '',
-        description: '',
+        subject: initialData?.subject || '',
+        description: initialData?.description || '',
         source_channel: 'other',
         responsable_id: '',
         due_date: ''

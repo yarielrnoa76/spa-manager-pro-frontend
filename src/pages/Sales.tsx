@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import LeadModal from "../components/LeadModal";
 import CreateSaleModal from "../components/CreateSaleModal";
+import SaleModal from "../components/SaleModal";
 import { DailyLog, Branch, Product } from "../types";
 import {
   Plus,
@@ -127,6 +128,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false); // Para crear lead desde ventas
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState<number | string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
@@ -668,8 +671,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                 visibleSales.map((sale: any) => (
                   <tr
                     key={sale.id}
-                    className={`hover:bg-gray-50 ${isSaleCancelled(sale) ? "opacity-60" : ""
+                    className={`hover:bg-gray-50 cursor-pointer ${isSaleCancelled(sale) ? "opacity-60" : ""
                       }`}
+                    onClick={() => {
+                      if (!isSaleCancelled(sale)) {
+                        setSelectedSaleId(sale.id);
+                        setIsSaleModalOpen(true);
+                      }
+                    }}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {formatSaleDateTime(sale)}
@@ -725,7 +734,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleCancelSale(sale)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelSale(sale);
+                          }}
                           className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50"
                           title="Cancelar (soft delete) y restaurar inventario"
                         >
@@ -744,6 +756,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       <CreateSaleModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        onSuccess={fetchData}
+        user={user}
+      />
+
+      <SaleModal
+        isOpen={isSaleModalOpen}
+        saleId={selectedSaleId}
+        onClose={() => setIsSaleModalOpen(false)}
         onSuccess={fetchData}
         user={user}
       />

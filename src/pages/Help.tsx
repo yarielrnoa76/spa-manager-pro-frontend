@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import {
     HelpCircle, Ticket, Calendar, Package, DollarSign, UserPlus,
     ChevronDown, ChevronUp, BookOpen, Info, MessageSquare,
-    Search, ExternalLink, ArrowRight, Settings, Activity
+    Search, ExternalLink, ArrowRight, Settings, Activity,
+    BarChart3, Bell
 } from 'lucide-react';
 
-type ModuleKey = 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'audit' | 'settings';
+type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'audit' | 'settings' | 'notifications';
 
 interface HelpSectionProps {
     title: string;
@@ -44,9 +45,10 @@ const HelpSection: React.FC<HelpSectionProps> = ({ title, icon: Icon, children, 
 };
 
 const Help: React.FC = () => {
-    const [activeModule, setActiveModule] = useState<ModuleKey>('tickets');
+    const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
 
     const menuItems: { id: ModuleKey; label: string; icon: React.ElementType; color: string }[] = [
+        { id: 'dashboard', label: 'Panel de Control', icon: BarChart3, color: 'text-cyan-600 bg-cyan-50' },
         { id: 'tickets', label: 'Tickets', icon: Ticket, color: 'text-blue-600 bg-blue-50' },
         { id: 'appointments', label: 'Citas', icon: Calendar, color: 'text-purple-600 bg-purple-50' },
         { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-amber-600 bg-amber-50' },
@@ -54,6 +56,7 @@ const Help: React.FC = () => {
         { id: 'leads', label: 'Contactos / Leads', icon: UserPlus, color: 'text-indigo-600 bg-indigo-50' },
         { id: 'audit', label: 'Auditoría / Logs', icon: Activity, color: 'text-slate-600 bg-slate-50' },
         { id: 'settings', label: 'Configuración', icon: Settings, color: 'text-rose-600 bg-rose-50' },
+        { id: 'notifications', label: 'Notificaciones', icon: Bell, color: 'text-orange-600 bg-orange-50' },
     ];
 
     return (
@@ -104,6 +107,68 @@ const Help: React.FC = () => {
             <main className="flex-1 min-w-0 pb-12">
                 <div className="bg-white rounded-[2rem] p-8 min-h-[600px] border border-gray-100 shadow-sm relative overflow-hidden">
 
+                    {/* DASHBOARD HELP */}
+                    {activeModule === 'dashboard' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-cyan-50 text-cyan-600 rounded-2xl">
+                                    <BarChart3 size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Panel de Control</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Resumen de actividad y rendimiento del negocio</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Vista General" icon={Info} defaultOpen={true}>
+                                <p>El Dashboard es la primera pantalla al ingresar al sistema. Presenta un resumen ejecutivo del rendimiento de su negocio con datos actualizados en tiempo real.</p>
+                                <p className="mt-2 text-sm">Toda la información se calcula dinámicamente basándose en los filtros seleccionados.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Filtros del Dashboard" icon={ExternalLink}>
+                                <p>En la esquina superior derecha encontrará 3 selectores combinables:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Sucursal:</strong> Vea datos de todas las sucursales o aísle una específica.</li>
+                                    <li><strong>Mes:</strong> Seleccione un mes particular o elija "Todos" para ver el acumulado del año completo.</li>
+                                    <li><strong>Año:</strong> Navegue entre los últimos 6 años y el siguiente.</li>
+                                </ul>
+                                <p className="mt-3 text-sm text-gray-500">Si selecciona el mes y año actual, los datos se calculan hasta el día de hoy.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Tarjetas de Indicadores (KPIs)" icon={ExternalLink}>
+                                <p>El panel muestra 4 tarjetas principales actualizadas según el período seleccionado:</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-indigo-600">Valor de Ventas</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Total monetario de ventas activas en el período.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-emerald-600">Ganancia Neta</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Ingresos menos costo de los productos vendidos (calculado con Cost Price).</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-amber-600">Cantidad de Ventas</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Número de transacciones activas realizadas.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-rose-600">Productos Vendidos</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Suma de unidades vendidas en todas las transacciones.</p>
+                                    </div>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Gráficos" icon={ExternalLink}>
+                                <p>El Dashboard incluye 3 gráficos de barras interactivos:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Ventas por Día/Mes:</strong> Cuando se selecciona un mes específico, muestra barras por día. Al elegir "Todos", muestra el conteo mensual del año.</li>
+                                    <li><strong>Ventas por Vendedora:</strong> Ranking de rendimiento del equipo de ventas ordenado de mayor a menor.</li>
+                                    <li><strong>Top 10 Productos:</strong> Los productos más vendidos del período en formato horizontal, ordenados por cantidad de unidades.</li>
+                                </ul>
+                                <p className="mt-3 text-sm text-gray-500">Todos los gráficos excluyen automáticamente las ventas canceladas para mostrar únicamente datos reales.</p>
+                            </HelpSection>
+                        </div>
+                    )}
+
                     {/* TICKETS HELP */}
                     {activeModule === 'tickets' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -128,7 +193,24 @@ const Help: React.FC = () => {
                                         <span className="text-[10px] font-black uppercase text-amber-600">En Proceso</span>
                                         <p className="text-xs text-gray-800 mt-1 font-medium">El responsable ya está trabajando.</p>
                                     </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-green-600">Completado</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">El caso fue resuelto satisfactoriamente.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-red-600">Cancelado</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Requiere motivo obligatorio al cancelar.</p>
+                                    </div>
                                 </div>
+                            </HelpSection>
+
+                            <HelpSection title="Pestañas del Módulo" icon={ExternalLink}>
+                                <p>El módulo de Tickets se organiza en 3 vistas internas accesibles desde las pestañas superiores:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Dashboard:</strong> Resumen con 4 tarjetas de estadísticas (Total, Nuevos, En Proceso, Vencidos) y lista rápida de los tickets más recientes.</li>
+                                    <li><strong>Listado de Tickets:</strong> Tabla completa con filtros por estado, categoría, búsqueda de texto y un botón para ver solo los vencidos. Al seleccionar un ticket, se abre un panel lateral con toda su información, acciones de estado y sección de <strong>Comentarios</strong>.</li>
+                                    <li><strong>Configuración Admin:</strong> Gestión de categorías de ticket y prioridades/SLA disponibles en el sistema.</li>
+                                </ul>
                             </HelpSection>
 
                             <HelpSection title="Asignación Round Robin" icon={ExternalLink}>
@@ -146,6 +228,7 @@ const Help: React.FC = () => {
                                     <span className="shrink-0 px-3 py-1.5 bg-orange-100 text-orange-700 text-[10px] font-black rounded-lg">ALTA: 2H</span>
                                     <span className="shrink-0 px-3 py-1.5 bg-blue-100 text-blue-700 text-[10px] font-black rounded-lg">MEDIA: 8H</span>
                                 </div>
+                                <p className="mt-3 text-sm text-gray-500">Los tickets que superen su tiempo de SLA aparecerán marcados como <strong className="text-red-500">VENCIDO</strong> en la tabla junto a su fecha de vencimiento en rojo.</p>
                             </HelpSection>
 
                             <HelpSection title="Creación de Tickets" icon={Info}>
@@ -159,6 +242,16 @@ const Help: React.FC = () => {
                                     <li><strong>Vencimiento:</strong> (Opcional) Fecha y hora límite personalizada.</li>
                                 </ul>
                                 <p className="mt-4 text-sm text-gray-500"><strong>Nota:</strong> Los demás datos como el código de ticket único, estado inicial (New), fechas de creación, cliente y sucursal, son detectados y llenados automáticamente por el sistema.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Detalle y Comentarios" icon={MessageSquare}>
+                                <p>Al seleccionar un ticket del listado, se despliega un panel lateral con:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Información General:</strong> Asunto, descripción, categoría, prioridad, Lead asociado, origen (manual o sistema) y fechas.</li>
+                                    <li><strong>Acciones de Estado:</strong> Botones para "Empezar a Tratar", "Finalizar" o "Cancelar" según el estado actual. La cancelación exige un <strong className="text-red-500">motivo obligatorio</strong> antes de confirmarse.</li>
+                                    <li><strong>Reasignación:</strong> Puede cambiar el responsable del ticket en cualquier momento desde el selector de usuarios.</li>
+                                    <li><strong>Comentarios:</strong> Historial de notas del equipo. Para agregar un comentario, escriba en el campo de texto y presione <strong>Enter</strong>.</li>
+                                </ul>
                             </HelpSection>
                         </div>
                     )}
@@ -224,15 +317,34 @@ const Help: React.FC = () => {
                             </header>
 
                             <HelpSection title="Gestión de Productos" icon={Info} defaultOpen={true}>
-                                <p>Cada producto cuenta con una ficha técnica que incluye su precio de venta, categoría y cantidad en bodega (stock). Recuerde interactuar con la lista actualizando periódicamente los precios y utilizando el buscador por SKU/Código para encontrar más rápido sus elementos en caja.</p>
+                                <p>Cada producto cuenta con una ficha técnica que incluye: Nombre, SKU, Precio de Costo (<em>Cost Price</em>), Precio de Venta (<em>Sales Price</em>), Stock actual, Stock mínimo y Stock máximo.</p>
+                                <p className="mt-2 text-sm">Use el buscador por nombre o SKU para encontrar productos rápidamente.</p>
                                 <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
                                     <Info className="text-amber-600 shrink-0" size={20} />
                                     <p className="text-sm text-amber-900"><strong>Dato importante:</strong> El stock se descuenta automáticamente al finalizar una venta, ahorrando control dual para el almacén.</p>
                                 </div>
                             </HelpSection>
 
-                            <HelpSection title="Alertas de Stock" icon={ExternalLink}>
-                                <p>El sistema resaltará en color rojo aquellos productos cuyas existencias sean bajas para que pueda programar su reabastecimiento a tiempo.</p>
+                            <HelpSection title="Tarjetas Resumen" icon={ExternalLink}>
+                                <p>En la parte superior del módulo encontrará 3 indicadores actualizados en tiempo real:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Total Productos:</strong> Cantidad de artículos registrados en el catálogo.</li>
+                                    <li><strong>Stock Bajo:</strong> Productos cuya existencia está por debajo del mínimo configurado (marcados con icono de alerta naranja).</li>
+                                    <li><strong>Valor Inventario:</strong> Suma calculada mediante <em>Cost Price × Stock</em> de cada producto, dando el valor total de su bodega.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Movimientos de Stock (Entrada/Salida)" icon={ExternalLink}>
+                                <p>Use el botón <strong>"Mover"</strong> en la fila de un producto para registrar una operación:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Entrada (Compra):</strong> Incrementa el stock. Puede actualizar tanto el <em>Cost Price</em> como el <em>Sales Price</em> durante la entrada.</li>
+                                    <li><strong>Salida (Venta manual):</strong> Reduce el stock. En este modo el <em>Cost Price</em> se bloquea (solo lectura) y solo se puede ajustar el <em>Sales Price</em>.</li>
+                                </ul>
+                                <p className="mt-2 text-sm text-gray-500">El sistema muestra en pantalla el <strong>Stock Resultante</strong> antes de confirmar.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Edición y Eliminación" icon={ExternalLink}>
+                                <p>Cada producto se puede <strong>Editar</strong> (modificar nombre, SKU, precios y rangos de stock) o <strong>Eliminar</strong> si el usuario tiene el permiso <em>delete_product</em>. La eliminación solicita confirmación explícita y es irreversible.</p>
                             </HelpSection>
                         </div>
                     )}
@@ -256,11 +368,57 @@ const Help: React.FC = () => {
                                     <li><strong>Zelle:</strong> Es el método de pago predeterminado al generar transacciones, pero usted puede registrar compras para otros métodos opcionales sin problema.</li>
                                     <li><strong>Estados de la Operación:</strong> De forma interna la aplicación categoriza la venta según los cambios que usted realice, nombrándolas: "<span className="font-bold text-emerald-600">NUEVA VENTA</span>", "<span className="font-bold text-amber-600">VENTA MODIFICADA</span>" o "<span className="font-bold text-red-600">VENTA ELIMINADA</span>" preservando siempre la transparencia económica de lo sucedido.</li>
                                     <li><strong>Detalle:</strong> Puede agregar notas para identificar ventas especiales o devoluciones.</li>
+                                    <li><strong>Autocompletado de Cliente:</strong> Al escribir el nombre del cliente, el sistema sugiere Leads existentes de la sucursal seleccionada para vincular la venta directamente a su historial.</li>
                                 </ul>
                             </HelpSection>
 
-                            <HelpSection title="Reporte Diario" icon={ExternalLink}>
-                                <p>Al final del día, puede visualizar el resumen totalizado para asegurar que los depósitos o efectivo coincidan con el sistema.</p>
+                            <HelpSection title="Filtros y Visibilidad" icon={ExternalLink}>
+                                <p>La tabla de ventas ofrece varios filtros simultáneos para localizar sus registros:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Fecha:</strong> Selector de día específico. Solo puede seleccionar hasta la fecha de hoy.</li>
+                                    <li><strong>Sucursal:</strong> Filtre por ubicación o vea todas a la vez.</li>
+                                    <li><strong>Estado:</strong> Alterne entre <em>Activas</em>, <em>Todas</em> (incluye canceladas) o solo <em>Canceladas</em>.</li>
+                                    <li><strong>Búsqueda:</strong> Filtre por nombre de cliente o servicio rendido.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Cancelar y Exportar" icon={ExternalLink}>
+                                <p>Funcionalidades complementarias del módulo:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Cancelar Venta:</strong> Use el botón "Cancelar" en la fila de una venta activa. Esto ejecuta un <em>soft-delete</em> y <strong>restaura automáticamente el inventario</strong> del producto asociado. Las ventas canceladas aparecen atenuadas y etiquetadas.</li>
+                                    <li><strong>Exportar CSV:</strong> El botón "Exportar" descarga un archivo CSV con las ventas visibles según los filtros aplicados (fecha, sucursal, búsqueda). Ideal para cuadres de caja.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Detalle de Venta (Modal)" icon={ExternalLink}>
+                                <p>Al hacer clic en una venta activa, se abre un modal completo organizado en pestañas:</p>
+
+                                <p className="mt-4 font-bold text-gray-800">Pestaña «Detalles de la Venta»</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li><strong>Datos del Cliente (Lead):</strong> En la parte superior se muestra una tarjeta con el nombre, teléfono y email del Lead vinculado a la venta.</li>
+                                    <li><strong>Edición (con permiso <em>edit_sale</em>):</strong> Si su rol tiene el permiso correspondiente, podrá modificar la <em>Fecha</em>, el <em>Método de Pago</em> y las <em>Notas</em> de la venta. Los campos de Sucursal, Producto/Servicio, Cantidad y Monto permanecen bloqueados por integridad.</li>
+                                    <li><strong>Solo Lectura (sin permiso):</strong> Si no posee el permiso <em>edit_sale</em>, el modal muestra todos los datos en modo de solo lectura con un indicador <span className="font-bold text-amber-600">🔒</span> que lo señala claramente.</li>
+                                </ul>
+
+                                <p className="mt-4 font-bold text-gray-800">Pestaña «Citas» (requiere permiso <em>view_appointments</em>)</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li>Muestra todas las citas registradas del Lead asociado a la venta, con fecha, servicio y estado.</li>
+                                    <li>El botón <strong>«Crear Cita»</strong> abre el formulario de nueva cita <strong>pre-llenando automáticamente</strong> el nombre del cliente, teléfono, email, sucursal y servicio de la venta.</li>
+                                </ul>
+
+                                <p className="mt-4 font-bold text-gray-800">Pestaña «Tickets» (requiere permiso <em>view_ticket</em>)</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li>Lista los tickets del Lead vinculado, indicando asunto, fecha, prioridad y estado.</li>
+                                    <li>El botón <strong>«Crear Ticket»</strong> genera un ticket cuyo asunto y descripción referencia automáticamente el número de la venta (ej: "Ticket relacionado con Venta #123"), facilitando la trazabilidad.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Resumen del Día" icon={ExternalLink}>
+                                <p>En la parte superior se muestran dos tarjetas actualizadas en tiempo real:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Ventas del Día:</strong> Cantidad de transacciones según los filtros activos.</li>
+                                    <li><strong>Monto Total:</strong> Suma monetaria de todas las ventas visibles.</li>
+                                </ul>
                             </HelpSection>
                         </div>
                     )}
@@ -279,8 +437,14 @@ const Help: React.FC = () => {
                             </header>
 
                             <HelpSection title="Pipeline de Ventas" icon={Info} defaultOpen={true}>
-                                <p>Gestione el camino de sus prospectos desde que llegan al spa hasta que se convierten en citas confirmadas.</p>
-                                <p className="mt-2 font-bold text-indigo-900">¿De dónde vienen los leads?</p>
+                                <p>Gestione el camino de sus prospectos desde que llegan al spa hasta que se convierten en citas confirmadas. El tablero Kanban organiza los leads en 4 columnas de estado:</p>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                                    <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 text-center">Nuevo</span>
+                                    <span className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-200 text-center">Contactado</span>
+                                    <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold border border-green-200 text-center">Vendido</span>
+                                    <span className="px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg text-xs font-bold border border-gray-200 text-center">Descartado</span>
+                                </div>
+                                <p className="mt-4 font-bold text-indigo-900">¿De dónde vienen los leads?</p>
                                 <div className="grid grid-cols-2 gap-2 mt-2">
                                     <span className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium border border-gray-200">WhatsApp</span>
                                     <span className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium border border-gray-200">Formulario Web</span>
@@ -289,13 +453,24 @@ const Help: React.FC = () => {
                                 </div>
                             </HelpSection>
 
+                            <HelpSection title="Acciones en la Tarjeta del Lead" icon={ExternalLink}>
+                                <p>Cada tarjeta de Lead muestra nombre, fuente, teléfono y monto asociado. Desde ella puede:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Avanzar de Estado:</strong> Use las flechas para mover el lead a la siguiente etapa del pipeline (Nuevo → Contactado → Vendido).</li>
+                                    <li><strong>Retroceder:</strong> La flecha izquierda permite regresar un paso si hubo un error.</li>
+                                    <li><strong>Contactar por WhatsApp:</strong> Click en el ícono del teléfono abre directamente una conversación de WhatsApp con el número del lead.</li>
+                                    <li><strong>Eliminar:</strong> Disponible desde el menú contextual, requiere confirmación explícita.</li>
+                                    <li><strong>Editar / Ver Detalle:</strong> Abre el panel modal completo del Lead.</li>
+                                </ul>
+                            </HelpSection>
+
                             <HelpSection title="Historial y Seguimiento Activo" icon={ExternalLink}>
                                 <p>La ventana modal mejorada del Lead integra todos sus registros clave para operar sin cambiar de pantalla a lo largo de 4 pestañas vitales:</p>
                                 <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
-                                    <li><strong>Detalles:</strong> Muestra la información de contacto primaria e indicadores de sucursal.</li>
-                                    <li><strong>Ventas:</strong> Permite consultar el balance de compras efectuadas y gestionar una <span className="text-emerald-600 font-bold">Nueva Venta</span> asociada al prospecto de forma directa.</li>
+                                    <li><strong>Detalles:</strong> Muestra la información de contacto primaria e indicadores de sucursal. Aquí se editan nombre, teléfono, email, fuente y sucursal del Lead.</li>
+                                    <li><strong>Ventas:</strong> Permite consultar el balance de compras efectuadas y gestionar una <span className="text-emerald-600 font-bold">Nueva Venta</span> asociada al prospecto de forma directa, prellenando su nombre y sucursal.</li>
                                     <li><strong>Citas:</strong> Incluye cronología de atenciones y la facilidad integral de pre-llenar una nueva cita con datos del consumidor.</li>
-                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento en curso vinculados al Lead por peticiones a nivel mesa de ayuda.</li>
+                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento en curso vinculados al Lead. Incluye detalle del ticket, cambio de estado, comentarios y creación de nuevos tickets desde el mismo modal.</li>
                                 </ul>
                             </HelpSection>
                         </div>
@@ -315,18 +490,43 @@ const Help: React.FC = () => {
                             </header>
 
                             <HelpSection title="Monitoreo y Rastreabilidad" icon={Info} defaultOpen={true}>
-                                <p>El modelo de Logs guarda registro sobre cualquier acción clave (Creaciones, Ediciones, Cambios de Estado, Borrado de Datos). </p>
-                                <ul className="list-disc pl-5 mt-4 space-y-2 text-sm text-gray-700">
-                                    <li><strong>Trazabilidad General:</strong> Cada proceso se firma con el responsable que hizo la operacion, un campo de tiempo fechado e incluso su identificador IP.</li>
-                                    <li><strong>Búsqueda Flexible:</strong> Gracias a los filtros habilitados puede indagar sobre qué realizó un usuario específico ayer, o ver cómo cambió el estado de las Citas en una fecha puntual.</li>
+                                <p>El modelo de Logs guarda registro sobre cualquier acción clave (Creaciones, Ediciones, Cambios de Estado, Borrado de Datos, Ingresos al Sistema).</p>
+                                <p className="mt-2 text-sm">La tabla principal muestra para cada evento:</p>
+                                <ul className="list-disc pl-5 mt-2 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Fecha/Hora:</strong> Momento exacto del evento.</li>
+                                    <li><strong>Usuario:</strong> Quién realizó la acción (con avatar de iniciales).</li>
+                                    <li><strong>Sucursal:</strong> Dónde ocurrió la operación.</li>
+                                    <li><strong>Evento:</strong> Etiqueta con código de color — CREACIÓN (verde), MODIFICACIÓN (ámbar), ELIMINACIÓN (rojo), INGRESO (índigo), SALIDA (gris). Para ventas usa etiquetas especiales: NUEVA VENTA, VENTA MODIFICADA, VENTA ELIMINADA.</li>
+                                    <li><strong>Objeto afectado:</strong> Nombre del modelo y su ID.</li>
                                 </ul>
                             </HelpSection>
 
-                            <HelpSection title="Limpieza de Logs (Purga)" icon={ExternalLink}>
-                                <p>El control continuo genera miles de registros y por tanto el sistema cuenta con políticas de retención activas.</p>
+                            <HelpSection title="Filtros de Búsqueda" icon={ExternalLink}>
+                                <p>La barra de filtros permite 5 criterios combinables para localizar eventos específicos:</p>
                                 <ul className="list-disc pl-5 mt-2 space-y-2 text-sm text-gray-700">
-                                    <li>Al vencer las fechas de registro y cuando la tabla necesita limpieza, la página lo anunciará mediante <strong className="text-red-500">alertas en el panel de inicio</strong>.</li>
-                                    <li>Para proteger la integridad y no borrar datos accidentalmente la <strong>Purga se aprueba en proceso de "Usuario en el Lazo"</strong> donde el personal de Administración con la autorización correcta aprueba el vaciado periódico y lo confirma explícitamente desde los botones en pantalla.</li>
+                                    <li><strong>Usuario:</strong> Seleccione para ver las acciones de un miembro particular del equipo.</li>
+                                    <li><strong>Sucursal:</strong> Aísle los eventos de una locación específica.</li>
+                                    <li><strong>Evento:</strong> Filtre por tipo: Creación, Modificación, Eliminación o Ingreso.</li>
+                                    <li><strong>Búsqueda General:</strong> Texto libre para buscar por nombre, descripción o ID del elemento.</li>
+                                    <li><strong>Limpiar:</strong> Botón para resetear todos los filtros de golpe.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Detalle de Actividad" icon={ExternalLink}>
+                                <p>Al hacer clic en el ícono del ojo de una fila, se abre un modal con la vista completa del evento:</p>
+                                <ul className="list-disc pl-5 mt-2 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Valores Anteriores:</strong> Muestra el estado previo de los datos antes del cambio (en vista de código con fondo oscuro, texto rojo).</li>
+                                    <li><strong>Valores Nuevos:</strong> El estado posterior al cambio (en texto verde). Para creaciones, el panel anterior muestra "Sin historial".</li>
+                                    <li><strong>Metadatos:</strong> IP de origen, User Agent del navegador y sucursal desde donde se realizó la acción.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Exportación y Limpieza (Purga)" icon={ExternalLink}>
+                                <p>El control continuo genera miles de registros. El sistema ofrece herramientas integradas para gestionarlos:</p>
+                                <ul className="list-disc pl-5 mt-2 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Exportar:</strong> Seleccione el rango de antigüedad (7, 30, 90 días o 1 año) y descargue los logs en formato TXT.</li>
+                                    <li><strong>Limpiar BD:</strong> Active la casilla "Limpiar BD" junto al botón de exportar para que, tras la descarga, los registros exportados se <strong className="text-red-500">eliminen de la base de datos</strong>. Se solicita confirmación explícita antes de ejecutar.</li>
+                                    <li>La tabla incluye <strong>paginación</strong> para navegar entre páginas de resultados cuando el volumen es alto.</li>
                                 </ul>
                             </HelpSection>
                         </div>
@@ -345,25 +545,79 @@ const Help: React.FC = () => {
                                 </div>
                             </header>
 
-                            <HelpSection title="Ajustes Generales de Personal" icon={Info} defaultOpen={true}>
-                                <p>Dentro del Gestor usted puede delimitar privilegios operativos asociando cada miembro entre roles y usuarios base sin poner en juego parámetros maestros u operativas ajenas:</p>
-                                <ul className="list-disc pl-5 mt-4 text-sm space-y-1">
-                                    <li><strong>Usuarios:</strong> Provea perfiles que podrán conectarse al software.</li>
-                                    <li><strong>Permisos:</strong> Bloquee áreas y edite accesos por roles en base si son personal comercial (Vendedores), Cajas, Administrativos o Gestores TI.</li>
-                                </ul>
-                            </HelpSection>
-
-                            <HelpSection title="Parámetros de Negocio" icon={ExternalLink}>
-                                <p>Aquí usted establece los conceptos básicos por donde el Spa ofrecerá cobertura y valor:</p>
+                            <HelpSection title="Pestañas de Configuración" icon={Info} defaultOpen={true}>
+                                <p>La sección de Configuración se divide en pestañas según su rol:</p>
                                 <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
-                                    <li><strong>Servicios/Tratamientos:</strong> Construya las opciones para las Citas y las Ventas Diarias dándoles tiempo y tarifa promedio.</li>
-                                    <li><strong>Sucursales:</strong> Cree o apague ubicaciones (ej: Local Norte, Mall) donde su inventario y atención de Leads ocurren en paralelo.</li>
+                                    <li><strong>Tenants:</strong> (Solo Super Admin) Gestión de organizaciones/inquilinos del sistema multi-tenant.</li>
+                                    <li><strong>Sucursales:</strong> Cree, edite o desactive ubicaciones físicas donde opera su negocio.</li>
+                                    <li><strong>Roles y Permisos:</strong> Defina los roles del equipo y asigne permisos granulares que controlen qué puede ver o hacer cada uno.</li>
+                                    <li><strong>Usuarios:</strong> Administre los perfiles de login del personal.</li>
+                                </ul>
+                                <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 flex gap-4 mt-4">
+                                    <Info className="text-indigo-600 shrink-0" size={20} />
+                                    <p className="text-sm text-indigo-900"><strong>Importante:</strong> Cualquier dato creado en esta pantalla pertenece automáticamente al tenant activo. Si es Super Admin, utilice el selector de tenant en la esquina superior derecha para cambiar de contexto.</p>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Sucursales (Branches)" icon={ExternalLink}>
+                                <p>Aquí usted establece las ubicaciones operativas del negocio:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li>Cada sucursal creada se vincula automáticamente al tenant actual.</li>
+                                    <li>Las sucursales aparecen como opciones en Ventas, Citas, Inventario, Leads y Auditoría.</li>
+                                    <li>Puede editar nombre o desactivar sucursales sin perder los registros asociados.</li>
                                 </ul>
                             </HelpSection>
 
-                            <HelpSection title="Ajustes Globales y Retención (Políticas/SLA)" icon={ExternalLink}>
-                                <p>Para las opciones centralizadas de soporte interno encontrará los apartados avanzados del software:</p>
-                                <p className="mt-2 text-sm">Allí puede editar las <strong>Políticas de SLA</strong> que calculan los colores rojo de respuesta tarde sobre sus "Tickets", o la <strong>Retención y el Purificador de Auditoría</strong> para cambiar si se guarda memoria permanente o si avisa y permite limpieza de la vista operativa.</p>
+                            <HelpSection title="Roles, Permisos y Usuarios" icon={ExternalLink}>
+                                <p>El sistema de control de acceso funciona en dos niveles:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li><strong>Roles:</strong> Agrupe permisos bajo un nombre lógico (Vendedor, Cajero, Administrador, etc.).</li>
+                                    <li><strong>Permisos:</strong> Controles granulares como <em>view_leads</em>, <em>delete_product</em>, <em>view_branch</em>, etc. que determinan qué secciones y acciones son accesibles.</li>
+                                    <li><strong>Usuarios:</strong> Cada miembro del equipo se asocia a un rol, una sucursal y un tenant.</li>
+                                </ul>
+                            </HelpSection>
+                        </div>
+                    )}
+
+                    {/* NOTIFICATIONS HELP */}
+                    {activeModule === 'notifications' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-orange-50 text-orange-600 rounded-2xl">
+                                    <Bell size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Notificaciones</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Sistema de alertas y avisos en tiempo real</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Campana de Notificaciones" icon={Info} defaultOpen={true}>
+                                <p>En la barra superior de la aplicación encontrará un ícono de campana que muestra las notificaciones pendientes:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Indicador de Conteo:</strong> Un badge rojo muestra cuántas notificaciones no leídas tiene.</li>
+                                    <li><strong>Panel Desplegable:</strong> Al hacer clic en la campana, se abre un panel con la lista de notificaciones ordenadas de más reciente a más antigua.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Gestión de Notificaciones" icon={ExternalLink}>
+                                <p>Acciones disponibles en el panel de notificaciones:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Marcar como Leída:</strong> Haga clic en una notificación no leída para marcarla individualmente. Las no leídas se distinguen con fondo resaltado.</li>
+                                    <li><strong>Marcar Todas:</strong> Use el botón "Marcar todas como leídas" en la parte superior del panel para limpiar el contador de golpe.</li>
+                                    <li><strong>Navegación Directa:</strong> Algunas notificaciones incluyen enlaces a la acción relacionada (ej: abrir un ticket, ver una venta), facilitando la navegación sin buscar manualmente el registro.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Tipos de Notificaciones" icon={ExternalLink}>
+                                <p>El sistema genera notificaciones automáticas para eventos clave como:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li>Asignación de nuevos tickets.</li>
+                                    <li>Alertas de vencimiento de SLA.</li>
+                                    <li>Cambios de estado en ventas o citas.</li>
+                                    <li>Alertas de stock bajo en productos.</li>
+                                    <li>Alertas de purga de logs pendiente.</li>
+                                </ul>
                             </HelpSection>
                         </div>
                     )}
@@ -373,7 +627,7 @@ const Help: React.FC = () => {
                 <footer className="mt-8 text-center text-gray-400 text-xs font-medium flex items-center justify-center gap-2">
                     <span>© 2026 SPA Manager PRO</span>
                     <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                    <span>Guía de Sistema v1.0</span>
+                    <span>Guía de Sistema v2.0</span>
                 </footer>
             </main>
         </div>

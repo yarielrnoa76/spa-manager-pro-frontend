@@ -369,6 +369,19 @@ export const api = {
       auth: true,
     });
   },
+  async getSale(saleId: string | number) {
+    return request<any>(`/api/sales/${encodeURIComponent(String(saleId))}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+  async updateSale(saleId: string | number, payload: any) {
+    return request<any>(`/api/sales/${encodeURIComponent(String(saleId))}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
 
   async listPaymentMethods() {
     return request<{ id: number; name: string }[]>(`/api/payment-methods`, {
