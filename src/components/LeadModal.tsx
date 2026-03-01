@@ -510,7 +510,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         </form>
                     ) : activeTab === 'sales' ? (
                         <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">
-                            <div className="flex justify-between items-center mb-4 border-b pb-4 flex-shrink-0">
+                            <div className="flex justify-between items-center mb-2 border-b pb-4 flex-shrink-0">
                                 <div>
                                     <h4 className="font-bold text-gray-800 text-lg">Historial de Ventas</h4>
                                     <p className="text-xs text-gray-500">Ventas asociadas a este lead</p>
@@ -524,6 +524,31 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     </button>
                                 )}
                             </div>
+
+                            {leadSales.length > 0 && (
+                                <div className="flex gap-3 mb-2 flex-shrink-0">
+                                    <div className="bg-white border border-gray-100 rounded-xl px-4 py-2 shadow-sm flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                            <span className="text-sm font-black">{leadSales.length}</span>
+                                        </div>
+                                        <div className="flex flex-col text-[10px] uppercase font-bold text-gray-400 leading-tight">
+                                            <span>Ventas</span>
+                                            <span className="text-gray-600">Realizadas</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white border border-gray-100 rounded-xl px-4 py-2 shadow-sm flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold">
+                                            $
+                                        </div>
+                                        <div className="flex flex-col text-[10px] uppercase font-bold text-gray-400 leading-tight">
+                                            <span>Monto Total</span>
+                                            <span className="text-emerald-700 font-black text-base leading-none">
+                                                ${leadSales.reduce((acc: number, s: any) => acc + Number(s.amount || 0), 0).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex-1 overflow-y-auto space-y-3">
                                 {leadSales.length === 0 ? (
                                     <div className="text-center text-gray-400 text-sm py-12 bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center">
@@ -536,6 +561,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                 <tr>
                                                     <th className="px-4 py-3">Fecha</th>
                                                     <th className="px-4 py-3">Sucursal</th>
+                                                    <th className="px-4 py-3">Producto</th>
                                                     <th className="px-4 py-3">Monto</th>
                                                     <th className="px-4 py-3">Método</th>
                                                     <th className="px-4 py-3">Vendedor</th>
@@ -550,6 +576,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                         </td>
                                                         <td className="px-4 py-3 text-gray-600 text-xs">
                                                             {sale.branch?.name || '-'}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600 text-xs">
+                                                            {sale.service_rendered || '-'}
                                                         </td>
                                                         <td className="px-4 py-3">
                                                             <div className="font-bold text-emerald-600">${Number(sale.amount).toFixed(2)}</div>
