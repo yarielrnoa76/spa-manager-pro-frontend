@@ -153,6 +153,7 @@ const Leads: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -182,14 +183,18 @@ const Leads: React.FC = () => {
     if (lead.status !== "discarded") {
       await handleStatusChange(lead.id, "discarded");
     } else {
-      if (!window.confirm("¿Eliminar permanentemente de la base de datos?"))
-        return;
-      try {
-        await api.deleteLead(lead.id);
-        fetchData();
-      } catch {
-        alert("Error al eliminar el lead.");
-      }
+      setLeadToDelete(lead);
+    }
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!leadToDelete) return;
+    try {
+      await api.deleteLead(leadToDelete.id);
+      setLeadToDelete(null);
+      fetchData();
+    } catch (err: any) {
+      alert("Error al eliminar el lead: " + (err?.message || ""));
     }
   };
 
@@ -288,6 +293,32 @@ const Leads: React.FC = () => {
         }} // Recargamos lista al crear/editar
         leadToEdit={editingLead}
       />
+
+      {/* Modal de Confirmación de Borrado */}
+      {leadToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6">
+            <h2 className="text-xl font-bold mb-4">Eliminar Lead</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              ¿Estás seguro de que deseas eliminar permanentemente a <strong>{leadToDelete.name}</strong> de la base de datos? Esta acción eliminará también sus citas, tickets y ventas asociadas y no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setLeadToDelete(null)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteLead}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
