@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { api } from "../services/api";
 import { Branch, Lead } from "../types";
 import CreateAppointmentModal from "./CreateAppointmentModal";
+import CreateSaleModal from "./CreateSaleModal";
 
 type LeadModalProps = {
     isOpen: boolean;
@@ -29,6 +30,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
     const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+
+    const [leadSales, setLeadSales] = useState<any[]>([]);
+    const [isCreatingSale, setIsCreatingSale] = useState(false);
+
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>('');
 
@@ -82,7 +87,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     message: leadToEdit.message || "",
                 });
                 loadLeadTickets(leadToEdit.id);
-                loadLeadAppointments(leadToEdit.id);
+                loadLeadDataExtras(leadToEdit.id);
             } else {
                 // Pre-llenar datos si vienen en props (solo si no es edit)
                 setFormData((prev) => ({
@@ -96,6 +101,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 }));
                 setLeadTickets([]);
                 setLeadAppointments([]);
+                setLeadSales([]);
             }
         }
     }, [isOpen, initialBranchId, initialName, leadToEdit]);
@@ -139,14 +145,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
-    const loadLeadAppointments = async (leadId: string | number) => {
+    const loadLeadDataExtras = async (leadId: string | number) => {
         try {
             const res = await api.getLead(leadId);
-            if (res && res.appointments) {
-                setLeadAppointments(res.appointments);
+            if (res) {
+                if (res.appointments) setLeadAppointments(res.appointments);
+                if (res.sales) setLeadSales(res.sales);
             }
         } catch (err) {
-            console.error("Error loading lead appointments", err);
+            console.error("Error loading lead extras", err);
         }
     };
 
@@ -324,7 +331,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         <h3 className="font-bold text-lg text-gray-800">
                             {leadToEdit ? "Detalle del Lead" : "Crear Nuevo Lead"}
                         </h3>
-                        {leadToEdit && <p className="text-xs text-gray-500">#{leadToEdit.id}</p>}
+                        {leadToEdit && (
+                            <div className="text-xs text-gray-500 flex flex-wrap items-center gap-2 mt-1">
+                                <span className="font-mono font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">#{leadToEdit.id}</span>
+                                {formData.name && <span className="font-bold text-gray-700">{formData.name}</span>}
+                                {formData.phone && <span className="text-gray-400 font-mono text-[11px]">• {formData.phone}</span>}
+                                {formData.email && <span className="text-gray-400 font-mono text-[11px]">• {formData.email}</span>}
+                            </div>
+                        )}
                     </div>
                     <button
                         onClick={onClose}
@@ -343,12 +357,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         >
                             Detalles
                         </button>
-                        <button
-                            onClick={() => setActiveTab('sales')}
-                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'sales' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
-                        >
-                            Ventas
-                        </button>
+                        {hasPerm('view_sales') && (
+                            <button
+                                onClick={() => setActiveTab('sales')}
+                                className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'sales' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                            >
+                                Ventas
+                                {leadSales.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadSales.length}</span>}
+                            </button>
+                        )}
                         {hasPerm('view_appointments') && (
                             <button
                                 onClick={() => setActiveTab('appointments')}
@@ -492,9 +509,71 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             </div>
                         </form>
                     ) : activeTab === 'sales' ? (
-                        <div className="p-6 space-y-4 h-full flex flex-col items-center justify-center min-h-[400px]">
-                            <h4 className="text-gray-500 font-bold mb-2">Ventas asociadas al lead</h4>
-                            <p className="text-sm text-gray-400 italic">(Próximamente)</p>
+                        <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">
+                            <div className="flex justify-between items-center mb-4 border-b pb-4 flex-shrink-0">
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-lg">Historial de Ventas</h4>
+                                    <p className="text-xs text-gray-500">Ventas asociadas a este lead</p>
+                                </div>
+                                {hasPerm('create_sales') && (
+                                    <button
+                                        onClick={() => setIsCreatingSale(true)}
+                                        className="bg-indigo-600 font-bold text-xs text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2"
+                                    >
+                                        Crear Venta
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-3">
+                                {leadSales.length === 0 ? (
+                                    <div className="text-center text-gray-400 text-sm py-12 bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center">
+                                        No hay ventas registradas para este lead.
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto bg-white border border-gray-100 rounded-xl shadow-sm">
+                                        <table className="w-full text-left text-sm whitespace-nowrap">
+                                            <thead className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase font-black">
+                                                <tr>
+                                                    <th className="px-4 py-3">Fecha</th>
+                                                    <th className="px-4 py-3">Sucursal</th>
+                                                    <th className="px-4 py-3">Monto</th>
+                                                    <th className="px-4 py-3">Método</th>
+                                                    <th className="px-4 py-3">Vendedor</th>
+                                                    <th className="px-4 py-3">Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {leadSales.map((sale: any) => (
+                                                    <tr key={sale.id} className="hover:bg-indigo-50/30 transition-colors">
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-gray-800">{sale.date}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600 text-xs">
+                                                            {sale.branch?.name || '-'}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-bold text-emerald-600">${Number(sale.amount).toFixed(2)}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-500 text-xs">
+                                                            {sale.payment_method}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600 text-xs font-bold">
+                                                            {sale.seller?.name || '-'}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {sale.deleted_at ? (
+                                                                <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700">Cancelada</span>
+                                                            ) : (
+                                                                <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700">Completada</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ) : activeTab === 'appointments' ? (
                         <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">
@@ -873,7 +952,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     onSuccess={() => {
                         setIsCreatingAppointment(false);
                         if (leadToEdit) {
-                            loadLeadAppointments(leadToEdit.id);
+                            loadLeadDataExtras(leadToEdit.id);
                         }
                     }}
                     initialData={{
@@ -881,6 +960,30 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         client_name: formData.name,
                         client_phone: formData.phone,
                         client_email: formData.email,
+                        branch_id: formData.branch_id ? Number(formData.branch_id) : null,
+                    }}
+                />
+            )}
+
+            {isCreatingSale && (
+                <CreateSaleModal
+                    isOpen={isCreatingSale}
+                    onClose={() => setIsCreatingSale(false)}
+                    onSuccess={() => {
+                        setIsCreatingSale(false);
+                        if (leadToEdit) {
+                            loadLeadDataExtras(leadToEdit.id);
+                        }
+                    }}
+                    user={{
+                        is_super_admin: userRole === 'superadmin',
+                        role: { name: userRole },
+                        permissions: userPermissions,
+                        branch: { id: formData.branch_id }
+                    }}
+                    initialData={{
+                        lead_id: leadToEdit?.id,
+                        client_name: formData.name,
                         branch_id: formData.branch_id ? Number(formData.branch_id) : null,
                     }}
                 />

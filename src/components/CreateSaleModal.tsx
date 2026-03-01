@@ -1,0 +1,412 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { X, UserPlus } from "lucide-react";
+import { api } from "../services/api";
+import LeadModal from "./LeadModal";
+
+type CreateSaleModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSuccess: () => void;
+    user: any;
+    initialData?: {
+        lead_id?: string | number | null;
+        client_name?: string;
+        branch_id?: string | number | null;
+    };
+};
+
+function toNumber(v: string): number {
+    const n = Number(String(v).replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+}
+
+function money(n: number): string {
+    return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+function localISODate(d = new Date()) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
+    isOpen,
+    onClose,
+    onSuccess,
+    user,
+    initialData,
+}) => {
+    const isSuperAdmin = user?.is_super_admin === true;
+    const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
+    const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
+    const canViewLeads = isAdmin || perms.includes("view_leads");
+    const canViewBranch = isAdmin || perms.includes("view_branch");
+
+    const today = localISODate();
+
+    const [form, setForm] = useState({
+        date: today,
+        branch_id: "",
+        product_id: "",
+        lead_id: "",
+        client_name: "",
+        service_rendered: "",
+        quantity: "1",
+        unit_price: "",
+        amount: "",
+        payment_method: "Zelle",
+        notes: "",
+    });
+
+    const [branches, setBranches] = useState<any[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
+    const [leads, setLeads] = useState<any[]>([]);
+    const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        setForm({
+            date: today,
+            branch_id: initialData?.branch_id ? String(initialData.branch_id) : (user?.branch?.id ? String(user.branch.id) : ""),
+            product_id: "",
+            lead_id: initialData?.lead_id ? String(initialData.lead_id) : "",
+            client_name: initialData?.client_name || "",
+            service_rendered: "",
+            quantity: "1",
+            unit_price: "",
+            amount: "",
+            payment_method: "Zelle",
+            notes: "",
+        });
+        setError(null);
+
+        Promise.all([
+            canViewBranch ? api.listBranches() : (user?.branch ? Promise.resolve([user.branch]) : Promise.resolve([])),
+            api.listProducts(),
+            canViewLeads ? api.listLeads() : Promise.resolve([]),
+            api.listPaymentMethods()
+        ]).then(([b, p, l, pm]) => {
+            setBranches(Array.isArray(b) ? b : []);
+            setProducts(Array.isArray(p) ? p : []);
+            setLeads(Array.isArray(l) ? l : []);
+
+            const pms = Array.isArray(pm) ? pm : [];
+            setPaymentMethods(pms);
+            if (pms.length > 0 && !form.payment_method) {
+                setForm(prev => ({ ...prev, payment_method: pms[0].name }));
+            }
+        }).catch(err => {
+            console.error(err);
+        });
+    }, [isOpen, initialData, user]);
+
+    const availableProducts = useMemo(() => products.filter((p: any) => Number(p.stock) > 0), [products]);
+
+    const leadSuggestions = useMemo(() => {
+        if (!form.branch_id || initialData?.lead_id) return []; // Si ya está forzado el lead, no sugerimos
+        const term = (form.client_name || "").toLowerCase();
+        return leads.filter(lead => {
+            const matchesBranch = String(lead.branch_id) === String(form.branch_id);
+            const matchesName = lead.name.toLowerCase().includes(term);
+            return matchesBranch && matchesName;
+        }).slice(0, 5);
+    }, [form.client_name, form.branch_id, leads, initialData]);
+
+    const selectedProduct = useMemo(() => {
+        const pid = String(form.product_id || "");
+        if (!pid) return null;
+        return availableProducts.find((x: any) => String(x.id) === pid) || products.find((x: any) => String(x.id) === pid) || null;
+    }, [form.product_id, availableProducts, products]);
+
+    const recalcTotals = (next: any) => {
+        const qRaw = String(next.quantity ?? form.quantity ?? "").trim();
+        if (!qRaw) return { ...next, quantity: "", amount: "" };
+        const qty = Math.max(1, parseInt(qRaw, 10) || 1);
+        const unitPrice = toNumber(String(next.unit_price ?? form.unit_price));
+        return { ...next, quantity: String(qty), amount: unitPrice ? money(unitPrice * qty) : "" };
+    };
+
+    const handleProductSelect = (productId: string) => {
+        const p = availableProducts.find((x: any) => String(x.id) === String(productId)) || null;
+        if (!p) {
+            setForm(prev => ({ ...prev, product_id: "", service_rendered: "", unit_price: "", amount: "" }));
+            return;
+        }
+        const salesPrice = toNumber(String((p as any).sales_price ?? 0));
+        setForm(prev => ({ ...prev, ...recalcTotals({ product_id: String(p.id), service_rendered: p.name, unit_price: salesPrice ? money(salesPrice) : "" }) }));
+    };
+
+    const handleQuantityChange = (qtyStr: string) => {
+        if (qtyStr === "") {
+            setForm(prev => ({ ...prev, quantity: "", amount: "" }));
+            return;
+        }
+        let qty = parseInt(qtyStr.replace(/[^\d]/g, ""), 10);
+        if (!Number.isFinite(qty) || qty <= 0) qty = 1;
+        if (selectedProduct && qty > Number((selectedProduct as any).stock)) qty = Number((selectedProduct as any).stock);
+        setForm(prev => ({ ...prev, ...recalcTotals({ quantity: String(qty) }) }));
+    };
+
+    const handleCreateSale = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // Validación custom
+        if (!form.lead_id) {
+            setError("Debes seleccionar o crear un cliente válido (Lead).");
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const qty = parseInt(String(form.quantity || "0"), 10) || 0;
+            const unit = toNumber(form.unit_price);
+            const calcAmount = qty > 0 && unit > 0 ? unit * qty : 0;
+
+            await api.createSale({
+                ...form,
+                quantity: qty,
+                unit_price: unit,
+                amount: calcAmount,
+                product_id: form.product_id || null,
+            });
+
+            onSuccess();
+            onClose();
+        } catch (err: any) {
+            setError(err?.message || "Error al crear la venta");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleLeadCreatedFromModal = (lead: any) => {
+        setLeads(prev => [lead, ...prev]);
+        setForm(prev => ({ ...prev, client_name: lead.name, lead_id: String(lead.id) }));
+        setIsLeadModalOpen(false);
+    };
+
+    const canSubmit = form.branch_id && form.date && form.product_id && form.client_name && form.lead_id && form.quantity && toNumber(form.quantity) > 0 && form.amount && toNumber(form.amount) > 0;
+
+    if (!isOpen && !isLeadModalOpen) return null;
+
+    return (
+        <>
+            <LeadModal
+                isOpen={isLeadModalOpen}
+                onClose={() => setIsLeadModalOpen(false)}
+                onSuccess={handleLeadCreatedFromModal}
+                initialBranchId={form.branch_id}
+                initialName={form.client_name}
+            />
+
+            {isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b flex justify-between items-center shrink-0">
+                            <h3 className="font-bold text-lg">Nueva Venta {initialData?.lead_id ? 'para este Lead' : ''}</h3>
+                            <button type="button" onClick={onClose}><X size={20} /></button>
+                        </div>
+
+                        <form onSubmit={handleCreateSale} className="p-6 space-y-4 overflow-y-auto">
+                            {error && (
+                                <div className="bg-red-50 text-red-700 p-3 rounded text-sm mb-4">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sucursal</label>
+                                    <select
+                                        required={canViewBranch}
+                                        disabled={!canViewBranch || !!initialData?.branch_id}
+                                        className={`w-full border rounded-lg p-2 text-sm ${(!canViewBranch || !!initialData?.branch_id) ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
+                                        value={form.branch_id}
+                                        onChange={(e) => setForm(prev => ({ ...prev, branch_id: e.target.value, client_name: "", lead_id: "" }))}
+                                    >
+                                        <option value="">Seleccionar...</option>
+                                        {branches.map(b => (
+                                            <option key={b.id} value={String(b.id)}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.date}
+                                        onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
+                                        max={localISODate()}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
+                                <select
+                                    required
+                                    className="w-full border rounded-lg p-2 text-sm"
+                                    value={form.product_id}
+                                    onChange={(e) => handleProductSelect(e.target.value)}
+                                >
+                                    <option value="">-- Seleccionar de Inventario --</option>
+                                    {availableProducts.map((p: any) => (
+                                        <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <div className="flex-[2] relative">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del Cliente</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            required
+                                            disabled={!form.branch_id || !!initialData?.lead_id}
+                                            placeholder={form.branch_id ? "Buscar en leads..." : "Elige sucursal primero"}
+                                            className={`w-full border rounded-lg p-2 text-sm ${(!form.branch_id || !!initialData?.lead_id) ? "bg-gray-50 text-gray-500" : ""}`}
+                                            value={form.client_name}
+                                            onFocus={() => setShowSuggestions(true)}
+                                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                            onChange={(e) => setForm(prev => ({ ...prev, client_name: e.target.value, lead_id: "" }))}
+                                        />
+                                        {canViewLeads && showSuggestions && !initialData?.lead_id && (
+                                            <div className="absolute top-100 left-0 w-full bg-white border rounded shadow-lg z-50 max-h-40 overflow-auto">
+                                                {leadSuggestions.map(lead => (
+                                                    <div
+                                                        key={lead.id}
+                                                        className="px-4 py-2 hover:bg-indigo-50 cursor-pointer text-sm flex justify-between"
+                                                        onClick={() => {
+                                                            setForm(prev => ({ ...prev, client_name: lead.name, lead_id: String(lead.id) }));
+                                                            setShowSuggestions(false);
+                                                        }}
+                                                    >
+                                                        <span>{lead.name}</span>
+                                                        <span className="text-gray-400 text-xs">{lead.status}</span>
+                                                    </div>
+                                                ))}
+
+                                                {leadSuggestions.length === 0 && form.client_name.trim().length > 0 && (
+                                                    <div
+                                                        className="px-4 py-2 border-t text-indigo-600 font-bold hover:bg-indigo-50 cursor-pointer flex items-center gap-2 text-sm"
+                                                        onClick={() => {
+                                                            setIsLeadModalOpen(true);
+                                                            setShowSuggestions(false);
+                                                        }}
+                                                    >
+                                                        <UserPlus size={14} /> Crear "{form.client_name}" como Lead
+                                                    </div>
+                                                )}
+
+                                                {leadSuggestions.length === 0 && form.client_name.trim().length === 0 && (
+                                                    <div className="px-4 py-2 text-gray-400 text-xs italic">
+                                                        Escribe para buscar...
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {!form.lead_id && !initialData?.lead_id && form.client_name.length > 0 && (
+                                        <p className="text-xs text-red-500 mt-1">Debes seleccionar o crear un lead en la sugerencia.</p>
+                                    )}
+                                </div>
+
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Método de Pago</label>
+                                    <select
+                                        required
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.payment_method}
+                                        onChange={(e) => setForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                                    >
+                                        {paymentMethods.length > 0 ? (
+                                            paymentMethods.map(pm => <option key={pm.id} value={pm.name}>{pm.name}</option>)
+                                        ) : (
+                                            <>
+                                                <option value="Efectivo">Efectivo</option>
+                                                <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                                                <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                                                <option value="Transferencia">Transferencia</option>
+                                                <option value="Depósito">Depósito</option>
+                                                <option value="Cheque">Cheque</option>
+                                                <option value="Zelle">Zelle</option>
+                                                <option value="Otro">Otro</option>
+                                            </>
+                                        )}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cantidad</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        required
+                                        className="w-full border rounded-lg p-2 text-sm font-bold"
+                                        value={form.quantity}
+                                        onChange={(e) => handleQuantityChange(e.target.value)}
+                                        disabled={!form.product_id}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total ($)</label>
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        className="w-full border rounded-lg p-2 text-sm font-bold bg-gray-50"
+                                        value={form.amount}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notas</label>
+                                <textarea
+                                    className="w-full border rounded-lg p-2 text-sm"
+                                    value={form.notes}
+                                    onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
+                                    rows={2}
+                                />
+                            </div>
+
+                            <div className="pt-4 flex gap-3 pb-2">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 py-2 border rounded-lg text-sm font-bold"
+                                >
+                                    Cancelar
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    disabled={!canSubmit || loading}
+                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white ${canSubmit && !loading ? "bg-indigo-600 shadow-lg hover:bg-indigo-700" : "bg-gray-300"}`}
+                                >
+                                    {loading ? 'Confirmando...' : 'Confirmar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
+export default CreateSaleModal;

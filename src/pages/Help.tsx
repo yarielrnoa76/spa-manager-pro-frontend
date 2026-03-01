@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import {
     HelpCircle, Ticket, Calendar, Package, DollarSign, UserPlus,
     ChevronDown, ChevronUp, BookOpen, Info, MessageSquare,
-    Search, ExternalLink, ArrowRight
+    Search, ExternalLink, ArrowRight, Settings, Activity
 } from 'lucide-react';
 
-type ModuleKey = 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads';
+type ModuleKey = 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'audit' | 'settings';
 
 interface HelpSectionProps {
     title: string;
@@ -52,6 +52,8 @@ const Help: React.FC = () => {
         { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-amber-600 bg-amber-50' },
         { id: 'sales', label: 'Ventas Diarias', icon: DollarSign, color: 'text-emerald-600 bg-emerald-50' },
         { id: 'leads', label: 'Contactos / Leads', icon: UserPlus, color: 'text-indigo-600 bg-indigo-50' },
+        { id: 'audit', label: 'Auditoría / Logs', icon: Activity, color: 'text-slate-600 bg-slate-50' },
+        { id: 'settings', label: 'Configuración', icon: Settings, color: 'text-rose-600 bg-rose-50' },
     ];
 
     return (
@@ -153,7 +155,7 @@ const Help: React.FC = () => {
                                     <li><strong>Categoría:</strong> Tipo de solicitud (ej. Soporte, Ventas, Queja).</li>
                                     <li><strong>Prioridad:</strong> Define el nivel de urgencia y los tiempos del SLA.</li>
                                     <li><strong>Descripción:</strong> (Opcional) Detalles extendidos del caso.</li>
-                                    <li><strong>Responsable:</strong> (Opcional) Puede preasignar el ticket a un usuario específico en lugar de delegarlo al Round Robin.</li>
+                                    <li><strong>Responsable:</strong> (Opcional) No es necesario asignarlo manualmente si desea delegarlo al sistema automático de Round Robin. Si se elige de forma manual, el sistema respetará esa asignación en lugar de delegarlo.</li>
                                     <li><strong>Vencimiento:</strong> (Opcional) Fecha y hora límite personalizada.</li>
                                 </ul>
                                 <p className="mt-4 text-sm text-gray-500"><strong>Nota:</strong> Los demás datos como el código de ticket único, estado inicial (New), fechas de creación, cliente y sucursal, son detectados y llenados automáticamente por el sistema.</p>
@@ -222,10 +224,10 @@ const Help: React.FC = () => {
                             </header>
 
                             <HelpSection title="Gestión de Productos" icon={Info} defaultOpen={true}>
-                                <p>Cada producto cuenta con una ficha técnica que incluye su precio de venta, categoría y cantidad en bodega (stock).</p>
+                                <p>Cada producto cuenta con una ficha técnica que incluye su precio de venta, categoría y cantidad en bodega (stock). Recuerde interactuar con la lista actualizando periódicamente los precios y utilizando el buscador por SKU/Código para encontrar más rápido sus elementos en caja.</p>
                                 <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
                                     <Info className="text-amber-600 shrink-0" size={20} />
-                                    <p className="text-sm text-amber-900"><strong>Dato importante:</strong> El stock se descuenta automáticamente al finalizar una venta.</p>
+                                    <p className="text-sm text-amber-900"><strong>Dato importante:</strong> El stock se descuenta automáticamente al finalizar una venta, ahorrando control dual para el almacén.</p>
                                 </div>
                             </HelpSection>
 
@@ -250,9 +252,9 @@ const Help: React.FC = () => {
 
                             <HelpSection title="Registro de Ventas" icon={Info} defaultOpen={true}>
                                 <p>En este módulo se registran todos los ingresos diarios por sucursal:</p>
-                                <ul className="list-disc pl-5 space-y-2 mt-4">
-                                    <li><strong>Zelle:</strong> Método de pago establecido por defecto.</li>
-                                    <li><strong>Efectivo/Tarjeta:</strong> Seleccione el método según corresponda.</li>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Zelle:</strong> Es el método de pago predeterminado al generar transacciones, pero usted puede registrar compras para otros métodos opcionales sin problema.</li>
+                                    <li><strong>Estados de la Operación:</strong> De forma interna la aplicación categoriza la venta según los cambios que usted realice, nombrándolas: "<span className="font-bold text-emerald-600">NUEVA VENTA</span>", "<span className="font-bold text-amber-600">VENTA MODIFICADA</span>" o "<span className="font-bold text-red-600">VENTA ELIMINADA</span>" preservando siempre la transparencia económica de lo sucedido.</li>
                                     <li><strong>Detalle:</strong> Puede agregar notas para identificar ventas especiales o devoluciones.</li>
                                 </ul>
                             </HelpSection>
@@ -287,14 +289,81 @@ const Help: React.FC = () => {
                                 </div>
                             </HelpSection>
 
-                            <HelpSection title="Historial y Seguimiento" icon={ExternalLink}>
-                                <p>Cada Lead cuenta con un panel modal que integra toda su información en diferentes pestañas:</p>
+                            <HelpSection title="Historial y Seguimiento Activo" icon={ExternalLink}>
+                                <p>La ventana modal mejorada del Lead integra todos sus registros clave para operar sin cambiar de pantalla a lo largo de 4 pestañas vitales:</p>
                                 <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
-                                    <li><strong>Detalles:</strong> Información de contacto y sucursal.</li>
-                                    <li><strong>Ventas:</strong> Historial de ventas asociadas a este cliente.</li>
-                                    <li><strong>Citas:</strong> Listado de citas programadas y botón rápido para agendar una nueva cita prellenando sus datos.</li>
-                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento asociados.</li>
+                                    <li><strong>Detalles:</strong> Muestra la información de contacto primaria e indicadores de sucursal.</li>
+                                    <li><strong>Ventas:</strong> Permite consultar el balance de compras efectuadas y gestionar una <span className="text-emerald-600 font-bold">Nueva Venta</span> asociada al prospecto de forma directa.</li>
+                                    <li><strong>Citas:</strong> Incluye cronología de atenciones y la facilidad integral de pre-llenar una nueva cita con datos del consumidor.</li>
+                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento en curso vinculados al Lead por peticiones a nivel mesa de ayuda.</li>
                                 </ul>
+                            </HelpSection>
+                        </div>
+                    )}
+
+                    {/* AUDIT HELP */}
+                    {activeModule === 'audit' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-slate-50 text-slate-600 rounded-2xl">
+                                    <Activity size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Auditoría / Logs</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Registro de actividades y cambios del sistema</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Monitoreo y Rastreabilidad" icon={Info} defaultOpen={true}>
+                                <p>El modelo de Logs guarda registro sobre cualquier acción clave (Creaciones, Ediciones, Cambios de Estado, Borrado de Datos). </p>
+                                <ul className="list-disc pl-5 mt-4 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Trazabilidad General:</strong> Cada proceso se firma con el responsable que hizo la operacion, un campo de tiempo fechado e incluso su identificador IP.</li>
+                                    <li><strong>Búsqueda Flexible:</strong> Gracias a los filtros habilitados puede indagar sobre qué realizó un usuario específico ayer, o ver cómo cambió el estado de las Citas en una fecha puntual.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Limpieza de Logs (Purga)" icon={ExternalLink}>
+                                <p>El control continuo genera miles de registros y por tanto el sistema cuenta con políticas de retención activas.</p>
+                                <ul className="list-disc pl-5 mt-2 space-y-2 text-sm text-gray-700">
+                                    <li>Al vencer las fechas de registro y cuando la tabla necesita limpieza, la página lo anunciará mediante <strong className="text-red-500">alertas en el panel de inicio</strong>.</li>
+                                    <li>Para proteger la integridad y no borrar datos accidentalmente la <strong>Purga se aprueba en proceso de "Usuario en el Lazo"</strong> donde el personal de Administración con la autorización correcta aprueba el vaciado periódico y lo confirma explícitamente desde los botones en pantalla.</li>
+                                </ul>
+                            </HelpSection>
+                        </div>
+                    )}
+
+                    {/* SETTINGS HELP */}
+                    {activeModule === 'settings' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl">
+                                    <Settings size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Configuración</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Ajustes generales y administración del sistema</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Ajustes Generales de Personal" icon={Info} defaultOpen={true}>
+                                <p>Dentro del Gestor usted puede delimitar privilegios operativos asociando cada miembro entre roles y usuarios base sin poner en juego parámetros maestros u operativas ajenas:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-1">
+                                    <li><strong>Usuarios:</strong> Provea perfiles que podrán conectarse al software.</li>
+                                    <li><strong>Permisos:</strong> Bloquee áreas y edite accesos por roles en base si son personal comercial (Vendedores), Cajas, Administrativos o Gestores TI.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Parámetros de Negocio" icon={ExternalLink}>
+                                <p>Aquí usted establece los conceptos básicos por donde el Spa ofrecerá cobertura y valor:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li><strong>Servicios/Tratamientos:</strong> Construya las opciones para las Citas y las Ventas Diarias dándoles tiempo y tarifa promedio.</li>
+                                    <li><strong>Sucursales:</strong> Cree o apague ubicaciones (ej: Local Norte, Mall) donde su inventario y atención de Leads ocurren en paralelo.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Ajustes Globales y Retención (Políticas/SLA)" icon={ExternalLink}>
+                                <p>Para las opciones centralizadas de soporte interno encontrará los apartados avanzados del software:</p>
+                                <p className="mt-2 text-sm">Allí puede editar las <strong>Políticas de SLA</strong> que calculan los colores rojo de respuesta tarde sobre sus "Tickets", o la <strong>Retención y el Purificador de Auditoría</strong> para cambiar si se guarda memoria permanente o si avisa y permite limpieza de la vista operativa.</p>
                             </HelpSection>
                         </div>
                     )}
