@@ -145,6 +145,19 @@ const Help: React.FC = () => {
                                     <span className="shrink-0 px-3 py-1.5 bg-blue-100 text-blue-700 text-[10px] font-black rounded-lg">MEDIA: 8H</span>
                                 </div>
                             </HelpSection>
+
+                            <HelpSection title="Creación de Tickets" icon={Info}>
+                                <p>Al crear un nuevo ticket, ya sea desde el módulo global o directamente dentro del panel de un Lead (pestaña Tickets), el usuario debe proveer los siguientes campos esenciales:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Asunto:</strong> Título breve que describe el problema o requerimiento.</li>
+                                    <li><strong>Categoría:</strong> Tipo de solicitud (ej. Soporte, Ventas, Queja).</li>
+                                    <li><strong>Prioridad:</strong> Define el nivel de urgencia y los tiempos del SLA.</li>
+                                    <li><strong>Descripción:</strong> (Opcional) Detalles extendidos del caso.</li>
+                                    <li><strong>Responsable:</strong> (Opcional) Puede preasignar el ticket a un usuario específico en lugar de delegarlo al Round Robin.</li>
+                                    <li><strong>Vencimiento:</strong> (Opcional) Fecha y hora límite personalizada.</li>
+                                </ul>
+                                <p className="mt-4 text-sm text-gray-500"><strong>Nota:</strong> Los demás datos como el código de ticket único, estado inicial (New), fechas de creación, cliente y sucursal, son detectados y llenados automáticamente por el sistema.</p>
+                            </HelpSection>
                         </div>
                     )}
 
@@ -169,6 +182,19 @@ const Help: React.FC = () => {
                                     <li>Defina la <strong>Sucursal</strong> y la <strong>Fecha/Hora</strong>.</li>
                                     <li>El sistema verificará la disponibilidad en el calendario.</li>
                                 </ol>
+                            </HelpSection>
+
+                            <HelpSection title="Creación de Citas" icon={Info}>
+                                <p>Al crear una nueva cita, el usuario puede proporcionar los siguientes datos:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Fecha y Hora:</strong> Momento programado para el servicio.</li>
+                                    <li><strong>Nombre del Cliente:</strong> Nombre o identificador del cliente (texto libre o autocompletado si proviene de un Lead).</li>
+                                    <li><strong>Teléfono / Email:</strong> Datos de contacto importantes. Obligatorios si la cita se enlaza a un perfil de Lead existente para mantener la ficha actualizada.</li>
+                                    <li><strong>Servicio a realizar:</strong> Menú desplegable con los tratamientos y servicios activos en el sistema.</li>
+                                    <li><strong>Sucursal:</strong> Ubicación donde se llevará a cabo el servicio.</li>
+                                    <li><strong>Notas:</strong> (Opcional) Cualquier detalle relevante a tener en cuenta antes de la llegada del cliente.</li>
+                                </ul>
+                                <p className="mt-4 text-sm text-gray-500"><strong>Nota:</strong> Si los datos de contacto coinciden con un cliente existente, el sistema le ofrecerá vincular automáticamente la cita a su historial (su "Lead"), manteniendo su perfil enriquecido. Si no, se creará un perfil nuevo en el fondo.</p>
                             </HelpSection>
 
                             <HelpSection title="Estados de la Cita" icon={ExternalLink}>

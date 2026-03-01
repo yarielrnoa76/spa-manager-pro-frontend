@@ -53,6 +53,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
         category_id: "",
         priority_id: "",
         description: "",
+        due_date: "",
+        responsable_id: "",
     });
     const [editTicketData, setEditTicketData] = useState({
         subject: "",
@@ -281,7 +283,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 branch_id: leadToEdit.branch_id,
             });
             setIsCreatingTicket(false);
-            setTicketData({ subject: "", category_id: "", priority_id: "", description: "" });
+            setTicketData({ subject: "", category_id: "", priority_id: "", description: "", due_date: "", responsable_id: "" });
             loadLeadTickets(leadToEdit.id);
         } catch (err: any) {
             alert(err?.message || "Error al crear ticket.");
@@ -777,6 +779,28 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                     rows={2}
                                                     placeholder="Detalles adicionales..."
                                                 />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Responsable</label>
+                                                    <select
+                                                        value={ticketData.responsable_id}
+                                                        onChange={e => setTicketData({ ...ticketData, responsable_id: e.target.value })}
+                                                        className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    >
+                                                        <option value="">-- Sin asignar --</option>
+                                                        {responsibles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Vencimiento</label>
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={ticketData.due_date}
+                                                        onChange={e => setTicketData({ ...ticketData, due_date: e.target.value })}
+                                                        className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="flex gap-2">
                                                 <button

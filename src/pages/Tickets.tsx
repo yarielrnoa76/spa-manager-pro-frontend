@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import { Ticket, TicketCategory, TicketPriority, User as UserType } from '../types';
 import { format } from 'date-fns';
 import StatCard from '../components/StatCard';
+import CreateTicketModal from '../components/CreateTicketModal';
 
 const Tickets: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'admin'>('dashboard');
@@ -513,29 +514,15 @@ const Tickets: React.FC = () => {
                 {!loading && activeTab === 'admin' && renderAdmin()}
             </div>
 
-            {/* Create Modal Placeholder */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-gray-900">Crear Ticket Manual</h3>
-                            <button onClick={() => setShowCreateModal(false)}><XCircle className="text-gray-400" /></button>
-                        </div>
-                        {/* Form Placeholder */}
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-500">Seleccione un Lead y complete los detalles del requerimiento.</p>
-                            {/* Complex forms usually handled in separate components */}
-                            <div className="p-12 text-center bg-gray-50 border-2 border-dashed rounded-xl">
-                                Formulario de creación rápida listo para implementar
-                            </div>
-                            <div className="flex justify-end gap-3 mt-8">
-                                <button onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-gray-600 font-bold">Cancelar</button>
-                                <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">Guardar Ticket</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Create Modal */}
+            <CreateTicketModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onSuccess={() => {
+                    setShowCreateModal(false);
+                    fetchData();
+                }}
+            />
         </div>
     );
 };
