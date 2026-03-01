@@ -515,7 +515,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     <h4 className="font-bold text-gray-800 text-lg">Historial de Ventas</h4>
                                     <p className="text-xs text-gray-500">Ventas asociadas a este lead</p>
                                 </div>
-                                {hasPerm('create_sales') && (
+                                {hasPerm('create_sale') && (
                                     <button
                                         onClick={() => setIsCreatingSale(true)}
                                         className="bg-indigo-600 font-bold text-xs text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2"
@@ -582,7 +582,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     <h4 className="font-bold text-gray-800 text-lg">Citas Programadas</h4>
                                     <p className="text-xs text-gray-500">Historial de citas de este evento/lead</p>
                                 </div>
-                                {hasPerm('create_appointments') && (
+                                {hasPerm('create_appointment') && (
                                     <button
                                         onClick={() => setIsCreatingAppointment(true)}
                                         className="bg-indigo-600 font-bold text-xs text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2"

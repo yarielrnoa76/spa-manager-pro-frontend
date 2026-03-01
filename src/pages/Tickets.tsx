@@ -23,6 +23,11 @@ const Tickets: React.FC = () => {
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
 
+    // Cancellation Modal
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelReason, setCancelReason] = useState("");
+    const [ticketToCancel, setTicketToCancel] = useState<Ticket | null>(null);
+
     // Filters
     const [filters, setFilters] = useState({
         status: 'all',
@@ -300,8 +305,9 @@ const Tickets: React.FC = () => {
                                         </button>
                                         <button
                                             onClick={() => {
-                                                const reason = window.prompt('Motivo de cancelación:');
-                                                if (reason) api.updateTicketStatus(selectedTicket.id, 'Cancelled', reason).then(() => fetchData());
+                                                setTicketToCancel(selectedTicket);
+                                                setCancelReason('');
+                                                setCancelModalOpen(true);
                                             }}
                                             className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition"
                                         >
@@ -523,6 +529,53 @@ const Tickets: React.FC = () => {
                     fetchData();
                 }}
             />
+
+            {/* Cancel Modal */}
+            {cancelModalOpen && ticketToCancel && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6">
+                        <h2 className="text-xl font-bold mb-4">Cancelar Ticket</h2>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Por favor, indique el motivo de la cancelación para el ticket <strong>{ticketToCancel.ticket_number}</strong>:
+                        </p>
+                        <textarea
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Motivo de la cancelación..."
+                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 min-h-[80px]"
+                        />
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => { setCancelModalOpen(false); setTicketToCancel(null); }}
+                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition"
+                            >
+                                Volver
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!cancelReason.trim()) {
+                                        alert("Debe especificar un motivo.");
+                                        return;
+                                    }
+                                    api.updateTicketStatus(ticketToCancel.id, 'Cancelled', cancelReason)
+                                        .then(() => {
+                                            setCancelModalOpen(false);
+                                            setTicketToCancel(null);
+                                            fetchData();
+                                            if (selectedTicket?.id === ticketToCancel.id) {
+                                                api.getTicket(ticketToCancel.id).then(t => setSelectedTicket(t));
+                                            }
+                                        })
+                                        .catch(() => alert('Error al cancelar el ticket'));
+                                }}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+                            >
+                                Confirmar Cancelación
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

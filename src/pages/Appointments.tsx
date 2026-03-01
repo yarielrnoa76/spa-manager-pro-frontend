@@ -1103,19 +1103,22 @@ const Appointments: React.FC = () => {
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {["scheduled", "confirmed", "completed", "cancelled"].map(
-                    (status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setEditForm((p) => ({ ...p, status }))}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition ${editForm.status === status
-                          ? "ring-2 ring-indigo-500"
-                          : "border border-gray-200"
-                          } ${getStatusColor(status)}`}
-                      >
-                        {status}
-                      </button>
-                    ),
+                    (status) => {
+                      const isActive = editForm.status === status;
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setEditForm((p) => ({ ...p, status }))}
+                          className={`px-3 py-2 rounded-lg text-sm font-bold capitalize transition-all border-2 ${isActive
+                            ? `${getStatusColor(status)} border-indigo-600 shadow-md scale-105`
+                            : "bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100"
+                            }`}
+                        >
+                          {status}
+                        </button>
+                      );
+                    },
                   )}
                 </div>
               </div>
