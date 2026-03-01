@@ -8,7 +8,6 @@ import {
   Lead,
   Appointment,
   Tenant,
-  ActivityLog,
 } from "../types";
 
 export interface ActivityLog {
@@ -302,6 +301,10 @@ export const api = {
   // --- Leads ---
   async listLeads() {
     return request<Lead[]>(`/api/leads`, { method: "GET", auth: true });
+  },
+
+  async getLead(leadId: string | number) {
+    return request<any>(`/api/leads/${encodeURIComponent(String(leadId))}`, { method: "GET", auth: true });
   },
 
   async createLead(payload: unknown) {

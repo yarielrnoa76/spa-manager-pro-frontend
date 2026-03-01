@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { api } from "../services/api";
 import { Branch, Lead } from "../types";
+import CreateAppointmentModal from "./CreateAppointmentModal";
 
 type LeadModalProps = {
     isOpen: boolean;
@@ -22,9 +23,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'details' | 'tickets'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets'>('details');
     const [leadTickets, setLeadTickets] = useState<any[]>([]);
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+
+    const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
+    const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
+    const [userPermissions, setUserPermissions] = useState<string[]>([]);
+    const [userRole, setUserRole] = useState<string>('');
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -59,6 +65,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         if (isOpen) {
             loadBranches();
             loadResponsibles();
+            loadUserData();
             setActiveTab('details');
             setIsCreatingTicket(false);
             setSelectedTicket(null);
@@ -73,6 +80,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     message: leadToEdit.message || "",
                 });
                 loadLeadTickets(leadToEdit.id);
+                loadLeadAppointments(leadToEdit.id);
             } else {
                 // Pre-llenar datos si vienen en props (solo si no es edit)
                 setFormData((prev) => ({
@@ -85,9 +93,22 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     message: "",
                 }));
                 setLeadTickets([]);
+                setLeadAppointments([]);
             }
         }
     }, [isOpen, initialBranchId, initialName, leadToEdit]);
+
+    const loadUserData = async () => {
+        try {
+            const u = await api.me();
+            if (u) {
+                setUserPermissions(u.permissions || []);
+                setUserRole(u.role?.name || '');
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
 
     const loadBranches = async () => {
         try {
@@ -113,6 +134,17 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setLeadTickets(res.data);
         } catch (err) {
             console.error("Error loading lead tickets", err);
+        }
+    };
+
+    const loadLeadAppointments = async (leadId: string | number) => {
+        try {
+            const res = await api.getLead(leadId);
+            if (res && res.appointments) {
+                setLeadAppointments(res.appointments);
+            }
+        } catch (err) {
+            console.error("Error loading lead appointments", err);
         }
     };
 
@@ -273,11 +305,16 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     }
 
+    const hasPerm = (perm: string) => {
+        if (userRole === 'superadmin') return true;
+        return userPermissions.includes(perm);
+    };
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm transition-opacity">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
+            <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-[1400px] h-[85vh] flex flex-col overflow-hidden transform transition-all scale-100">
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50 flex-shrink-0">
@@ -297,16 +334,31 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
                 {/* Tabs for Edit Mode */}
                 {leadToEdit && (
-                    <div className="flex border-b px-6 bg-white flex-shrink-0">
+                    <div className="flex border-b px-6 bg-white flex-shrink-0 overflow-x-auto">
                         <button
                             onClick={() => setActiveTab('details')}
-                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
                         >
                             Detalles
                         </button>
                         <button
+                            onClick={() => setActiveTab('sales')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'sales' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                        >
+                            Ventas
+                        </button>
+                        {hasPerm('view_appointments') && (
+                            <button
+                                onClick={() => setActiveTab('appointments')}
+                                className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'appointments' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                            >
+                                Citas
+                                {leadAppointments.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadAppointments.length}</span>}
+                            </button>
+                        )}
+                        <button
                             onClick={() => setActiveTab('tickets')}
-                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'tickets' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'}`}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'tickets' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
                         >
                             Tickets
                             {leadTickets.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadTickets.length}</span>}
@@ -314,7 +366,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     </div>
                 )}
 
-                <div className="overflow-y-auto flex-1">
+                <div className="flex-1 overflow-y-auto">
                     {activeTab === 'details' ? (
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -437,8 +489,51 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 </button>
                             </div>
                         </form>
+                    ) : activeTab === 'sales' ? (
+                        <div className="p-6 space-y-4 h-full flex flex-col items-center justify-center min-h-[400px]">
+                            <h4 className="text-gray-500 font-bold mb-2">Ventas asociadas al lead</h4>
+                            <p className="text-sm text-gray-400 italic">(Próximamente)</p>
+                        </div>
+                    ) : activeTab === 'appointments' ? (
+                        <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">
+                            <div className="flex justify-between items-center mb-4 border-b pb-4 flex-shrink-0">
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-lg">Citas Programadas</h4>
+                                    <p className="text-xs text-gray-500">Historial de citas de este evento/lead</p>
+                                </div>
+                                {hasPerm('create_appointments') && (
+                                    <button
+                                        onClick={() => setIsCreatingAppointment(true)}
+                                        className="bg-indigo-600 font-bold text-xs text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2"
+                                    >
+                                        Crear Cita
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-3">
+                                {leadAppointments.length === 0 ? (
+                                    <div className="text-center text-gray-400 text-sm py-12 bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center">
+                                        No hay citas registradas para este lead.
+                                    </div>
+                                ) : (
+                                    leadAppointments.map(app => (
+                                        <div key={app.id} className="bg-white border rounded-xl p-4 shadow-sm flex flex-col gap-2 hover:shadow-md transition-all">
+                                            <div className="flex justify-between">
+                                                <span className="font-bold text-sm text-gray-800">{app.service_type || 'Sin tipo de servicio'}</span>
+                                                <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full ${app.status === 'scheduled' ? 'bg-blue-100 text-blue-700' : app.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{app.status || 'scheduled'}</span>
+                                            </div>
+                                            <div className="text-xs text-gray-500 flex gap-4 mt-1 font-semibold">
+                                                <span className="bg-gray-50 px-2 py-1 rounded">Fecha: {app.date}</span>
+                                                <span className="bg-gray-50 px-2 py-1 rounded">Hora: {app.time}</span>
+                                            </div>
+                                            {app.notes && <div className="text-xs text-gray-400 italic line-clamp-2 mt-2 py-2 px-3 border-l-2 border-indigo-200 bg-indigo-50/30 rounded-r-lg">"{app.notes}"</div>}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     ) : (
-                        <div className="p-6 space-y-4 relative">
+                        <div className="p-6 space-y-4 relative min-h-[400px]">
                             {loading && !leadTickets.length && (
                                 <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10 backdrop-blur-[1px]">
                                     <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -742,10 +837,31 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 </>
                             )}
                         </div>
-                    )}
-                </div>
-            </div>
-        </div>
+                    )
+                    }
+                </div >
+            </div >
+
+            {isCreatingAppointment && (
+                <CreateAppointmentModal
+                    isOpen={isCreatingAppointment}
+                    onClose={() => setIsCreatingAppointment(false)}
+                    onSuccess={() => {
+                        setIsCreatingAppointment(false);
+                        if (leadToEdit) {
+                            loadLeadAppointments(leadToEdit.id);
+                        }
+                    }}
+                    initialData={{
+                        lead_id: leadToEdit?.id,
+                        client_name: formData.name,
+                        client_phone: formData.phone,
+                        client_email: formData.email,
+                        branch_id: formData.branch_id ? Number(formData.branch_id) : null,
+                    }}
+                />
+            )}
+        </div >
     );
 };
 

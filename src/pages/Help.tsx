@@ -73,8 +73,8 @@ const Help: React.FC = () => {
                             key={item.id}
                             onClick={() => setActiveModule(item.id)}
                             className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-bold transition-all text-sm group ${activeModule === item.id
-                                    ? 'bg-white shadow-sm border border-gray-100 text-indigo-600'
-                                    : 'text-gray-500 hover:bg-gray-100/50 hover:text-gray-800'
+                                ? 'bg-white shadow-sm border border-gray-100 text-indigo-600'
+                                : 'text-gray-500 hover:bg-gray-100/50 hover:text-gray-800'
                                 }`}
                         >
                             <div className={`p-2 rounded-xl transition-colors ${activeModule === item.id ? item.color : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'
@@ -262,7 +262,13 @@ const Help: React.FC = () => {
                             </HelpSection>
 
                             <HelpSection title="Historial y Seguimiento" icon={ExternalLink}>
-                                <p>Cada contacto tiene una pestaña de "Notas" y "Tickets" asociada donde se registra todo lo ocurrido anteriormente para un trato personalizado.</p>
+                                <p>Cada Lead cuenta con un panel modal que integra toda su información en diferentes pestañas:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Detalles:</strong> Información de contacto y sucursal.</li>
+                                    <li><strong>Ventas:</strong> Historial de ventas asociadas a este cliente.</li>
+                                    <li><strong>Citas:</strong> Listado de citas programadas y botón rápido para agendar una nueva cita prellenando sus datos.</li>
+                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento asociados.</li>
+                                </ul>
                             </HelpSection>
                         </div>
                     )}
