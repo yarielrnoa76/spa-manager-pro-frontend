@@ -72,8 +72,18 @@ function safeFileLabel(name: string) {
 }
 
 function normalizeDateOnly(d: any): string {
-  const s = String(d ?? "");
+  const s = String(d ?? "").trim();
   if (!s) return "";
+
+  if (s.includes("T")) {
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
@@ -164,7 +174,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     useState<SaleVisibility>("active");
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,7 +196,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     }
   }, [paymentMethods, newSale.payment_method]);
 
-  const fetchData = async () => {
+  const fetchData = async (forceAll = false) => {
     setLoading(true);
     try {
       const salesOpts =
@@ -196,30 +206,44 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             ? { include_cancelled: true }
             : undefined;
 
-      const [s, b, p, l, m] = await Promise.all([
-        api.listSales("all", salesOpts as any),
-        // Si puede ver branches, las carga todas. Si no, carga SOLO la suya (array de 1).
-        canViewBranch
-          ? api.listBranches()
-          : user?.branch
-            ? Promise.resolve([user.branch])
-            : Promise.resolve([]),
-        api.listProducts(),
-        canViewLeads ? api.listLeads() : Promise.resolve([]),
-        api.listPaymentMethods(),
-      ]);
+      const shouldFetchDeps = forceAll || branches.length === 0;
 
-      setSales(Array.isArray(s) ? s : []);
-      setBranches(Array.isArray(b) ? b : []);
-      setProducts(Array.isArray(p) ? p : []);
-      setLeads(Array.isArray(l) ? l : []);
-      setPaymentMethods(Array.isArray(m) ? m : []);
+      const promises: Promise<any>[] = [
+        api.listSales("all", salesOpts as any)
+      ];
+
+      if (shouldFetchDeps) {
+        promises.push(
+          canViewBranch
+            ? api.listBranches()
+            : user?.branch
+              ? Promise.resolve([user.branch])
+              : Promise.resolve([]),
+          api.listProducts(),
+          canViewLeads ? api.listLeads() : Promise.resolve([]),
+          api.listPaymentMethods()
+        );
+      }
+
+      const results = await Promise.all(promises);
+
+      setSales(Array.isArray(results[0]) ? results[0] : []);
+
+      if (shouldFetchDeps) {
+        setBranches(Array.isArray(results[1]) ? results[1] : []);
+        setProducts(Array.isArray(results[2]) ? results[2] : []);
+        setLeads(Array.isArray(results[3]) ? results[3] : []);
+        setPaymentMethods(Array.isArray(results[4]) ? results[4] : []);
+      }
     } catch (err) {
       console.error("Sales fetchData error:", err);
-      setSales([]);
-      setBranches([]);
-      setProducts([]);
-      setLeads([]);
+      if (forceAll || branches.length === 0) {
+        setSales([]);
+        setBranches([]);
+        setProducts([]);
+        setLeads([]);
+        setPaymentMethods([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -251,8 +275,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   useEffect(() => {
     if (sales.length === 0) return;
-    if (!selectedDate && availableDates.length > 0) {
-      setSelectedDate(availableDates[0]);
+    if (availableDates.length > 0) {
+      if (!selectedDate || !availableDates.includes(selectedDate)) {
+        setSelectedDate(availableDates[0]);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales]);

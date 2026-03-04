@@ -76,8 +76,17 @@ function normalizeArray<T = any>(payload: unknown): T[] {
 }
 
 function normalizeDate(d: any): string {
-  const s = String(d ?? "");
+  const s = String(d ?? "").trim();
   if (!s) return "";
+  if (s.includes("T")) {
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 

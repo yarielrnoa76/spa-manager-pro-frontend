@@ -69,15 +69,16 @@ const CreateAppointmentModal: React.FC<{
         setError(null);
 
         Promise.all([
-            api.listBranches(),
-            api.listProducts(),
-            api.listLeads(),
+            api.listBranches().catch(() => []),
+            api.listProducts().catch(() => []),
+            api.listLeads().catch(() => []),
         ]).then(([b, p, l]) => {
-            setBranches(b);
-            setProducts(p);
-            setLeads(l);
+            setBranches(Array.isArray(b) ? b : []);
+            setProducts(Array.isArray(p) ? p : []);
+            setLeads(Array.isArray(l) ? l : []);
         }).catch(console.error);
-    }, [isOpen, initialData]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
     const isFormValid = useMemo(() => {
         return (

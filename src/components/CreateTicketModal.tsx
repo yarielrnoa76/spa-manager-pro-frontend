@@ -40,30 +40,35 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
     useEffect(() => {
         if (isOpen) {
             Promise.all([
-                api.listTicketCategories(),
-                api.listTicketPriorities(),
-                api.listBranches(),
-                api.listLeads(),
-                api.listUsers()
+                api.listTicketCategories().catch(() => []),
+                api.listTicketPriorities().catch(() => []),
+                api.listBranches().catch(() => []),
+                api.listLeads().catch(() => []),
+                api.listUsers().catch(() => [])
             ]).then(([cats, pris, brs, lds, users]) => {
-                setCategories(cats);
-                setPriorities(pris);
-                setBranches(brs);
-                setLeads(lds);
-                setResponsibles(users);
+                const safeCats = Array.isArray(cats) ? cats : [];
+                const safePris = Array.isArray(pris) ? pris : [];
+                const safeBrs = Array.isArray(brs) ? brs : [];
+
+                setCategories(safeCats);
+                setPriorities(safePris);
+                setBranches(safeBrs);
+                setLeads(Array.isArray(lds) ? lds : []);
+                setResponsibles(Array.isArray(users) ? users : []);
 
                 // Auto-select basic stuff if possible
-                if (brs.length > 0 && !formData.branch_id) {
-                    setFormData(prev => ({ ...prev, branch_id: brs[0].id.toString() }));
+                if (safeBrs.length > 0 && !formData.branch_id) {
+                    setFormData(prev => ({ ...prev, branch_id: safeBrs[0].id.toString() }));
                 }
-                if (cats.length > 0 && !formData.category_id) {
-                    setFormData(prev => ({ ...prev, category_id: cats[0].id.toString() }));
+                if (safeCats.length > 0 && !formData.category_id) {
+                    setFormData(prev => ({ ...prev, category_id: safeCats[0].id.toString() }));
                 }
-                if (pris.length > 0 && !formData.priority_id) {
-                    setFormData(prev => ({ ...prev, priority_id: pris[0].id.toString() }));
+                if (safePris.length > 0 && !formData.priority_id) {
+                    setFormData(prev => ({ ...prev, priority_id: safePris[0].id.toString() }));
                 }
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
     if (!isOpen) return null;

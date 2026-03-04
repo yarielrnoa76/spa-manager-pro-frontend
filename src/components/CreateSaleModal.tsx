@@ -57,12 +57,14 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         unit_price: "",
         amount: "",
         payment_method: "Zelle",
+        seller_id: "",
         notes: "",
     });
 
     const [branches, setBranches] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [leads, setLeads] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -83,6 +85,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             unit_price: "",
             amount: "",
             payment_method: "Zelle",
+            seller_id: user?.id ? String(user.id) : "",
             notes: "",
         });
         setError(null);
@@ -91,11 +94,13 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             canViewBranch ? api.listBranches() : (user?.branch ? Promise.resolve([user.branch]) : Promise.resolve([])),
             api.listProducts(),
             canViewLeads ? api.listLeads() : Promise.resolve([]),
-            api.listPaymentMethods()
-        ]).then(([b, p, l, pm]) => {
+            api.listPaymentMethods(),
+            canViewBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
+        ]).then(([b, p, l, pm, u]) => {
             setBranches(Array.isArray(b) ? b : []);
             setProducts(Array.isArray(p) ? p : []);
             setLeads(Array.isArray(l) ? l : []);
+            setUsers(Array.isArray(u) ? u : []);
 
             const pms = Array.isArray(pm) ? pm : [];
             setPaymentMethods(pms);
@@ -252,19 +257,35 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
-                                <select
-                                    required
-                                    className="w-full border rounded-lg p-2 text-sm"
-                                    value={form.product_id}
-                                    onChange={(e) => handleProductSelect(e.target.value)}
-                                >
-                                    <option value="">-- Seleccionar de Inventario --</option>
-                                    {availableProducts.map((p: any) => (
-                                        <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
-                                    ))}
-                                </select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
+                                    <select
+                                        required
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.product_id}
+                                        onChange={(e) => handleProductSelect(e.target.value)}
+                                    >
+                                        <option value="">-- Seleccionar de Inventario --</option>
+                                        {availableProducts.map((p: any) => (
+                                            <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vendedor</label>
+                                    <select
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.seller_id}
+                                        onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
+                                        disabled={!canViewBranch}
+                                    >
+                                        {users.length === 0 && <option value={user?.id}>{user?.name}</option>}
+                                        {users.map(u => (
+                                            <option key={u.id} value={String(u.id)}>{u.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="flex gap-4">
