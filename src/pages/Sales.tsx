@@ -87,29 +87,36 @@ function normalizeDateOnly(d: any): string {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-// ✅ muestra "YYYY-MM-DD HH:mm"
+// ✅ muestra "YYYY-MM-DD HH:mm" usando 'date' como fecha principal
 function formatSaleDateTime(sale: any): string {
-  const raw = sale?.created_at ?? sale?.createdAt ?? sale?.date ?? "";
-  const s = String(raw ?? "").trim();
-  if (!s) return "—";
+  const dateStr = String(sale?.date ?? "").trim();
+  const createdStr = String(sale?.created_at ?? sale?.createdAt ?? "").trim();
 
-  // Caso "YYYY-MM-DD HH:mm:ss"
-  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
-    return s.slice(0, 16); // YYYY-MM-DD HH:mm
+  if (!dateStr && !createdStr) return "—";
+
+  let datePart = "";
+  if (dateStr && dateStr.length >= 10) {
+    datePart = dateStr.slice(0, 10);
+  } else if (createdStr) {
+    const dt = new Date(createdStr);
+    if (!isNaN(dt.getTime())) {
+      datePart = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    } else if (createdStr.length >= 10) {
+      datePart = createdStr.slice(0, 10);
+    }
   }
 
-  // Caso ISO "YYYY-MM-DDTHH:mm:ss..."
-  const dt = new Date(s);
-  if (!isNaN(dt.getTime())) {
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getDate()).padStart(2, "0");
-    const hh = String(dt.getHours()).padStart(2, "0");
-    const mi = String(dt.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  let timePart = "";
+  if (createdStr) {
+    const dt = new Date(createdStr);
+    if (!isNaN(dt.getTime())) {
+      timePart = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+    } else if (/^\d{4}-\d{2}-\d{2}\s+(\d{2}:\d{2})/.test(createdStr)) {
+      timePart = createdStr.match(/^\d{4}-\d{2}-\d{2}\s+(\d{2}:\d{2})/)?.[1] || "";
+    }
   }
 
-  return s.length >= 16 ? s.slice(0, 16) : s;
+  return timePart ? `${datePart} ${timePart}` : datePart;
 }
 
 // ✅ fecha LOCAL (evita UTC que te pone "mañana")

@@ -61,6 +61,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         notes: "",
     });
 
+    const [cart, setCart] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [leads, setLeads] = useState<any[]>([]);
@@ -88,6 +89,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             seller_id: user?.id ? String(user.id) : "",
             notes: "",
         });
+        setCart([]);
         setError(null);
 
         Promise.all([
@@ -159,6 +161,27 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setForm(prev => ({ ...prev, ...recalcTotals({ quantity: String(qty) }) }));
     };
 
+    const handleAddToCart = () => {
+        if (!form.product_id || !form.quantity || toNumber(form.amount) <= 0) return;
+        setCart(prev => [...prev, {
+            id: Date.now().toString(),
+            product_id: form.product_id,
+            service_rendered: form.service_rendered,
+            quantity: parseInt(form.quantity, 10),
+            unit_price: toNumber(form.unit_price),
+            amount: toNumber(form.amount),
+        }]);
+        setForm(prev => ({ ...prev, product_id: "", service_rendered: "", quantity: "1", unit_price: "", amount: "" }));
+    };
+
+    const handleRemoveFromCart = (id: string) => {
+        setCart(prev => prev.filter(item => item.id !== id));
+    };
+
+    const cartTotalAmount = useMemo(() => {
+        return cart.reduce((acc, item) => acc + item.amount, 0);
+    }, [cart]);
+
     const handleCreateSale = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -167,21 +190,30 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             setError("Debes seleccionar o crear un cliente válido (Lead).");
             return;
         }
+        if (cart.length === 0) {
+            setError("Debes añadir al menos un producto a la venta.");
+            return;
+        }
 
         setLoading(true);
         setError(null);
         try {
-            const qty = parseInt(String(form.quantity || "0"), 10) || 0;
-            const unit = toNumber(form.unit_price);
-            const calcAmount = qty > 0 && unit > 0 ? unit * qty : 0;
-
-            await api.createSale({
-                ...form,
-                quantity: qty,
-                unit_price: unit,
-                amount: calcAmount,
-                product_id: form.product_id || null,
-            });
+            for (const item of cart) {
+                await api.createSale({
+                    date: form.date,
+                    branch_id: form.branch_id,
+                    lead_id: form.lead_id,
+                    client_name: form.client_name,
+                    payment_method: form.payment_method,
+                    seller_id: form.seller_id,
+                    notes: form.notes,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    amount: item.amount,
+                    product_id: item.product_id || null,
+                    service_rendered: item.service_rendered,
+                });
+            }
 
             onSuccess();
             onClose();
@@ -198,7 +230,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setIsLeadModalOpen(false);
     };
 
-    const canSubmit = form.branch_id && form.date && form.product_id && form.client_name && form.lead_id && form.quantity && toNumber(form.quantity) > 0 && form.amount && toNumber(form.amount) > 0;
+    const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0 && form.amount && toNumber(form.amount) > 0;
+    const canSubmit = form.branch_id && form.date && form.client_name && form.lead_id && cart.length > 0;
 
     if (!isOpen && !isLeadModalOpen) return null;
 
@@ -254,37 +287,6 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                         onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
                                         max={localISODate()}
                                     />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
-                                    <select
-                                        required
-                                        className="w-full border rounded-lg p-2 text-sm"
-                                        value={form.product_id}
-                                        onChange={(e) => handleProductSelect(e.target.value)}
-                                    >
-                                        <option value="">-- Seleccionar de Inventario --</option>
-                                        {availableProducts.map((p: any) => (
-                                            <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vendedor</label>
-                                    <select
-                                        className="w-full border rounded-lg p-2 text-sm"
-                                        value={form.seller_id}
-                                        onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
-                                        disabled={!canViewBranch}
-                                    >
-                                        {users.length === 0 && <option value={user?.id}>{user?.name}</option>}
-                                        {users.map(u => (
-                                            <option key={u.id} value={String(u.id)}>{u.name}</option>
-                                        ))}
-                                    </select>
                                 </div>
                             </div>
 
@@ -372,11 +374,40 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
+                                    <select
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.product_id}
+                                        onChange={(e) => handleProductSelect(e.target.value)}
+                                    >
+                                        <option value="">-- Seleccionar de Inventario --</option>
+                                        {availableProducts.map((p: any) => (
+                                            <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vendedor</label>
+                                    <select
+                                        className="w-full border rounded-lg p-2 text-sm"
+                                        value={form.seller_id}
+                                        onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
+                                        disabled={!canViewBranch}
+                                    >
+                                        {users.length === 0 && <option value={user?.id}>{user?.name}</option>}
+                                        {users.map(u => (
+                                            <option key={u.id} value={String(u.id)}>{u.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cantidad</label>
                                     <input
                                         type="number"
                                         min={1}
-                                        required
                                         className="w-full border rounded-lg p-2 text-sm font-bold"
                                         value={form.quantity}
                                         onChange={(e) => handleQuantityChange(e.target.value)}
@@ -385,15 +416,53 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total ($)</label>
-                                    <input
-                                        type="text"
-                                        readOnly
-                                        className="w-full border rounded-lg p-2 text-sm font-bold bg-gray-50"
-                                        value={form.amount}
-                                    />
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total Producto ($)</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            className="w-full border rounded-lg p-2 text-sm font-bold bg-gray-50"
+                                            value={form.amount}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleAddToCart}
+                                            disabled={!canAdd}
+                                            className="bg-emerald-600 text-white px-4 rounded-lg font-bold text-xs hover:bg-emerald-700 disabled:bg-gray-300 transition-colors whitespace-nowrap"
+                                        >
+                                            Añadir
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+
+                            {cart.length > 0 && (
+                                <div className="border border-emerald-100 bg-emerald-50/30 rounded-lg p-3 space-y-2">
+                                    <p className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Productos en Venta</p>
+                                    {cart.map((item, idx) => (
+                                        <div key={item.id} className="flex items-center justify-between bg-white px-3 py-2 rounded shadow-sm text-sm border border-emerald-50">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-gray-800">{item.service_rendered}</span>
+                                                <span className="text-xs text-gray-500">{item.quantity} x ${item.unit_price}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-emerald-700">${item.amount.toFixed(2)}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveFromCart(item.id)}
+                                                    className="text-red-400 hover:text-red-600 font-bold p-1"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between items-center px-3 pt-2 font-black text-gray-800">
+                                        <span>Total Final:</span>
+                                        <span className="text-lg text-indigo-600">${cartTotalAmount.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notas</label>
