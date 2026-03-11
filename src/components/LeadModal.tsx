@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { X, MessageSquare } from "lucide-react";
 import { api } from "../services/api";
 import { Branch, Lead } from "../types";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateSaleModal from "./CreateSaleModal";
+import { ConversationChat } from "./ConversationChat";
 
 type LeadModalProps = {
     isOpen: boolean;
@@ -24,9 +25,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets' | 'chat'>('details');
     const [leadTickets, setLeadTickets] = useState<any[]>([]);
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+    const [leadConversations, setLeadConversations] = useState<any[]>([]);
 
     const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
     const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
@@ -45,6 +47,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         branch_id: "",
         source: "other" as Lead["source"],
         message: "",
+        assigned_to: "",
     });
 
     // Nuevo: Estado para creación de ticket rápido
@@ -85,6 +88,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: String(leadToEdit.branch_id),
                     source: leadToEdit.source,
                     message: leadToEdit.message || "",
+                    assigned_to: leadToEdit.assigned_to ? String(leadToEdit.assigned_to) : "",
                 });
                 loadLeadTickets(leadToEdit.id);
                 loadLeadDataExtras(leadToEdit.id);
@@ -98,6 +102,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: initialBranchId || prev.branch_id,
                     source: "other",
                     message: "",
+                    assigned_to: "",
                 }));
                 setLeadTickets([]);
                 setLeadAppointments([]);
@@ -145,6 +150,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    const loadLeadConversations = async (leadId: string | number) => {
+        try {
+            const convs = await api.listConversations({ lead_id: leadId });
+            if (convs && convs.data) setLeadConversations(convs.data);
+        } catch (ce) { console.error(ce); }
+    };
+
     const loadLeadDataExtras = async (leadId: string | number) => {
         try {
             const res = await api.getLead(leadId);
@@ -154,6 +166,21 @@ const LeadModal: React.FC<LeadModalProps> = ({
             }
         } catch (err) {
             console.error("Error loading lead extras", err);
+        }
+    };
+
+    const handleCreateConversation = async () => {
+        if (!leadToEdit) return;
+        setLoading(true);
+        try {
+            const newConv = await api.createConversation({ lead_id: Number(leadToEdit.id) });
+            if (newConv) {
+                setLeadConversations([newConv, ...leadConversations]);
+            }
+        } catch (err: any) {
+            alert(err?.message || "Error al crear la conversación");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -254,10 +281,17 @@ const LeadModal: React.FC<LeadModalProps> = ({
         setLoading(true);
         try {
             let result;
-            if (leadToEdit) {
-                result = await api.updateLead(leadToEdit.id, formData);
+            const payload = { ...formData };
+            if (!payload.assigned_to) {
+                delete (payload as any).assigned_to;
             } else {
-                result = await api.createLead(formData);
+                (payload as any).assigned_to = Number(payload.assigned_to);
+            }
+
+            if (leadToEdit) {
+                result = await api.updateLead(leadToEdit.id, payload);
+            } else {
+                result = await api.createLead(payload);
             }
             onSuccess(result);
             onClose();
@@ -270,6 +304,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: "",
                     source: "other",
                     message: "",
+                    assigned_to: "",
                 });
             }
         } catch (err: any) {
@@ -356,6 +391,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
                         >
                             Detalles
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('chat')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                        >
+                            Chat
+                            {leadConversations.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>}
                         </button>
                         {hasPerm('view_sales') && (
                             <button
@@ -485,6 +527,27 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 ></textarea>
                             </div>
 
+                            {/* Asignación */}
+                            {['admin', 'superadmin', 'manager'].includes(userRole) && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Asignar A
+                                    </label>
+                                    <select
+                                        value={formData.assigned_to}
+                                        onChange={(e) => handleChange("assigned_to", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    >
+                                        <option value="">-- Sin Asignar --</option>
+                                        {responsibles.map((r) => (
+                                            <option key={r.id} value={r.id}>
+                                                {r.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
                             {/* Actions */}
                             <div className="pt-4 flex gap-3">
                                 <button
@@ -603,6 +666,34 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    ) : activeTab === 'chat' ? (
+                        <div className="h-full flex flex-col gap-4 p-6">
+                            {leadConversations.length > 0 ? (
+                                leadConversations.map(conv => (
+                                    <div key={conv.id} className="flex-1 min-h-[400px]">
+                                        <ConversationChat conversationId={conv.id} embedded={true} user={{
+                                            is_super_admin: userRole === 'superadmin',
+                                            role: { name: userRole },
+                                            permissions: userPermissions,
+                                            branch: { id: formData.branch_id }
+                                        }} />
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                                    <MessageSquare size={48} className="mb-4 text-indigo-200" />
+                                    <h3 className="text-lg font-bold text-gray-700 mb-2">Sin conversaciones</h3>
+                                    <p className="text-sm mb-4">No hay un chat activo con este lead. Inicia uno nuevo.</p>
+                                    <button
+                                        onClick={handleCreateConversation}
+                                        disabled={loading}
+                                        className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                    >
+                                        {loading ? "Creando..." : "Iniciar Conversación"}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     ) : activeTab === 'appointments' ? (
                         <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">

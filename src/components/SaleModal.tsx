@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle } from "lucide-react";
+import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare } from "lucide-react";
 import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
@@ -131,6 +131,21 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         } catch (err) {
             console.error("Error updating sale", err);
             alert("Error al actualizar la venta");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateConversation = async () => {
+        if (!sale?.lead_id) return;
+        setLoading(true);
+        try {
+            const newConv = await api.createConversation({ lead_id: sale.lead_id });
+            if (newConv) {
+                setLeadConversations([newConv, ...leadConversations]);
+            }
+        } catch (err: any) {
+            alert(err?.message || "Error al crear la conversación");
         } finally {
             setLoading(false);
         }
@@ -294,15 +309,13 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                             {sale?.lead?.tickets?.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{sale.lead.tickets.length}</span>}
                         </button>
                     )}
-                    {leadConversations.length > 0 && (
-                        <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
-                        >
-                            Chat
-                            <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>
-                        </button>
-                    )}
+                    <button
+                        onClick={() => setActiveTab('chat')}
+                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                    >
+                        Chat
+                        {leadConversations.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>}
+                    </button>
                 </div>
 
                 {/* Content */}
@@ -808,11 +821,35 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
                             {activeTab === 'chat' && (
                                 <div className="h-full flex flex-col gap-4">
-                                    {leadConversations.map(conv => (
-                                        <div key={conv.id} className="flex-1 min-h-[400px]">
-                                            <ConversationChat conversationId={conv.id} embedded={true} />
+                                    {leadConversations.length > 0 ? (
+                                        leadConversations.map(conv => (
+                                            <div key={conv.id} className="flex-1 min-h-[400px]">
+                                                <ConversationChat
+                                                    conversationId={conv.id}
+                                                    embedded={true}
+                                                    user={{
+                                                        is_super_admin: user?.is_super_admin,
+                                                        role: { name: user?.role?.name },
+                                                        permissions: user?.permissions,
+                                                        branch: sale?.branch ? { id: sale.branch.id } : undefined
+                                                    }}
+                                                />
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-500 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                                            <MessageSquare size={48} className="mb-4 text-indigo-200" />
+                                            <h3 className="text-lg font-bold text-gray-700 mb-2">Sin conversaciones</h3>
+                                            <p className="text-sm mb-4">No hay un chat activo con este lead. Inicia uno nuevo.</p>
+                                            <button
+                                                onClick={handleCreateConversation}
+                                                disabled={loading}
+                                                className="bg-indigo-600 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
+                                            >
+                                                {loading ? "Creando..." : "Iniciar Conversación"}
+                                            </button>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             )}
                         </>

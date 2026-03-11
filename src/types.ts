@@ -90,6 +90,8 @@ export interface Lead {
   status: 'new' | 'contacted' | 'sold' | 'discarded';
   created_at: string;
   tenant_id?: number;
+  assigned_to?: string;
+  assignedTo?: User;
 }
 
 export interface RefundLog {

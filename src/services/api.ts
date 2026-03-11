@@ -583,6 +583,10 @@ export const api = {
     return request<any>(`/api/communications/conversations/${id}`, { method: "GET", auth: true });
   },
 
+  async createConversation(payload: { lead_id: number }) {
+    return request<any>(`/api/communications/conversations`, { method: "POST", body: payload, auth: true });
+  },
+
   async getConversationMessages(id: number, page: number = 1) {
     return request<any>(`/api/communications/conversations/${id}/messages?page=${page}`, { method: "GET", auth: true });
   },
