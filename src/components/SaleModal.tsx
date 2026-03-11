@@ -3,6 +3,7 @@ import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Penc
 import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
+import { ConversationChat } from "./ConversationChat";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -15,7 +16,8 @@ type SaleModalProps = {
 const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, onSuccess }) => {
     const [sale, setSale] = useState<any>(null);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'details' | 'lead' | 'appointments' | 'tickets'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'lead' | 'appointments' | 'tickets' | 'chat'>('details');
+    const [leadConversations, setLeadConversations] = useState<any[]>([]);
 
     const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
     const [isCreatingTicket, setIsCreatingTicket] = useState(false);
@@ -105,6 +107,12 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         try {
             const data = await api.getSale(saleId);
             setSale(data);
+            if (data?.lead_id) {
+                try {
+                    const convs = await api.listConversations({ lead_id: data.lead_id });
+                    if (convs && convs.data) setLeadConversations(convs.data);
+                } catch (ce) { console.error("Error loading conversations", ce); }
+            }
         } catch (err) {
             console.error("Error loading sale", err);
             onClose();
@@ -284,6 +292,15 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                         >
                             Tickets
                             {sale?.lead?.tickets?.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{sale.lead.tickets.length}</span>}
+                        </button>
+                    )}
+                    {leadConversations.length > 0 && (
+                        <button
+                            onClick={() => setActiveTab('chat')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                        >
+                            Chat
+                            <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>
                         </button>
                     )}
                 </div>
@@ -786,6 +803,16 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                             ))}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {activeTab === 'chat' && (
+                                <div className="h-full flex flex-col gap-4">
+                                    {leadConversations.map(conv => (
+                                        <div key={conv.id} className="flex-1 min-h-[400px]">
+                                            <ConversationChat conversationId={conv.id} embedded={true} />
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </>

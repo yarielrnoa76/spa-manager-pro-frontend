@@ -23,6 +23,7 @@ import {
   History,
   Ticket,
   HelpCircle,
+  MessageSquare,
 } from "lucide-react";
 
 import NotificationBell from "./components/NotificationBell";
@@ -41,6 +42,7 @@ import Login from "./pages/Login";
 import SettingsPage from "./pages/Settings";
 import Tenants from "./pages/Tenants";
 import LogManagement from "./pages/LogManagement";
+import CommunicationCenter from "./pages/CommunicationCenter";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 
@@ -186,6 +188,7 @@ const App: React.FC = () => {
       { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
       { to: "/leads", icon: UserPlus, label: "Leads / Contacts" },
       { to: "/appointments", icon: Calendar, label: "Citas" },
+      { to: "/communications", icon: MessageSquare, label: "Comm. Center" },
       ...(hasPerm("view_ticket")
         ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
         : []),
@@ -382,6 +385,7 @@ const App: React.FC = () => {
                 <Route path="/stocks" element={<Stocks />} />
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/appointments" element={<Appointments />} />
+                <Route path="/communications" element={<CommunicationCenter user={user} />} />
                 <Route path="/tickets" element={<Tickets />} />
                 <Route path="/help" element={<Help />} />
                 <Route

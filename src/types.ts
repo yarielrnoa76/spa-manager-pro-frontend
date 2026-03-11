@@ -191,3 +191,37 @@ export interface Notification {
   read_at?: string;
   created_at: string;
 }
+
+export interface ConversationMessage {
+  id: number;
+  tenant_id: number;
+  conversation_id: number;
+  direction: 'inbound' | 'outbound';
+  message_type: 'text' | 'image' | 'audio' | 'document' | 'system' | 'note';
+  sender_type: 'customer' | 'bot' | 'user' | 'system';
+  body: string;
+  status: string;
+  is_read: boolean;
+  created_at: string;
+  sender?: User;
+}
+
+export interface Conversation {
+  id: number;
+  tenant_id: number;
+  branch_id?: string;
+  lead_id?: string;
+  assigned_user_id?: string;
+  contact_name: string;
+  contact_phone: string;
+  status: 'open' | 'pending' | 'resolved' | 'closed';
+  bot_enabled: boolean;
+  is_important: boolean;
+  last_message_at: string;
+  last_message_preview: string;
+  unread_count: number;
+  created_at: string;
+  lead?: Lead;
+  assignedUser?: User;
+  branch?: Branch;
+}

@@ -567,4 +567,43 @@ export const api = {
   async markAllNotificationsAsRead() {
     return request(`/api/notifications/read-all`, { method: "POST", auth: true });
   },
+
+  // --- Communication Center ---
+  async listConversations(params: any = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") {
+        searchParams.append(key, String(value));
+      }
+    });
+    return request<{ data: any[]; last_page: number; total: number }>(`/api/communications/conversations?${searchParams.toString()}`, { method: "GET", auth: true });
+  },
+
+  async getConversation(id: number) {
+    return request<any>(`/api/communications/conversations/${id}`, { method: "GET", auth: true });
+  },
+
+  async getConversationMessages(id: number, page: number = 1) {
+    return request<any>(`/api/communications/conversations/${id}/messages?page=${page}`, { method: "GET", auth: true });
+  },
+
+  async sendConversationMessage(id: number, body: string) {
+    return request<any>(`/api/communications/conversations/${id}/messages`, { method: "POST", body: { body }, auth: true });
+  },
+
+  async toggleConversationBot(id: number) {
+    return request<any>(`/api/communications/conversations/${id}/toggle-bot`, { method: "POST", auth: true });
+  },
+
+  async toggleConversationImportant(id: number) {
+    return request<any>(`/api/communications/conversations/${id}/toggle-important`, { method: "POST", auth: true });
+  },
+
+  async markConversationRead(id: number) {
+    return request<any>(`/api/communications/conversations/${id}/mark-read`, { method: "POST", auth: true });
+  },
+
+  async updateConversationStatus(id: number, status: string) {
+    return request<any>(`/api/communications/conversations/${id}/status`, { method: "PATCH", body: { status }, auth: true });
+  },
 };
