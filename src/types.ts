@@ -11,6 +11,11 @@ export interface Tenant {
   name: string;
   slug: string;
   status: 'active' | 'suspended';
+  n8n_api_key?: string | null;
+  chatwoot_base_url?: string | null;
+  chatwoot_api_token?: string | null;
+  chatwoot_account_id?: string | null;
+  chatwoot_inbox_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }

@@ -122,6 +122,11 @@ const TenantFormModal: React.FC<{
     const [name, setName] = useState(tenant?.name || "");
     const [slug, setSlug] = useState(tenant?.slug || "");
     const [status, setStatus] = useState(tenant?.status || "active");
+    const [n8nApiKey, setN8nApiKey] = useState(tenant?.n8n_api_key || "");
+    const [chatwootBaseUrl, setChatwootBaseUrl] = useState(tenant?.chatwoot_base_url || "");
+    const [chatwootApiToken, setChatwootApiToken] = useState(tenant?.chatwoot_api_token || "");
+    const [chatwootAccountId, setChatwootAccountId] = useState(tenant?.chatwoot_account_id || "");
+    const [chatwootInboxId, setChatwootInboxId] = useState(tenant?.chatwoot_inbox_id || "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -130,10 +135,20 @@ const TenantFormModal: React.FC<{
         setSaving(true);
         setError(null);
         try {
+            const payload = {
+                name,
+                slug: slug || undefined,
+                status,
+                n8n_api_key: n8nApiKey || undefined,
+                chatwoot_base_url: chatwootBaseUrl || undefined,
+                chatwoot_api_token: chatwootApiToken || undefined,
+                chatwoot_account_id: chatwootAccountId || undefined,
+                chatwoot_inbox_id: chatwootInboxId || undefined,
+            };
             if (isEdit && tenant) {
-                await api.updateTenant(tenant.id, { name, slug, status });
+                await api.updateTenant(tenant.id, payload as any);
             } else {
-                await api.createTenant({ name, slug: slug || undefined, status });
+                await api.createTenant(payload as any);
             }
             onSaved();
         } catch (err: unknown) {
@@ -202,12 +217,85 @@ const TenantFormModal: React.FC<{
                         </select>
                     </div>
 
+                    <div className="border-t border-gray-100 pt-4 mt-2">
+                        <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <Shield size={16} className="text-indigo-600" />
+                            Integraciones y API
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    N8N API Key
+                                </label>
+                                <input
+                                    type="text"
+                                    value={n8nApiKey}
+                                    onChange={(e) => setN8nApiKey(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="Bearer Token para n8n"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Chatwoot Base URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={chatwootBaseUrl}
+                                    onChange={(e) => setChatwootBaseUrl(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="https://chat.midominio.com"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Chatwoot Account ID
+                                </label>
+                                <input
+                                    type="text"
+                                    value={chatwootAccountId}
+                                    onChange={(e) => setChatwootAccountId(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="Ej: 1"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Chatwoot API Token
+                                </label>
+                                <input
+                                    type="text"
+                                    value={chatwootApiToken}
+                                    onChange={(e) => setChatwootApiToken(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="Token de acceso para Chatwoot"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    Chatwoot Inbox ID
+                                </label>
+                                <input
+                                    type="text"
+                                    value={chatwootInboxId}
+                                    onChange={(e) => setChatwootInboxId(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="Ej: 2"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     {error && (
                         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                             {error}
                         </div>
                     )}
-
                     <div className="flex gap-3 pt-2">
                         <button
                             type="button"
@@ -224,9 +312,9 @@ const TenantFormModal: React.FC<{
                             {saving ? "Saving…" : isEdit ? "Save Changes" : "Create"}
                         </button>
                     </div>
-                </form>
-            </div>
-        </div>
+                </form >
+            </div >
+        </div >
     );
 };
 
