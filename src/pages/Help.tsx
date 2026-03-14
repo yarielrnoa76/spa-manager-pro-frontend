@@ -3,10 +3,10 @@ import {
     HelpCircle, Ticket, Calendar, Package, DollarSign, UserPlus,
     ChevronDown, ChevronUp, BookOpen, Info, MessageSquare,
     Search, ExternalLink, ArrowRight, Settings, Activity,
-    BarChart3, Bell
+    BarChart3, Bell, Radio, Shield, Key, Link, Globe2
 } from 'lucide-react';
 
-type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'audit' | 'settings' | 'notifications';
+type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'communication' | 'audit' | 'settings' | 'notifications';
 
 interface HelpSectionProps {
     title: string;
@@ -54,6 +54,7 @@ const Help: React.FC = () => {
         { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-amber-600 bg-amber-50' },
         { id: 'sales', label: 'Ventas Diarias', icon: DollarSign, color: 'text-emerald-600 bg-emerald-50' },
         { id: 'leads', label: 'Contactos / Leads', icon: UserPlus, color: 'text-indigo-600 bg-indigo-50' },
+        { id: 'communication', label: 'Communication Center', icon: Radio, color: 'text-teal-600 bg-teal-50' },
         { id: 'audit', label: 'Auditoría / Logs', icon: Activity, color: 'text-slate-600 bg-slate-50' },
         { id: 'settings', label: 'Configuración', icon: Settings, color: 'text-rose-600 bg-rose-50' },
         { id: 'notifications', label: 'Notificaciones', icon: Bell, color: 'text-orange-600 bg-orange-50' },
@@ -532,6 +533,71 @@ const Help: React.FC = () => {
                         </div>
                     )}
 
+                    {/* COMMUNICATION CENTER HELP */}
+                    {activeModule === 'communication' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-teal-50 text-teal-600 rounded-2xl">
+                                    <Radio size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Communication Center</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Mensajería centralizada vía WhatsApp / Chatwoot</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Visión General" icon={Info} defaultOpen={true}>
+                                <p>El Communication Center centraliza toda la comunicación entre clientes/leads y su equipo. Los mensajes fluyen a través de la siguiente arquitectura:</p>
+                                <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 mt-4">
+                                    <p className="text-sm text-teal-900 font-medium">Cliente (WhatsApp) → Meta Cloud API → Chatwoot → Webhook → SPA Manager Pro</p>
+                                    <p className="text-sm text-teal-900 font-medium mt-1">SPA Manager Pro → Chatwoot API → Meta → Cliente (WhatsApp)</p>
+                                </div>
+                                <p className="mt-3 text-sm">Los mensajes se reciben automáticamente y se vinculan con el Lead correspondiente por número telefónico.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Panel de Conversaciones" icon={MessageSquare}>
+                                <p>La interfaz se divide en 3 paneles:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Panel Izquierdo:</strong> Lista de conversaciones con filtros por estado (Abierto, Pendiente, Resuelto), control de Bot, indicador de no leídos y búsqueda por nombre o teléfono.</li>
+                                    <li><strong>Panel Central:</strong> Chat en tiempo real con burbujas de mensaje, indicadores de estado (enviado, entregado, fallido) y campo de respuesta.</li>
+                                    <li><strong>Panel Derecho:</strong> Detalle del contacto asociado, enlace al Lead y datos como teléfono, email, sucursal y usuario asignado.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Permisos de Conversación" icon={Shield}>
+                                <p>El acceso a las conversaciones está controlado por permisos granulares:</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">view_conversations</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Ver conversaciones propias y las no asignadas.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-indigo-600">view_all_conversations</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Ver todas las conversaciones de todos los usuarios.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-emerald-600">reply_conversations</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Responder en conversaciones propias o sin asignar.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-amber-600">reply_all_conversations</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Responder en cualquier conversación del sistema.</p>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-sm text-gray-500">Los roles <strong>Admin</strong> y <strong>SuperAdmin</strong> tienen acceso total a todas las conversaciones.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Control del Bot" icon={ExternalLink}>
+                                <p>Cada conversación tiene un interruptor de Bot que determina si las respuestas automáticas (vía n8n) están activas:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Bot Activo:</strong> Las respuestas del flujo automatizado de n8n se procesan normalmente.</li>
+                                    <li><strong>Bot Inactivo:</strong> Solo los usuarios humanos atienden la conversación. El bot se desactiva automáticamente cuando un usuario envía un mensaje manual.</li>
+                                    <li>El botón de toggle permite reactivar el bot en cualquier momento.</li>
+                                </ul>
+                            </HelpSection>
+                        </div>
+                    )}
+
                     {/* SETTINGS HELP */}
                     {activeModule === 'settings' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -541,14 +607,14 @@ const Help: React.FC = () => {
                                 </div>
                                 <div>
                                     <h2 className="text-2xl font-black text-gray-900 tracking-tight">Configuración</h2>
-                                    <p className="text-sm text-gray-500 font-medium">Ajustes generales y administración del sistema</p>
+                                    <p className="text-sm text-gray-500 font-medium">Ajustes generales, integraciones y administración</p>
                                 </div>
                             </header>
 
                             <HelpSection title="Pestañas de Configuración" icon={Info} defaultOpen={true}>
                                 <p>La sección de Configuración se divide en pestañas según su rol:</p>
                                 <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
-                                    <li><strong>Tenants:</strong> (Solo Super Admin) Gestión de organizaciones/inquilinos del sistema multi-tenant.</li>
+                                    <li><strong>Tenants:</strong> (Solo Super Admin) Gestión de organizaciones/inquilinos del sistema multi-tenant. Incluye la configuración de integraciones externas.</li>
                                     <li><strong>Sucursales:</strong> Cree, edite o desactive ubicaciones físicas donde opera su negocio.</li>
                                     <li><strong>Roles y Permisos:</strong> Defina los roles del equipo y asigne permisos granulares que controlen qué puede ver o hacer cada uno.</li>
                                     <li><strong>Usuarios:</strong> Administre los perfiles de login del personal.</li>
@@ -556,6 +622,128 @@ const Help: React.FC = () => {
                                 <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 flex gap-4 mt-4">
                                     <Info className="text-indigo-600 shrink-0" size={20} />
                                     <p className="text-sm text-indigo-900"><strong>Importante:</strong> Cualquier dato creado en esta pantalla pertenece automáticamente al tenant activo. Si es Super Admin, utilice el selector de tenant en la esquina superior derecha para cambiar de contexto.</p>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Integración con Chatwoot" icon={Globe2}>
+                                <p>Para habilitar la comunicación bidireccional vía WhatsApp, configure los siguientes campos en la edición del Tenant (sección "Integraciones y API"):</p>
+                                <div className="grid grid-cols-1 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_BASE_URL</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">URL base de su instancia de Chatwoot (ej: <em>https://app.chatwoot.com</em>). No incluir barra al final.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_ACCOUNT_ID</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">ID numérico de su cuenta en Chatwoot. Se obtiene desde Configuración → Cuenta en la interfaz de Chatwoot.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_API_TOKEN</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Token de acceso a la API de Chatwoot. Se genera en Configuración → Perfil → token de acceso. Este valor se almacena <strong>encriptado</strong> en la base de datos.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_INBOX_ID</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">ID del Inbox (bandeja) de WhatsApp en Chatwoot. Se obtiene desde Configuración → Bandejas.</p>
+                                    </div>
+                                </div>
+                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
+                                    <Shield className="text-amber-600 shrink-0" size={20} />
+                                    <p className="text-sm text-amber-900"><strong>Seguridad:</strong> El API Token se almacena encriptado con AES-256. En la interfaz solo se muestra como "••••••••" para indicar que está configurado. Para actualizarlo, simplemente ingrese un nuevo valor.</p>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Webhook de Chatwoot" icon={Link}>
+                                <p>Para que los mensajes de clientes lleguen a SPA Manager Pro, configure un webhook en Chatwoot apuntando a su servidor:</p>
+                                <div className="bg-gray-900 p-4 rounded-2xl mt-4 overflow-x-auto">
+                                    <code className="text-emerald-400 text-xs font-mono">POST https://su-dominio.com/api/communications/webhooks/chatwoot</code>
+                                </div>
+                                <p className="mt-3 text-sm font-bold text-gray-800">Configuración en Chatwoot:</p>
+                                <ol className="list-decimal pl-5 space-y-2 mt-2 text-sm">
+                                    <li>Vaya a <strong>Settings → Integrations → Webhooks</strong> en Chatwoot.</li>
+                                    <li>Agregue un nuevo webhook con la URL de arriba.</li>
+                                    <li>Seleccione el evento <strong>message_created</strong>.</li>
+                                    <li>Configure el header de autenticación: <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">X-API-KEY: su_token_seguro</code></li>
+                                </ol>
+                                <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex gap-4 mt-4">
+                                    <Shield className="text-red-600 shrink-0" size={20} />
+                                    <p className="text-sm text-red-900"><strong>Obligatorio:</strong> El webhook requiere autenticación vía header <code className="bg-red-100 px-1 rounded">X-API-KEY</code>. Sin el token correcto, el servidor rechazará las peticiones con error 401. El token debe coincidir con el <em>N8N_API_KEY</em> configurado en el tenant o en las variables de entorno.</p>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Estructura del Payload (Webhook)" icon={ExternalLink}>
+                                <p>El webhook espera recibir payloads en formato JSON con la estructura estándar de Chatwoot. Ejemplo de payload entrante:</p>
+                                <div className="bg-gray-900 p-4 rounded-2xl mt-4 overflow-x-auto">
+                                    <pre className="text-green-400 text-xs font-mono leading-relaxed">{`{
+  "event": "message_created",
+  "account": { "id": 1 },
+  "inbox": { "id": 5 },
+  "conversation": {
+    "id": 1234,
+    "contact": {
+      "name": "María García",
+      "phone_number": "+13051234567"
+    }
+  },
+  "message": {
+    "id": 5678,
+    "content": "Hola, quiero agendar un masaje",
+    "message_type": 0
+  }
+}`}</pre>
+                                </div>
+                                <p className="mt-3 text-sm">Campos importantes:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li><strong>event:</strong> Solo se procesan eventos <code className="bg-gray-100 px-1 rounded text-xs">message_created</code>. Otros eventos son ignorados.</li>
+                                    <li><strong>account.id:</strong> Se usa para identificar automáticamente el Tenant (por <em>chatwoot_account_id</em>).</li>
+                                    <li><strong>conversation.contact.phone_number:</strong> Se usa para vincular automáticamente con un Lead existente.</li>
+                                    <li><strong>message.message_type:</strong> <code className="bg-gray-100 px-1 rounded text-xs">0</code> = entrada (cliente), <code className="bg-gray-100 px-1 rounded text-xs">1</code> = salida (bot/agente).</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Integración con n8n" icon={Key}>
+                                <p>n8n actúa como orquestador de flujos automatizados. La integración se configura con:</p>
+                                <div className="grid grid-cols-1 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-violet-600">N8N_API_KEY</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Clave de autenticación que los flujos de n8n deben enviar como header <code className="bg-gray-200 px-1 rounded">X-API-KEY</code> al comunicarse con SPA Manager Pro. Se almacena <strong>encriptado</strong>.</p>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-sm font-bold text-gray-800">Endpoints disponibles para n8n:</p>
+                                <div className="space-y-2 mt-2">
+                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
+                                        <code className="text-cyan-400 text-xs font-mono">POST /api/bot/appointments</code>
+                                        <span className="text-gray-500 text-xs ml-3">— Crear citas automáticas desde el chatbot</span>
+                                    </div>
+                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
+                                        <code className="text-cyan-400 text-xs font-mono">POST /api/leads/webhook</code>
+                                        <span className="text-gray-500 text-xs ml-3">— Capturar leads desde formularios o bots</span>
+                                    </div>
+                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
+                                        <code className="text-cyan-400 text-xs font-mono">POST /api/communications/webhooks/chatwoot</code>
+                                        <span className="text-gray-500 text-xs ml-3">— Recibir mensajes de conversación</span>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-sm text-gray-500">Todos los endpoints protegidos requieren el header <code className="bg-gray-100 px-1 rounded text-xs">X-API-KEY</code> con el valor configurado.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Rate Limiting (Protección)" icon={Shield}>
+                                <p>Para proteger el servidor de abusos, los endpoints públicos tienen límites de peticiones:</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-red-600">Login</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Máximo 5 intentos por minuto por IP.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-amber-600">Lead Webhook</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Máximo 10 peticiones por minuto.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-teal-600">Bot Appointments</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Máximo 60 peticiones por minuto.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-indigo-600">Chatwoot Webhook</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Máximo 120 peticiones por minuto.</p>
+                                    </div>
                                 </div>
                             </HelpSection>
 
@@ -572,7 +760,7 @@ const Help: React.FC = () => {
                                 <p>El sistema de control de acceso funciona en dos niveles:</p>
                                 <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
                                     <li><strong>Roles:</strong> Agrupe permisos bajo un nombre lógico (Vendedor, Cajero, Administrador, etc.).</li>
-                                    <li><strong>Permisos:</strong> Controles granulares como <em>view_leads</em>, <em>delete_product</em>, <em>view_branch</em>, etc. que determinan qué secciones y acciones son accesibles.</li>
+                                    <li><strong>Permisos:</strong> Controles granulares como <em>view_leads</em>, <em>delete_product</em>, <em>view_branch</em>, <em>view_conversations</em>, <em>reply_all_conversations</em>, etc. que determinan qué secciones y acciones son accesibles.</li>
                                     <li><strong>Usuarios:</strong> Cada miembro del equipo se asocia a un rol, una sucursal y un tenant.</li>
                                 </ul>
                             </HelpSection>
