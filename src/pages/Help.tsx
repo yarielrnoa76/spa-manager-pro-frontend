@@ -296,9 +296,19 @@ const Help: React.FC = () => {
                             <HelpSection title="Estados de la Cita" icon={ExternalLink}>
                                 <p>Mantenga actualizada su agenda marcando el estado correcto:</p>
                                 <ul className="list-none space-y-3 mt-4">
-                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-blue-500"></div> <strong>Confirmada:</strong> El cliente aseguró asistencia.</li>
-                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-green-500"></div> <strong>Completada:</strong> El servicio fue realizado y facturado.</li>
-                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-red-500"></div> <strong>Cancelada:</strong> El espacio queda liberado.</li>
+                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-blue-500"></div> <strong>Programada (Scheduled):</strong> Cita tentativa o inicial.</li>
+                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> <strong>Confirmada:</strong> El cliente aseguró asistencia y se ha procesado la venta.</li>
+                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> <strong>Completada:</strong> El servicio fue realizado exitosamente.</li>
+                                    <li className="flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-rose-500"></div> <strong>Cancelada:</strong> El espacio queda liberado.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Gestión Interactiva desde el Lead" icon={ArrowRight}>
+                                <p>Dentro del perfil de un Lead (pestaña Citas), usted puede gestionar el ciclo de vida completo de una cita haciendo clic sobre ella:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Detalle de Cita:</strong> Al seleccionar una cita verá sus notas, servicio, fecha y hora.</li>
+                                    <li><strong>Confirmar y Vender:</strong> El botón "Confirmar y Realizar Venta" cambia el estado a Confirmada y abre automáticamente el formulario de cobro con todos los datos precargados.</li>
+                                    <li><strong>Control de Flujo:</strong> Puede marcar citas como completadas o cancelarlas según sea necesario sin salir del perfil del lead.</li>
                                 </ul>
                             </HelpSection>
                         </div>
@@ -438,13 +448,23 @@ const Help: React.FC = () => {
                             </header>
 
                             <HelpSection title="Pipeline de Ventas" icon={Info} defaultOpen={true}>
-                                <p>Gestione el camino de sus prospectos desde que llegan al spa hasta que se convierten en citas confirmadas. El tablero Kanban organiza los leads en 4 columnas de estado:</p>
+                                <p>Gestione el camino de sus prospectos desde que llegan al spa hasta que se convierten en citas confirmadas. El tablero Kanban organiza los leads en 7 columnas de estado estructuradas cronológicamente:</p>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-                                    <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 text-center">Nuevo</span>
-                                    <span className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold border border-amber-200 text-center">Contactado</span>
-                                    <span className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-bold border border-green-200 text-center">Vendido</span>
-                                    <span className="px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg text-xs font-bold border border-gray-200 text-center">Descartado</span>
+                                    <span className="px-2 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-[11px] font-bold border border-blue-200 text-center">Incoming Lead</span>
+                                    <span className="px-2 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-bold border border-amber-200 text-center">1er Contacto</span>
+                                    <span className="px-2 py-1.5 bg-orange-50 text-orange-700 rounded-lg text-[11px] font-bold border border-orange-200 text-center">2do Contacto</span>
+                                    <span className="px-2 py-1.5 bg-red-50 text-red-700 rounded-lg text-[11px] font-bold border border-red-200 text-center">3er Contacto</span>
+                                    <span className="px-2 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-[11px] font-bold border border-indigo-200 text-center">Cliente Interesado</span>
+                                    <span className="px-2 py-1.5 bg-cyan-50 text-cyan-700 rounded-lg text-[11px] font-bold border border-cyan-200 text-center">Frío Recuperado</span>
+                                    <span className="px-2 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-bold border border-emerald-200 text-center sm:col-span-2">Cita Agendada</span>
                                 </div>
+                                <ul className="list-disc pl-5 mt-4 space-y-2 text-sm text-gray-700">
+                                    <li><strong>Incoming Lead:</strong> Nuevo prospecto recién ingresado (manual o por integraciones como Web/WhatsApp). Todo lead entra por este estado inicial.</li>
+                                    <li><strong>Contactos (1er, 2do y 3er):</strong> Estados de seguimiento escalonado que avanzan a medida que su equipo intenta comunicarse con el lead sin obtener respuesta definitiva.</li>
+                                    <li><strong>Cliente Interesado:</strong> El lead responde positivamente y entra en fase de negociación.</li>
+                                    <li><strong>Frío Recuperado:</strong> Prospectos antiguos o descartados que retoman el interés.</li>
+                                    <li><strong>Cita Agendada:</strong> Sustituye al antiguo estado "Vendido", centralizando el objetivo final: agendar. Si un cliente no se presenta o re-agenda, el lead fluye hacia Cliente Interesado nuevamente para que la fuerza de ventas siga el proceso.</li>
+                                </ul>
                                 <p className="mt-4 font-bold text-indigo-900">¿De dónde vienen los leads?</p>
                                 <div className="grid grid-cols-2 gap-2 mt-2">
                                     <span className="px-3 py-1 bg-gray-100 rounded-lg text-xs font-medium border border-gray-200">WhatsApp</span>
@@ -466,13 +486,24 @@ const Help: React.FC = () => {
                             </HelpSection>
 
                             <HelpSection title="Historial y Seguimiento Activo" icon={ExternalLink}>
-                                <p>La ventana modal mejorada del Lead integra todos sus registros clave para operar sin cambiar de pantalla a lo largo de 4 pestañas vitales:</p>
+                                <p>La ventana modal mejorada del Lead integra todos sus registros clave para operar sin cambiar de pantalla a lo largo de 5 pestañas vitales:</p>
                                 <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
-                                    <li><strong>Detalles:</strong> Muestra la información de contacto primaria e indicadores de sucursal. Aquí se editan nombre, teléfono, email, fuente y sucursal del Lead.</li>
-                                    <li><strong>Ventas:</strong> Permite consultar el balance de compras efectuadas y gestionar una <span className="text-emerald-600 font-bold">Nueva Venta</span> asociada al prospecto de forma directa, prellenando su nombre y sucursal.</li>
-                                    <li><strong>Citas:</strong> Incluye cronología de atenciones y la facilidad integral de pre-llenar una nueva cita con datos del consumidor.</li>
-                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento en curso vinculados al Lead. Incluye detalle del ticket, cambio de estado, comentarios y creación de nuevos tickets desde el mismo modal.</li>
+                                    <li><strong>Detalles:</strong> Información de contacto primaria e indicadores de sucursal.</li>
+                                    <li><strong>Timeline:</strong> Historial cronológico visual que combina mensajes, ventas, citas y auditoría en una línea de tiempo centralizada.</li>
+                                    <li><strong>Ventas:</strong> Consulta de balance y gestión de <span className="text-emerald-600 font-bold">Nueva Venta</span> directa.</li>
+                                    <li><strong>Citas:</strong> Cronología interactiva que permite ver detalles y cambiar estados de citas (confirmar, completar, cancelar).</li>
+                                    <li><strong>Tickets:</strong> Casos de soporte o seguimiento con historial de comentarios.</li>
                                 </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Línea de Tiempo (Timeline)" icon={Activity}>
+                                <p>El Timeline ofrece una visión de 360° de la interacción con el prospecto, organizada verticalmente con lo más reciente arriba:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Eventos a la Izquierda:</strong> Nombre del evento (Venta, Mensaje, Cita, Cambio de Estado) y hora exacta.</li>
+                                    <li><strong>Detalles a la Derecha:</strong> Contenido específico como el producto vendido, importe, contenido del mensaje o servicio agendado.</li>
+                                    <li><strong>Codificación por Colores:</strong> Los puntos de la línea central se colorean según el tipo de interacción para una lectura rápida.</li>
+                                </ul>
+                                <p className="mt-3 text-sm text-gray-500 italic">Cada vez que abre la pestaña, el sistema sincroniza automáticamente todas las fuentes de datos para asegurar información fresca.</p>
                             </HelpSection>
                         </div>
                     )}

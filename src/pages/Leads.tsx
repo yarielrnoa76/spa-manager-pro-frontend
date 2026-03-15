@@ -72,85 +72,86 @@ const LeadCard: React.FC<{
   const availableNextStatuses = STATUS_KEYS.filter(k => k !== lead.status);
 
   return (
-    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between min-h-[160px]">
+    <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between min-h-[140px]">
       <div>
-        <div className="flex justify-between items-start gap-2">
-          <div>
-            <h3 className="font-bold text-sm">{lead.name}</h3>
-            <p className="text-xs text-gray-500">{lead.phone}</p>
+        <div className="flex justify-between items-start gap-1">
+          <div className="w-full pr-1">
+            <h3 className="font-bold text-xs leading-tight break-words text-indigo-950" title={lead.name}>{lead.name}</h3>
+            <p className="text-[11px] text-indigo-600/80 font-bold mt-0.5 break-words" title={lead.phone}>{lead.phone}</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex shrink-0">
+            <button
+              className="text-gray-300 hover:text-indigo-600 p-0.5 rounded transition-colors"
+              onClick={() => onEdit(lead)}
+              title="Editar lead"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          </div>
+        </div>
+        <p className="text-[10px] text-gray-400 mb-2 line-clamp-2 italic leading-tight mt-1.5 border-l-2 border-gray-100 pl-1.5">
+          "{lead.message || ""}"
+        </p>
+      </div>
+
+      <div>
+        <div className="flex justify-between items-center mb-2 mt-auto">
+          <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+            {getSourceIcon(lead.source)}
+            <span className="capitalize">{lead.source}</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => onDeleteRequest(lead)}
-              className="text-gray-400 hover:text-red-600 transition-colors"
+              className="p-1 text-gray-300 hover:text-white hover:bg-red-500 rounded-full transition-colors"
               title={
                 lead.status === "cold_lead"
                   ? "Eliminar permanentemente"
                   : "Mover a lead frío"
               }
             >
-              <Trash2 size={16} />
+              <Trash2 size={12} />
             </button>
-            <button
-              className="text-gray-400 hover:text-gray-600"
-              onClick={() => onEdit(lead)}
-              title="Editar lead"
-            >
-              <MoreHorizontal size={16} />
-            </button>
-          </div>
-        </div>
-        <p className="text-xs text-gray-500 mb-3 line-clamp-2 italic">
-          "{lead.message || ""}"
-        </p>
-      </div>
-
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-1 text-xs text-gray-400">
-            {getSourceIcon(lead.source)}
-            <span className="capitalize">{lead.source}</span>
-          </div>
-          <div className="flex items-center gap-2">
+            <div className="w-px h-3 bg-gray-200 mx-0.5"></div>
             <a
               href={`https://wa.me/${formatWhatsAppPhone(lead.phone)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-green-500 bg-gray-100 rounded-full transition-colors"
+              className="p-1 text-green-600 hover:text-white hover:bg-green-500 bg-green-50 rounded-full transition-colors"
             >
-              <MessageSquare size={14} />
+              <MessageSquare size={12} />
             </a>
             <a
               href={`tel:${lead.phone}`}
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-blue-500 bg-gray-100 rounded-full transition-colors"
+              className="p-1 text-blue-600 hover:text-white hover:bg-blue-500 bg-blue-50 rounded-full transition-colors"
             >
-              <Phone size={14} />
+              <Phone size={12} />
             </a>
           </div>
         </div>
-        </div>
-        <div className="flex gap-2 text-xs relative mt-3">
+        
+        <div className="flex gap-1.5 text-[10px] relative mt-1.5">
           {prev && (
             <button
               title="Mover al estado anterior"
               onClick={() => onStatusChange(lead.id, prev)}
-              className="py-1.5 px-3 bg-gray-100 text-gray-600 rounded font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center flex-shrink-0"
+              className="py-1 px-2 bg-gray-100 text-gray-600 rounded flex items-center justify-center flex-shrink-0 hover:bg-gray-200"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft size={12} />
             </button>
           )}
 
           <div className="flex-1 relative">
              <button
-                title="Mover lead a otro estado del pipeline"
+                title="Mover lead"
                 onClick={() => setShowNextMenu(!showNextMenu)}
-                className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
+                className="w-full py-1 px-2 bg-indigo-600 text-white rounded font-bold flex items-center justify-center gap-1 hover:bg-indigo-700"
               >
-                Mover Lead <ArrowRight size={14} />
+                Mover <ArrowRight size={12} />
               </button>
               
               {showNextMenu && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 shadow-xl rounded-lg z-10 overflow-hidden divide-y divide-gray-100">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 shadow-xl rounded z-10 overflow-hidden divide-y divide-gray-100">
                   {availableNextStatuses.map(status => (
                     <button
                       key={status}
@@ -158,14 +159,15 @@ const LeadCard: React.FC<{
                         setShowNextMenu(false);
                         onStatusChange(lead.id, status);
                       }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${STATUS_MAP[status].color.replace('bg-', 'text-')}`}
+                      className={`w-full text-left px-2 py-1.5 text-[10px] hover:bg-gray-50 flex items-center gap-1 leading-none ${STATUS_MAP[status].color.replace('bg-', 'text-')}`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${STATUS_MAP[status].color}`} />
-                      {STATUS_MAP[status].title}
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_MAP[status].color}`} />
+                      <span className="truncate">{STATUS_MAP[status].title}</span>
                     </button>
                   ))}
                 </div>
               )}
+          </div>
         </div>
       </div>
     </div>
@@ -265,13 +267,13 @@ const Leads: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 overflow-x-auto pb-4">
+      <div className="flex-1 flex gap-3 overflow-x-auto pb-4 custom-scrollbar">
         {STATUS_KEYS.map((statusKey) => (
           <div
             key={statusKey}
-            className="bg-gray-50 rounded-xl flex flex-col min-w-[250px] border border-gray-100"
+            className="bg-gray-50 rounded-xl flex flex-col min-w-[200px] w-[200px] shrink-0 border border-gray-100"
           >
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span
                   className={`w-2.5 h-2.5 rounded-full ${STATUS_MAP[statusKey].color}`}

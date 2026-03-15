@@ -36,9 +36,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     const [leadSales, setLeadSales] = useState<any[]>([]);
     const [isCreatingSale, setIsCreatingSale] = useState(false);
+    const [isCreatingSaleForAppointment, setIsCreatingSaleForAppointment] = useState(false);
 
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>('');
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
+    const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
+    const [isEditingAppointment, setIsEditingAppointment] = useState(false);
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -80,7 +85,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setActiveTab('details');
             setIsCreatingTicket(false);
             setSelectedTicket(null);
+            setSelectedAppointment(null);
             setIsEditingSelectedTicket(false);
+            setIsCreatingSaleForAppointment(false);
             if (leadToEdit) {
                 setFormData({
                     name: leadToEdit.name,
@@ -119,6 +126,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (u) {
                 setUserPermissions(u.permissions || []);
                 setUserRole(u.role?.name || '');
+                setCurrentUser(u);
             }
         } catch (err) {
             console.error(err);
@@ -161,15 +169,61 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     const loadLeadDataExtras = async (leadId: string | number) => {
         try {
-            const res = await api.getLead(leadId);
-            if (res) {
-                if (res.appointments) setLeadAppointments(res.appointments);
-                if (res.sales) setLeadSales(res.sales);
+            // Cargar datos básicos y relaciones (ventas y citas) en paralelo
+            const [leadRes, logsRes, convsRes] = await Promise.allSettled([
+                api.getLead(leadId),
+                api.listLeadLogs(leadId),
+                api.listConversations({ lead_id: leadId })
+            ]);
+
+            let latestSales: any[] = [];
+            let latestAppointments: any[] = [];
+            let logs: any[] = [];
+            let messages: any[] = [];
+
+            if (leadRes.status === 'fulfilled' && leadRes.value) {
+                const res = leadRes.value;
+                if (res.appointments) {
+                    setLeadAppointments(res.appointments);
+                    latestAppointments = res.appointments;
+                }
+                if (res.sales) {
+                    setLeadSales(res.sales);
+                    latestSales = res.sales;
+                }
             }
-            const logsRes = await api.listLeadLogs(leadId);
-            if (logsRes && logsRes.data) {
-                setLeadTimeline(logsRes.data);
+
+            if (logsRes.status === 'fulfilled' && logsRes.value && logsRes.value.data) {
+                logs = logsRes.value.data;
             }
+
+            if (convsRes.status === 'fulfilled' && convsRes.value && convsRes.value.data) {
+                const convs = convsRes.value.data;
+                setLeadConversations(convs);
+                
+                // Cargar mensajes de cada conversación
+                const msgPromises = convs.map((c: any) => api.getConversationMessages(c.id));
+                const messagesResults = await Promise.allSettled(msgPromises);
+                
+                messagesResults.forEach(r => {
+                    if (r.status === 'fulfilled' && r.value && r.value.data) {
+                        messages = [...messages, ...r.value.data];
+                    }
+                });
+            }
+
+            // Normalizar y combinar para el timeline
+            const tlLogs = logs.map(l => ({ ...l, tlType: 'log', tlDate: l.created_at ? new Date(l.created_at).getTime() : 0 }));
+            const tlSales = latestSales.map(s => ({ ...s, tlType: 'sale', tlDate: s.created_at ? new Date(s.created_at).getTime() : 0 }));
+            const tlMsgs = messages.map(m => ({ ...m, tlType: 'message', tlDate: m.created_at ? new Date(m.created_at).getTime() : 0 }));
+            const tlApps = latestAppointments.map(a => ({ ...a, tlType: 'appointment', tlDate: a.created_at ? new Date(a.created_at).getTime() : 0 }));
+
+            const combined = [...tlLogs, ...tlSales, ...tlMsgs, ...tlApps]
+                .filter(item => item.tlDate > 0)
+                .sort((a, b) => b.tlDate - a.tlDate);
+            
+            setLeadTimeline(combined);
+
         } catch (err) {
             console.error("Error loading lead extras", err);
         }
@@ -250,6 +304,29 @@ const LeadModal: React.FC<LeadModalProps> = ({
             await handleOpenTicket(ticketId); // Refresh detail
         } catch (err) {
             alert("Error al añadir comentario");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateAppointmentStatus = async (appId: number, status: string) => {
+        setLoading(true);
+        try {
+            await api.updateAppointment(appId, { status });
+            
+            // Actualizar estado local si está seleccionado
+            if (selectedAppointment && selectedAppointment.id === appId) {
+                setSelectedAppointment({ ...selectedAppointment, status });
+            }
+
+            if (leadToEdit) loadLeadDataExtras(leadToEdit.id);
+            
+            // Si el estado cambia a 'confirmed', preparamos para abrir el popup de venta
+            if (status === 'confirmed') {
+                setIsCreatingSaleForAppointment(true);
+            }
+        } catch (err: any) {
+            alert(err?.message || "Error al actualizar estado de la cita");
         } finally {
             setLoading(false);
         }
@@ -431,7 +508,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             {leadTickets.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadTickets.length}</span>}
                         </button>
                         <button
-                            onClick={() => setActiveTab('timeline')}
+                            onClick={() => {
+                                setActiveTab('timeline');
+                                if (leadToEdit) loadLeadDataExtras(leadToEdit.id);
+                            }}
                             className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'timeline' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
                         >
                             Timeline
@@ -797,19 +877,117 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         No hay citas registradas para este lead.
                                     </div>
                                 ) : (
-                                    leadAppointments.map(app => (
-                                        <div key={app.id} className="bg-white border rounded-xl p-4 shadow-sm flex flex-col gap-2 hover:shadow-md transition-all">
-                                            <div className="flex justify-between">
-                                                <span className="font-bold text-sm text-gray-800">{app.service_type || 'Sin tipo de servicio'}</span>
-                                                <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full ${app.status === 'scheduled' ? 'bg-blue-100 text-blue-700' : app.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{app.status || 'scheduled'}</span>
+                                    <div className="space-y-3">
+                                        {selectedAppointment ? (
+                                            <div className="animate-in slide-in-from-right-4 duration-300 space-y-4">
+                                                <button 
+                                                    onClick={() => setSelectedAppointment(null)}
+                                                    className="text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline mb-2"
+                                                >
+                                                    ← Volver a la lista
+                                                </button>
+                                                
+                                                <div className="bg-white border rounded-2xl p-6 shadow-sm border-indigo-100 ring-1 ring-indigo-50">
+                                                    <div className="flex justify-between items-start mb-6">
+                                                        <div>
+                                                            <h5 className="font-black text-gray-900 text-xl leading-tight">
+                                                                {selectedAppointment.service_type || 'Servicio sin definir'}
+                                                            </h5>
+                                                            <p className="text-xs text-indigo-400 font-bold uppercase tracking-wider mt-1">Detalles de la Cita</p>
+                                                        </div>
+                                                        <span className={`text-[10px] uppercase font-black px-3 py-1 rounded-full border shadow-sm ${
+                                                            selectedAppointment.status === 'scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
+                                                            selectedAppointment.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                                                            selectedAppointment.status === 'completed' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                                                            'bg-gray-100 text-gray-700 border-gray-200'
+                                                        }`}>
+                                                            {selectedAppointment.status || 'scheduled'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                                        <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                                                            <p className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Fecha</p>
+                                                            <p className="text-sm font-bold text-gray-800">{selectedAppointment.date}</p>
+                                                        </div>
+                                                        <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                                                            <p className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Hora</p>
+                                                            <p className="text-sm font-bold text-gray-800">{selectedAppointment.time}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {selectedAppointment.notes && (
+                                                        <div className="bg-indigo-50/30 p-4 rounded-xl border border-indigo-50 mb-6">
+                                                            <p className="text-[9px] font-black text-indigo-300 uppercase mb-1">Notas / Observaciones</p>
+                                                            <p className="text-sm italic text-gray-600 leading-relaxed">"{selectedAppointment.notes}"</p>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        {selectedAppointment.status === 'scheduled' && (
+                                                            <button
+                                                                onClick={() => handleUpdateAppointmentStatus(selectedAppointment.id, 'confirmed')}
+                                                                disabled={loading}
+                                                                className="w-full bg-emerald-600 text-white h-12 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-200/50 transition-all flex items-center justify-center gap-2"
+                                                            >
+                                                                {loading ? 'Procesando...' : 'Confirmar y Realizar Venta'}
+                                                            </button>
+                                                        )}
+                                                        {selectedAppointment.status === 'confirmed' && (
+                                                            <button
+                                                                onClick={() => handleUpdateAppointmentStatus(selectedAppointment.id, 'completed')}
+                                                                disabled={loading}
+                                                                className="w-full bg-indigo-600 text-white h-12 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200/50 transition-all"
+                                                            >
+                                                                {loading ? 'Procesando...' : 'Marcar como Completada'}
+                                                            </button>
+                                                        )}
+                                                        {['scheduled', 'confirmed'].includes(selectedAppointment.status) && (
+                                                            <button
+                                                                onClick={() => handleUpdateAppointmentStatus(selectedAppointment.id, 'cancelled')}
+                                                                disabled={loading}
+                                                                className="w-full bg-rose-50 text-rose-600 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                                                            >
+                                                                Cancelar Cita
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-gray-500 flex gap-4 mt-1 font-semibold">
-                                                <span className="bg-gray-50 px-2 py-1 rounded">Fecha: {app.date}</span>
-                                                <span className="bg-gray-50 px-2 py-1 rounded">Hora: {app.time}</span>
-                                            </div>
-                                            {app.notes && <div className="text-xs text-gray-400 italic line-clamp-2 mt-2 py-2 px-3 border-l-2 border-indigo-200 bg-indigo-50/30 rounded-r-lg">"{app.notes}"</div>}
-                                        </div>
-                                    ))
+                                        ) : (
+                                            leadAppointments.map(app => (
+                                                <div 
+                                                    key={app.id} 
+                                                    onClick={() => setSelectedAppointment(app)}
+                                                    className="bg-white border rounded-2xl p-5 shadow-xs flex flex-col gap-3 hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/5 cursor-pointer transition-all border-gray-100 relative group"
+                                                >
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-black text-gray-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">
+                                                                {app.service_type || 'Sin tipo de servicio'}
+                                                            </span>
+                                                            <p className="text-[10px] text-gray-400 font-bold mt-0.5">REF: #{app.id}</p>
+                                                        </div>
+                                                        <span className={`text-[9px] uppercase font-black px-2.5 py-1 rounded-lg border ${
+                                                            app.status === 'scheduled' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
+                                                            app.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                                                            app.status === 'completed' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                                                            'bg-gray-100 text-gray-700 border-gray-200'
+                                                        }`}>
+                                                            {app.status || 'scheduled'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-600 flex gap-4 mt-1 font-black bg-gray-50/50 p-2 rounded-xl border border-gray-50">
+                                                        <span className="flex items-center gap-1.5"><span className="text-gray-300">📅</span> {app.date}</span>
+                                                        <span className="flex items-center gap-1.5"><span className="text-gray-300">⏰</span> {app.time}</span>
+                                                    </div>
+                                                    <div className="absolute bottom-4 right-4 text-xs font-black text-indigo-500 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                        Ver detalles →
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -1149,44 +1327,139 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     <p className="text-sm">No hay registros en el historial de este lead.</p>
                                 </div>
                             ) : (
-                                <div className="space-y-4 border-l-2 border-indigo-100 ml-4 pb-8 relative">
-                                    {leadTimeline.map((log) => (
-                                        <div key={log.id} className="relative pl-6">
-                                            <div className="absolute w-3 h-3 bg-indigo-500 rounded-full border-2 border-white -left-[7px] top-1 shadow-sm"></div>
-                                            <div className="bg-white p-4 border border-gray-100 rounded-xl shadow-xs hover:border-indigo-100 hover:shadow-md transition-all">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <span className="font-bold text-gray-800 text-xs uppercase bg-gray-50 px-2 py-0.5 rounded-full text-indigo-700">
-                                                        {log.event.replace(/_/g, ' ')}
-                                                    </span>
-                                                    <span className="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-0.5 rounded-full">
-                                                        {new Date(log.created_at).toLocaleString()}
-                                                    </span>
+                                <div className="relative max-w-3xl mx-auto py-8">
+                                    {/* Línea Central */}
+                                    <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-indigo-100 -translate-x-1/2 hidden md:block" />
+
+                                    <div className="space-y-12 relative">
+                                        {leadTimeline.map((item, index) => {
+                                            let badgeColor = "bg-indigo-50 text-indigo-700 border-indigo-100";
+                                            let dotColor = "bg-indigo-500";
+                                            let eventName = item.event?.replace(/_/g, ' ') || 'Actividad';
+
+                                            if (item.tlType === 'sale') {
+                                                badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-100";
+                                                dotColor = "bg-emerald-500";
+                                                eventName = "Venta";
+                                            } else if (item.tlType === 'appointment') {
+                                                badgeColor = "bg-blue-50 text-blue-700 border-blue-100";
+                                                dotColor = "bg-blue-500";
+                                                eventName = "Cita";
+                                            } else if (item.tlType === 'message') {
+                                                const isOutbound = item.direction === 'outbound';
+                                                badgeColor = isOutbound ? "bg-indigo-50 text-indigo-700 border-indigo-100" : "bg-gray-100 text-gray-700 border-gray-200";
+                                                dotColor = isOutbound ? "bg-indigo-500" : "bg-gray-400";
+                                                eventName = isOutbound ? "Mensaje Enviado" : "Mensaje Recibido";
+                                            }
+
+                                            return (
+                                                <div key={`${item.tlType}-${item.id}-${index}`} className="relative grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-start">
+                                                    
+                                                    {/* Nombre del Evento y Fecha (Izquierda en Desktop) */}
+                                                    <div className="hidden md:flex flex-col items-end text-right pt-1">
+                                                        <span className={`font-black text-[10px] uppercase px-2 py-1 rounded-lg border ${badgeColor}`}>
+                                                            {eventName}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 font-mono mt-1.5 bg-gray-50 px-2 py-0.5 rounded-full">
+                                                            {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Punto en la línea central */}
+                                                    <div className="hidden md:flex justify-center pt-2 relative z-10">
+                                                        <div className={`w-4 h-4 rounded-full border-4 border-white shadow-sm ${dotColor}`} />
+                                                    </div>
+
+                                                    {/* Detalle del Evento (Derecha en Desktop) */}
+                                                    <div className="bg-white p-4 border border-gray-100 rounded-2xl shadow-xs hover:shadow-md transition-all relative">
+                                                        {/* Mobile Header (Visible solo en mobile) */}
+                                                        <div className="md:hidden flex justify-between items-center mb-3 border-b pb-2">
+                                                            <span className={`font-black text-[9px] uppercase px-2 py-1 rounded-lg border ${badgeColor}`}>
+                                                                {eventName}
+                                                            </span>
+                                                            <span className="text-[9px] text-gray-400 font-mono">
+                                                                {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Contenido según tipo */}
+                                                        {item.tlType === 'sale' && (
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="font-black text-gray-800 text-sm">
+                                                                        {item.product?.name || item.service_rendered || 'Servicio/Producto'}
+                                                                    </span>
+                                                                    <span className="font-black text-emerald-600 font-mono text-sm">
+                                                                        ${Number(item.amount || item.total || 0).toFixed(2)}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[10px] text-gray-500 font-medium space-y-0.5">
+                                                                    <p>Vendedor: <span className="text-gray-700 font-bold">{item.seller?.name || item.seller_name || 'Sistema'}</span></p>
+                                                                    <p>Método: <span className="capitalize">{item.payment_method}</span></p>
+                                                                    {item.notes && <p className="italic text-gray-400 mt-1 border-l-2 pl-2 border-gray-100">"{item.notes}"</p>}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {item.tlType === 'appointment' && (
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex justify-between items-center border-b border-blue-50 pb-2">
+                                                                    <span className="font-black text-blue-800 text-sm">{item.service_type || 'Cita Agendada'}</span>
+                                                                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">{item.status}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                                                    <div className="bg-blue-50/50 p-2 rounded-lg border border-blue-50">
+                                                                        <p className="text-blue-400 font-black uppercase text-[8px] mb-0.5">Fecha</p>
+                                                                        <p className="font-bold text-blue-700">{item.date}</p>
+                                                                    </div>
+                                                                    <div className="bg-blue-50/50 p-2 rounded-lg border border-blue-50">
+                                                                        <p className="text-blue-400 font-black uppercase text-[8px] mb-0.5">Hora</p>
+                                                                        <p className="font-bold text-blue-700">{item.time}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {item.tlType === 'message' && (
+                                                            <div className="flex flex-col gap-2">
+                                                                {item.sender?.name && (
+                                                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold mb-1">
+                                                                        <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">👤</div>
+                                                                        {item.sender.name}
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-xs text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-100 leading-relaxed whitespace-pre-wrap italic">
+                                                                    "{item.body}"
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {item.tlType === 'log' && (
+                                                            <div className="flex flex-col gap-2">
+                                                                {item.user && (
+                                                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold mb-1">
+                                                                        <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-[10px]">👤</div>
+                                                                        {item.user.name}
+                                                                    </div>
+                                                                )}
+                                                                {item.old_values?.status && item.new_values?.status ? (
+                                                                    <div className="flex items-center gap-2 bg-indigo-50/30 p-2 rounded-lg border border-indigo-50 text-[10px]">
+                                                                        <span className="text-gray-400 line-through">{item.old_values.status}</span>
+                                                                        <span className="text-indigo-300">➜</span>
+                                                                        <span className="font-black text-indigo-700">{item.new_values.status}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-[9px] text-gray-400 bg-gray-50 p-2 rounded max-h-20 overflow-y-auto custom-scrollbar font-mono">
+                                                                        {JSON.stringify(item.new_values || item.old_values || {}, null, 1)}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                
-                                                {log.user && (
-                                                    <p className="text-[10px] text-gray-500 font-bold mb-2 flex items-center gap-1">
-                                                        <span className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center -ml-1">👤</span>
-                                                        {log.user.name}
-                                                    </p>
-                                                )}
-
-                                                {log.old_values?.status && log.new_values?.status && (
-                                                    <div className="text-xs bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-50 mt-2 flex items-center gap-2">
-                                                        <span className="text-gray-400 line-through decoration-gray-300 font-mono bg-white px-2 py-0.5 rounded-md border text-[10px]">{log.old_values.status}</span>
-                                                        <span className="text-indigo-300">➜</span>
-                                                        <span className="font-black text-indigo-600 font-mono bg-white px-2 py-0.5 rounded-md border border-indigo-100 shadow-sm text-[10px]">{log.new_values.status}</span>
-                                                    </div>
-                                                )}
-
-                                                {!log.old_values?.status && (
-                                                    <div className="mt-2 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded max-h-24 overflow-y-auto custom-scrollbar">
-                                                        <span className="text-gray-400 block mb-1 uppercase text-[9px] font-black">Detalles:</span>
-                                                        <pre className="text-[9px]">{JSON.stringify(log.new_values || {}, null, 2)}</pre>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             )}
                             </div>
@@ -1225,16 +1498,31 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             loadLeadDataExtras(leadToEdit.id);
                         }
                     }}
-                    user={{
-                        is_super_admin: userRole === 'superadmin',
-                        role: { name: userRole },
-                        permissions: userPermissions,
-                        branch: { id: formData.branch_id }
-                    }}
+                    user={currentUser}
                     initialData={{
                         lead_id: leadToEdit?.id,
                         client_name: formData.name,
                         branch_id: formData.branch_id ? Number(formData.branch_id) : null,
+                    }}
+                />
+            )}
+
+            {isCreatingSaleForAppointment && (
+                <CreateSaleModal
+                    isOpen={isCreatingSaleForAppointment}
+                    onClose={() => setIsCreatingSaleForAppointment(false)}
+                    onSuccess={() => {
+                        setIsCreatingSaleForAppointment(false);
+                        if (leadToEdit) {
+                            loadLeadDataExtras(leadToEdit.id);
+                        }
+                    }}
+                    user={currentUser}
+                    initialData={{
+                        lead_id: leadToEdit?.id,
+                        client_name: formData.name,
+                        branch_id: formData.branch_id ? Number(formData.branch_id) : null,
+                        service_rendered: selectedAppointment?.service_type || ""
                     }}
                 />
             )}

@@ -145,6 +145,7 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"dashboard" | "annual">("dashboard");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
@@ -159,7 +160,7 @@ const Dashboard: React.FC = () => {
       setErrorMsg("");
 
       try {
-        const [statsRes, branchesRes, salesRes, productsRes, appsRes, expsRes] =
+        const [statsRes, branchesRes, salesRes, productsRes, appsRes, expsRes, userRes] =
           await Promise.all([
             api.getDashboardStats(selectedBranch),
             api.listBranches(),
@@ -167,6 +168,7 @@ const Dashboard: React.FC = () => {
             api.listProducts(),
             api.get<any>("/api/appointments").catch(() => []),
             api.get<any>("/api/expenses").catch(() => []),
+            api.me().catch(() => null),
           ]);
 
         if (cancelled) return;
@@ -177,6 +179,7 @@ const Dashboard: React.FC = () => {
         setProducts(normalizeArray<Product>(productsRes));
         setAppointments(normalizeArray<any>(appsRes));
         setExpenses(normalizeArray<any>(expsRes));
+        setCurrentUser(userRes);
       } catch (e: any) {
         if (cancelled) return;
         setStats(null);
@@ -532,6 +535,28 @@ const Dashboard: React.FC = () => {
     });
   }, [activeTab, appointments, sales, expenses, branches, selectedYear, selectedBranch]);
 
+  const annualSummaryTotals = useMemo(() => {
+    if (activeTab !== "annual" || annualSummary.length === 0) return null;
+    
+    return annualSummary.reduce((acc, row) => ({
+      visitas: acc.visitas + row.visitas,
+      ventasCount: acc.ventasCount + row.ventasCount,
+      ventasNetas: acc.ventasNetas + row.ventasNetas,
+      devsCount: acc.devsCount + row.devsCount,
+      devsAmount: acc.devsAmount + row.devsAmount,
+      gastos: acc.gastos + row.gastos,
+      proyeccion: acc.proyeccion + row.proyeccion,
+    }), {
+      visitas: 0,
+      ventasCount: 0,
+      ventasNetas: 0,
+      devsCount: 0,
+      devsAmount: 0,
+      gastos: 0,
+      proyeccion: 0,
+    });
+  }, [activeTab, annualSummary]);
+
   if (loading) return <div className="p-8 font-semibold">Loading dashboard...</div>;
 
   if (!stats)
@@ -628,77 +653,153 @@ const Dashboard: React.FC = () => {
       </div>
 
       {activeTab === "annual" ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold">Acumulado del Año hasta la Fecha ({selectedYear})</h3>
-              <p className="text-sm text-gray-500">Indicadores clave de rendimiento acumulados desde el 1 de Enero hasta hoy, por sucursal.</p>
+        <div className="max-w-6xl mx-auto space-y-6">
+          <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden transition-all hover:shadow-2xl hover:border-indigo-100">
+            <div className="p-8 border-b border-gray-100 bg-gradient-to-r from-indigo-50/50 to-white flex items-center justify-between">
+              <div className="flex items-center gap-5">
+                <div className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100">
+                  <TrendingUp size={28} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight">Acumulado Anual — {selectedYear}</h3>
+                  <p className="text-sm text-gray-500 font-medium">Indicadores clave de rendimiento proyectados por sucursal.</p>
+                </div>
+              </div>
+              {currentUser?.tenant?.name && (
+                <div className="hidden md:flex flex-col items-end">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-1">Organización</span>
+                  <span className="text-lg font-black text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-xl border border-indigo-100">{currentUser.tenant.name}</span>
+                </div>
+              )}
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 text-gray-600 text-xs uppercase font-bold">
-                <tr>
-                  <th className="px-6 py-3 border-b">Sucursal</th>
-                  <th className="px-6 py-3 border-b">Visitas YTD</th>
-                  <th className="px-6 py-3 border-b">Ventas YTD</th>
-                  <th className="px-6 py-3 border-b">Ventas Netas YTD</th>
-                  <th className="px-6 py-3 border-b text-red-600">Devoluciones</th>
-                  <th className="px-6 py-3 border-b text-red-600">Importe Dev.</th>
-                  <th className="px-6 py-3 border-b text-amber-600">Gastos YTD</th>
-                  <th className="px-6 py-3 border-b text-indigo-600">Proyección Gross</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {annualSummary.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4 font-bold text-gray-900 border-r">{row.branchName}</td>
-                    <td className="px-6 py-4">{row.visitas}</td>
-                    <td className="px-6 py-4">{row.ventasCount}</td>
-                    <td className="px-6 py-4 font-semibold text-emerald-600 border-r">${row.ventasNetas.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td className="px-6 py-4 text-red-500">{row.devsCount}</td>
-                    <td className="px-6 py-4 font-semibold text-red-500 border-r">${row.devsAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td className="px-6 py-4 font-semibold text-amber-600 border-r">${row.gastos.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                    <td className="px-6 py-4 font-bold text-indigo-600">${row.proyeccion.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+
+            <div className="overflow-x-auto p-2">
+              <table className="w-full text-left text-sm border-separate border-spacing-0">
+                <thead>
+                  <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase font-black tracking-widest">
+                    <th className="px-6 py-4 border-b border-gray-100 sticky left-0 bg-gray-50/50 z-10 rounded-tl-2xl">Sucursal</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-center">Visitas YTD</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-center">Ventas YTD</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-right">Ventas Netas YTD</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-center text-rose-400">Devoluciones</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-right text-rose-400">Importe Dev.</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-right text-amber-500">Gastos YTD</th>
+                    <th className="px-6 py-4 border-b border-gray-100 text-right text-indigo-500 rounded-tr-2xl">Proyección Gross</th>
                   </tr>
-                ))}
-                {annualSummary.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-gray-400">No hay información para mostrar en este año o sucursal.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {currentUser?.tenant?.name && (
+                    <tr className="bg-indigo-50/20">
+                      <td colSpan={8} className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Sucursales de:</span>
+                          <span className="text-sm font-black text-indigo-700">{currentUser.tenant.name}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {annualSummary.map((row, idx) => (
+                    <tr key={idx} className={`group hover:bg-indigo-50/40 transition-all ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                      <td className="px-6 py-5 font-black text-gray-900 sticky left-0 bg-inherit z-10 border-r border-gray-50">{row.branchName}</td>
+                      <td className="px-6 py-5 text-center font-bold text-gray-600">{row.visitas.toLocaleString()}</td>
+                      <td className="px-6 py-5 text-center font-bold text-gray-600">{row.ventasCount.toLocaleString()}</td>
+                      <td className="px-6 py-5 text-right font-black text-emerald-600 text-base">
+                        <span className="text-[10px] mr-1 opacity-50 font-normal">$</span>
+                        {row.ventasNetas.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-5 text-center font-bold text-rose-500">{row.devsCount.toLocaleString()}</td>
+                      <td className="px-6 py-5 text-right font-black text-rose-500 text-base">
+                        <span className="text-[10px] mr-1 opacity-50 font-normal">$</span>
+                        {row.devsAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-5 text-right font-black text-amber-600 text-base">
+                        <span className="text-[10px] mr-1 opacity-50 font-normal">$</span>
+                        {row.gastos.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-5 text-right font-black text-indigo-600 text-lg tracking-tighter">
+                        <span className="text-[10px] mr-1 opacity-50 font-normal">$</span>
+                        {row.proyeccion.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {annualSummaryTotals && (
+                    <tr className="bg-gray-900 text-white font-black shadow-2xl">
+                      <td className="px-6 py-6 uppercase tracking-widest text-xs rounded-bl-2xl">TOTAL {currentUser?.tenant?.name || 'ORGANIZACIÓN'}</td>
+                      <td className="px-6 py-6 text-center text-lg">{annualSummaryTotals.visitas.toLocaleString()}</td>
+                      <td className="px-6 py-6 text-center text-lg">{annualSummaryTotals.ventasCount.toLocaleString()}</td>
+                      <td className="px-6 py-6 text-right text-lg text-emerald-400">
+                        <span className="text-xs mr-1 opacity-70 font-normal">$</span>
+                        {annualSummaryTotals.ventasNetas.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-6 text-center text-lg text-rose-300">{annualSummaryTotals.devsCount.toLocaleString()}</td>
+                      <td className="px-6 py-6 text-right text-lg text-rose-300">
+                        <span className="text-xs mr-1 opacity-70 font-normal">$</span>
+                        {annualSummaryTotals.devsAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-6 text-right text-lg text-amber-300">
+                        <span className="text-xs mr-1 opacity-70 font-normal">$</span>
+                        {annualSummaryTotals.gastos.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-6 text-right text-xl text-indigo-300 rounded-br-2xl">
+                        <span className="text-xs mr-1 opacity-70 font-normal">$</span>
+                        {annualSummaryTotals.proyeccion.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  )}
+
+                  {annualSummary.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-16 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                           <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
+                              <TrendingUp size={32} />
+                           </div>
+                           <p className="text-gray-400 font-bold italic">No hay información para mostrar en este año o sucursal.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : (
         <React.Fragment>
           {weeklyBreakdown && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-               <div className="p-4 border-b border-gray-100 bg-gray-50">
-                <h3 className="font-bold text-gray-800">Desglose Semanal - {periodLabel}</h3>
+            <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+               <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                <h3 className="font-black text-gray-800 tracking-tight">Desglose Semanal — {periodLabel}</h3>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-white px-3 py-1 rounded-full border border-indigo-50 shadow-sm">Reporte de Desempeño</span>
                </div>
-               <div className="overflow-x-auto">
-                 <table className="w-full text-left text-sm whitespace-nowrap">
-                   <thead className="bg-white text-gray-500 text-xs uppercase font-semibold border-b border-gray-100">
+               <div className="overflow-x-auto p-4">
+                 <table className="w-full text-left text-sm border-separate border-spacing-0 border border-gray-200 rounded-xl overflow-hidden">
+                   <thead className="bg-indigo-600 text-white text-[10px] uppercase font-black tracking-widest">
                      <tr>
-                       <th className="px-6 py-3 border-r border-gray-50 w-1/3">Semana del Mes</th>
-                       <th className="px-6 py-3 border-r border-gray-50 w-1/3">Cantidad de Ventas</th>
-                       <th className="px-6 py-3 w-1/3">Valor de Ventas</th>
+                       <th className="px-6 py-4 border-b border-indigo-500">Semana del Mes</th>
+                       <th className="px-6 py-4 border-b border-indigo-500 text-center">Cantidad de Ventas</th>
+                       <th className="px-6 py-4 border-b border-indigo-500 text-right">Valor de Ventas</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                      {weeklyBreakdown.weeks.map((w, idx) => (
-                       <tr key={idx} className="hover:bg-gray-50">
-                         <td className="px-6 py-3 font-medium text-gray-700 border-r border-gray-50">{w.label}</td>
-                         <td className="px-6 py-3 border-r border-gray-50">{w.count}</td>
-                         <td className="px-6 py-3 text-emerald-600 font-medium">${w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                       <tr key={idx} className={`hover:bg-indigo-50/30 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-blue-50/50'}`}>
+                         <td className="px-6 py-4 font-bold text-gray-700 border-r border-gray-100">{w.label}</td>
+                         <td className="px-6 py-4 text-center font-black text-gray-600 border-r border-gray-100">{w.count}</td>
+                         <td className="px-6 py-4 text-right text-emerald-600 font-black tracking-tight text-base">
+                           <span className="text-xs mr-1 opacity-50">$</span>
+                           {w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                         </td>
                        </tr>
                      ))}
-                     <tr className="bg-gray-50/80 font-bold border-t-2 border-gray-200">
-                       <td className="px-6 py-4 text-gray-900 border-r border-white">TOTAL {periodLabel.toUpperCase()}:</td>
-                       <td className="px-6 py-4 text-gray-900 border-r border-white">{weeklyBreakdown.totalCount}</td>
-                       <td className="px-6 py-4 text-emerald-600">${weeklyBreakdown.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                     <tr className="bg-gray-900 font-black text-white">
+                       <td className="px-6 py-5 uppercase tracking-tighter">TOTAL {periodLabel.toUpperCase()}</td>
+                       <td className="px-6 py-5 text-center text-lg">{weeklyBreakdown.totalCount}</td>
+                       <td className="px-6 py-5 text-right text-lg text-emerald-400">
+                         <span className="text-xs mr-1 opacity-70">$</span>
+                         {weeklyBreakdown.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                       </td>
                      </tr>
                    </tbody>
                  </table>

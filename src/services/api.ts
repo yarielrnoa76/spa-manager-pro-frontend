@@ -614,6 +614,6 @@ export const api = {
   },
 
   async listLeadLogs(leadId: string | number) {
-    return request<{ data: any[] }>(`/api/audit-logs?model_type=Lead&model_id=${leadId}&limit=50`, { method: "GET", auth: true });
+    return request<{ data: any[] }>(`/api/logs?model_type=Lead&model_id=${leadId}&limit=50`, { method: "GET", auth: true });
   },
 };

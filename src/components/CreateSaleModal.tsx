@@ -12,6 +12,7 @@ type CreateSaleModalProps = {
         lead_id?: string | number | null;
         client_name?: string;
         branch_id?: string | number | null;
+        service_rendered?: string;
     };
 };
 
@@ -81,7 +82,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             product_id: "",
             lead_id: initialData?.lead_id ? String(initialData.lead_id) : "",
             client_name: initialData?.client_name || "",
-            service_rendered: "",
+            service_rendered: initialData?.service_rendered || "",
             quantity: "1",
             unit_price: "",
             amount: "",
