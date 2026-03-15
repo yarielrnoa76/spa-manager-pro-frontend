@@ -720,7 +720,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                     {/* ✅ Vendedor(a) */}
                     <td className="px-6 py-4">
                       <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold">
-                        {sale?.seller_name || "—"}
+                        {sale?.seller?.name || sale?.seller_name || "—"}
                       </span>
                     </td>
 

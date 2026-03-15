@@ -114,7 +114,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         });
     }, [isOpen, initialData, user]);
 
-    const availableProducts = useMemo(() => products.filter((p: any) => Number(p.stock) > 0), [products]);
+    const availableProducts = useMemo(() => products.filter((p: any) => p.type === 'service' || Number(p.stock) > 0), [products]);
 
     const leadSuggestions = useMemo(() => {
         if (!form.branch_id || initialData?.lead_id) return []; // Si ya está forzado el lead, no sugerimos
@@ -157,7 +157,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         }
         let qty = parseInt(qtyStr.replace(/[^\d]/g, ""), 10);
         if (!Number.isFinite(qty) || qty <= 0) qty = 1;
-        if (selectedProduct && qty > Number((selectedProduct as any).stock)) qty = Number((selectedProduct as any).stock);
+        if (selectedProduct && (selectedProduct as any).type !== 'service' && qty > Number((selectedProduct as any).stock)) qty = Number((selectedProduct as any).stock);
         setForm(prev => ({ ...prev, ...recalcTotals({ quantity: String(qty) }) }));
     };
 
@@ -311,7 +311,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                                     <div
                                                         key={lead.id}
                                                         className="px-4 py-2 hover:bg-indigo-50 cursor-pointer text-sm flex justify-between"
-                                                        onClick={() => {
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
                                                             setForm(prev => ({ ...prev, client_name: lead.name, lead_id: String(lead.id) }));
                                                             setShowSuggestions(false);
                                                         }}
@@ -324,7 +325,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                                 {leadSuggestions.length === 0 && form.client_name.trim().length > 0 && (
                                                     <div
                                                         className="px-4 py-2 border-t text-indigo-600 font-bold hover:bg-indigo-50 cursor-pointer flex items-center gap-2 text-sm"
-                                                        onClick={() => {
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
                                                             setIsLeadModalOpen(true);
                                                             setShowSuggestions(false);
                                                         }}
@@ -382,7 +384,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     >
                                         <option value="">-- Seleccionar de Inventario --</option>
                                         {availableProducts.map((p: any) => (
-                                            <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
+                                            <option key={p.id} value={String(p.id)}>{p.name} {p.type === 'service' ? '(Servicio)' : `(Stock: ${p.stock})`} (Price: ${p.sales_price})</option>
                                         ))}
                                     </select>
                                 </div>

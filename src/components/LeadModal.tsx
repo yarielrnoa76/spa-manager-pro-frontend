@@ -25,10 +25,11 @@ const LeadModal: React.FC<LeadModalProps> = ({
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets' | 'chat'>('details');
+    const [leadConversations, setLeadConversations] = useState<any[]>([]);
+    const [leadTimeline, setLeadTimeline] = useState<any[]>([]);
     const [leadTickets, setLeadTickets] = useState<any[]>([]);
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
-    const [leadConversations, setLeadConversations] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets' | 'chat' | 'timeline'>('details');
 
     const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
     const [isCreatingAppointment, setIsCreatingAppointment] = useState(false);
@@ -107,6 +108,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 setLeadTickets([]);
                 setLeadAppointments([]);
                 setLeadSales([]);
+                setLeadTimeline([]);
             }
         }
     }, [isOpen, initialBranchId, initialName, leadToEdit]);
@@ -163,6 +165,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (res) {
                 if (res.appointments) setLeadAppointments(res.appointments);
                 if (res.sales) setLeadSales(res.sales);
+            }
+            const logsRes = await api.listLeadLogs(leadId);
+            if (logsRes && logsRes.data) {
+                setLeadTimeline(logsRes.data);
             }
         } catch (err) {
             console.error("Error loading lead extras", err);
@@ -357,7 +363,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm transition-opacity">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[120] p-4 backdrop-blur-sm transition-opacity">
             <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-[1400px] h-[85vh] flex flex-col overflow-hidden transform transition-all scale-100">
 
                 {/* Header */}
@@ -424,12 +430,85 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             Tickets
                             {leadTickets.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadTickets.length}</span>}
                         </button>
+                        <button
+                            onClick={() => setActiveTab('timeline')}
+                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'timeline' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                        >
+                            Timeline
+                            {leadTimeline.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadTimeline.length}</span>}
+                        </button>
                     </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto w-full">
                     {activeTab === 'details' ? (
-                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                        <div className="p-6">
+                            {leadToEdit && (
+                                <div className="mb-6 relative w-full pt-4 max-w-4xl mx-auto hidden sm:block">
+                                    <div className="flex items-center justify-between relative mt-4">
+                                        {/* Línea base */}
+                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1.5 border border-gray-200 bg-gray-100/50 rounded-full" />
+                                        
+                                        {/* Línea de progreso rellenada */}
+                                        <div 
+                                            className="absolute left-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full transition-all duration-700 ease-out z-0 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                                            style={{
+                                                width: (() => {
+                                                    const keys = ['incoming', 'contact_1', 'contact_2', 'contact_3', 'interested', 'appointment_scheduled'];
+                                                    let idx = keys.indexOf(leadToEdit.status);
+                                                    if(leadToEdit.status === 'cold_lead') return '0%';
+                                                    if(leadToEdit.status === 'recovered') return '0%'; // Especial/Off-track
+                                                    if (idx === -1) return '0%';
+                                                    return `${(idx / (keys.length - 1)) * 100}%`;
+                                                })()
+                                            }}
+                                        />
+
+                                        {(() => {
+                                            const steps = [
+                                                { key: 'incoming', label: 'Incoming' },
+                                                { key: 'contact_1', label: '1er C.' },
+                                                { key: 'contact_2', label: '2do C.' },
+                                                { key: 'contact_3', label: '3er C.' },
+                                                { key: 'interested', label: 'Interesado' },
+                                                { key: 'appointment_scheduled', label: 'Cita Agendada' }
+                                            ];
+                                            const currentIdx = steps.findIndex(s => s.key === leadToEdit.status);
+                                            const isSpecial = ['cold_lead', 'recovered'].includes(leadToEdit.status);
+                                            
+                                            return steps.map((step, idx) => {
+                                                const isCompleted = currentIdx >= idx && !isSpecial;
+                                                const isCurrent = currentIdx === idx && !isSpecial;
+
+                                                return (
+                                                    <div key={step.key} className="flex flex-col items-center relative z-10 w-24">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 shadow-sm transition-all duration-500 will-change-transform
+                                                            ${isCompleted ? 'bg-indigo-600 border-indigo-200 shadow-[0_0_15px_rgba(79,70,229,0.3)] scale-110' : 'bg-gray-100 border-white text-gray-400'}
+                                                            ${isCurrent ? 'ring-4 ring-indigo-100 ring-offset-2 scale-125' : ''}
+                                                        `}>
+                                                            {isCompleted ? (
+                                                                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            ) : (
+                                                                <span className="text-[10px] font-bold">{idx + 1}</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="absolute top-10 font-bold transition-colors duration-300 w-max text-center">
+                                                            <span className={`text-[10px] uppercase tracking-wider block ${isCompleted ? 'text-indigo-700' : 'text-gray-400'}`}>
+                                                                {step.label}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+                                    <div className="h-6"></div>
+                                </div>
+                            )}
+
+                        <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Nombre */}
                                 <div>
@@ -571,6 +650,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 </button>
                             </div>
                         </form>
+                        </div>
                     ) : activeTab === 'sales' ? (
                         <div className="p-6 space-y-4 relative flex flex-col h-full min-h-[400px]">
                             <div className="flex justify-between items-center mb-2 border-b pb-4 flex-shrink-0">
@@ -733,7 +813,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 )}
                             </div>
                         </div>
-                    ) : (
+                    ) : activeTab === 'tickets' ? (
                         <div className="p-6 space-y-4 relative min-h-[400px]">
                             {loading && !leadTickets.length && (
                                 <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10 backdrop-blur-[1px]">
@@ -1060,10 +1140,60 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 </>
                             )}
                         </div>
-                    )
-                    }
-                </div >
-            </div >
+                    ) : activeTab === 'timeline' ? (
+                        <div className="p-6 h-full flex flex-col">
+                            <h4 className="font-bold text-gray-800 text-lg border-b pb-4 mb-4">Historial y Timeline</h4>
+                            <div className="flex-1 overflow-y-auto pr-2">
+                            {leadTimeline.length === 0 ? (
+                                <div className="text-center text-gray-400 py-12 bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200">
+                                    <p className="text-sm">No hay registros en el historial de este lead.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 border-l-2 border-indigo-100 ml-4 pb-8 relative">
+                                    {leadTimeline.map((log) => (
+                                        <div key={log.id} className="relative pl-6">
+                                            <div className="absolute w-3 h-3 bg-indigo-500 rounded-full border-2 border-white -left-[7px] top-1 shadow-sm"></div>
+                                            <div className="bg-white p-4 border border-gray-100 rounded-xl shadow-xs hover:border-indigo-100 hover:shadow-md transition-all">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="font-bold text-gray-800 text-xs uppercase bg-gray-50 px-2 py-0.5 rounded-full text-indigo-700">
+                                                        {log.event.replace(/_/g, ' ')}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-0.5 rounded-full">
+                                                        {new Date(log.created_at).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                
+                                                {log.user && (
+                                                    <p className="text-[10px] text-gray-500 font-bold mb-2 flex items-center gap-1">
+                                                        <span className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center -ml-1">👤</span>
+                                                        {log.user.name}
+                                                    </p>
+                                                )}
+
+                                                {log.old_values?.status && log.new_values?.status && (
+                                                    <div className="text-xs bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-50 mt-2 flex items-center gap-2">
+                                                        <span className="text-gray-400 line-through decoration-gray-300 font-mono bg-white px-2 py-0.5 rounded-md border text-[10px]">{log.old_values.status}</span>
+                                                        <span className="text-indigo-300">➜</span>
+                                                        <span className="font-black text-indigo-600 font-mono bg-white px-2 py-0.5 rounded-md border border-indigo-100 shadow-sm text-[10px]">{log.new_values.status}</span>
+                                                    </div>
+                                                )}
+
+                                                {!log.old_values?.status && (
+                                                    <div className="mt-2 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded max-h-24 overflow-y-auto custom-scrollbar">
+                                                        <span className="text-gray-400 block mb-1 uppercase text-[9px] font-black">Detalles:</span>
+                                                        <pre className="text-[9px]">{JSON.stringify(log.new_values || {}, null, 2)}</pre>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            </div>
 
             {isCreatingAppointment && (
                 <CreateAppointmentModal

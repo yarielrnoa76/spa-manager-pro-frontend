@@ -43,6 +43,7 @@ export interface User {
 
 export interface Product {
   id: number;
+  type?: 'product' | 'service';
   name: string;
   sku?: string | null;
   description?: string | null;
@@ -92,7 +93,7 @@ export interface Lead {
   branch_id: string;
   source: 'whatsapp' | 'call' | 'web' | 'other';
   message: string;
-  status: 'new' | 'contacted' | 'sold' | 'discarded';
+  status: 'incoming' | 'contact_1' | 'contact_2' | 'contact_3' | 'interested' | 'recovered' | 'appointment_scheduled' | 'cold_lead';
   created_at: string;
   tenant_id?: number;
   assigned_to?: string;

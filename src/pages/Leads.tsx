@@ -18,18 +18,26 @@ import {
 type LeadStatus = Lead["status"];
 
 const STATUS_MAP: Record<LeadStatus, { title: string; color: string }> = {
-  new: { title: "Nuevo", color: "bg-blue-500" },
-  contacted: { title: "Contactado", color: "bg-amber-500" },
-  sold: { title: "Vendido", color: "bg-green-500" },
-  discarded: { title: "Descartado", color: "bg-gray-500" },
+  incoming: { title: "Incoming Lead", color: "bg-blue-400" },
+  contact_1: { title: "1er Contacto", color: "bg-sky-500" },
+  contact_2: { title: "2do Contacto", color: "bg-blue-500" },
+  contact_3: { title: "3er Contacto", color: "bg-indigo-500" },
+  interested: { title: "Cliente Interesado", color: "bg-purple-500" },
+  recovered: { title: "Cliente Frío Recuperado", color: "bg-amber-500" },
+  appointment_scheduled: { title: "Cita Agendada", color: "bg-green-500" },
+  cold_lead: { title: "Lead Frío", color: "bg-gray-500" },
 };
 
 const STATUS_KEYS = Object.keys(STATUS_MAP) as LeadStatus[];
 
 const PREV_STATUS: Partial<Record<LeadStatus, LeadStatus>> = {
-  contacted: "new",
-  sold: "contacted",
-  discarded: "contacted",
+  contact_1: "incoming",
+  contact_2: "contact_1",
+  contact_3: "contact_2",
+  interested: "contact_3",
+  appointment_scheduled: "interested",
+  recovered: "cold_lead",
+  cold_lead: "interested",
 };
 
 function normalize(s: string) {
@@ -59,6 +67,10 @@ const LeadCard: React.FC<{
     (phone || "").replace(/[\s()-]/g, "");
   const prev = PREV_STATUS[lead.status];
 
+  const [showNextMenu, setShowNextMenu] = useState(false);
+
+  const availableNextStatuses = STATUS_KEYS.filter(k => k !== lead.status);
+
   return (
     <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between min-h-[160px]">
       <div>
@@ -72,9 +84,9 @@ const LeadCard: React.FC<{
               onClick={() => onDeleteRequest(lead)}
               className="text-gray-400 hover:text-red-600 transition-colors"
               title={
-                lead.status === "discarded"
+                lead.status === "cold_lead"
                   ? "Eliminar permanentemente"
-                  : "Mover a descartado"
+                  : "Mover a lead frío"
               }
             >
               <Trash2 size={16} />
@@ -100,15 +112,6 @@ const LeadCard: React.FC<{
             <span className="capitalize">{lead.source}</span>
           </div>
           <div className="flex items-center gap-2">
-            {prev && (
-              <button
-                type="button"
-                onClick={() => onStatusChange(lead.id, prev)}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 bg-gray-100 rounded-full transition-colors"
-              >
-                <ArrowLeft size={14} />
-              </button>
-            )}
             <a
               href={`https://wa.me/${formatWhatsAppPhone(lead.phone)}`}
               target="_blank"
@@ -125,23 +128,44 @@ const LeadCard: React.FC<{
             </a>
           </div>
         </div>
-        <div className="flex gap-2 text-xs">
-          {lead.status === "new" && (
+        </div>
+        <div className="flex gap-2 text-xs relative mt-3">
+          {prev && (
             <button
-              onClick={() => onStatusChange(lead.id, "contacted")}
-              className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
+              title="Mover al estado anterior"
+              onClick={() => onStatusChange(lead.id, prev)}
+              className="py-1.5 px-3 bg-gray-100 text-gray-600 rounded font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center flex-shrink-0"
             >
-              Marcar Contactado <ArrowRight size={12} />
+              <ArrowLeft size={14} />
             </button>
           )}
-          {lead.status === "contacted" && (
-            <button
-              onClick={() => onStatusChange(lead.id, "sold")}
-              className="flex-1 py-1.5 px-2 bg-green-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-green-600 transition"
-            >
-              <DollarSign size={12} /> Vender
-            </button>
-          )}
+
+          <div className="flex-1 relative">
+             <button
+                title="Mover lead a otro estado del pipeline"
+                onClick={() => setShowNextMenu(!showNextMenu)}
+                className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
+              >
+                Mover Lead <ArrowRight size={14} />
+              </button>
+              
+              {showNextMenu && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 shadow-xl rounded-lg z-10 overflow-hidden divide-y divide-gray-100">
+                  {availableNextStatuses.map(status => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setShowNextMenu(false);
+                        onStatusChange(lead.id, status);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${STATUS_MAP[status].color.replace('bg-', 'text-')}`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${STATUS_MAP[status].color}`} />
+                      {STATUS_MAP[status].title}
+                    </button>
+                  ))}
+                </div>
+              )}
         </div>
       </div>
     </div>
@@ -180,8 +204,8 @@ const Leads: React.FC = () => {
   };
 
   const handleDeleteRequest = async (lead: Lead) => {
-    if (lead.status !== "discarded") {
-      await handleStatusChange(lead.id, "discarded");
+    if (lead.status !== "cold_lead") {
+      await handleStatusChange(lead.id, "cold_lead");
     } else {
       setLeadToDelete(lead);
     }

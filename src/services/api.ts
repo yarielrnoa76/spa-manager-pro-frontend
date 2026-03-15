@@ -392,6 +392,7 @@ export const api = {
 
   // --- Products / Inventory ---
   async createProduct(payload: {
+    type?: string;
     name: string;
     sku?: string | null;
     sales_price: number;
@@ -424,6 +425,7 @@ export const api = {
   async updateProduct(
     productId: number,
     payload: Partial<{
+      type: string;
       name: string;
       sku: string | null;
       sales_price: number;
@@ -609,5 +611,9 @@ export const api = {
 
   async updateConversationStatus(id: number, status: string) {
     return request<any>(`/api/communications/conversations/${id}/status`, { method: "PATCH", body: { status }, auth: true });
+  },
+
+  async listLeadLogs(leadId: string | number) {
+    return request<{ data: any[] }>(`/api/audit-logs?model_type=Lead&model_id=${leadId}&limit=50`, { method: "GET", auth: true });
   },
 };

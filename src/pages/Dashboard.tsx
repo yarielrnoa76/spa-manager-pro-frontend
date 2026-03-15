@@ -142,6 +142,10 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
+  const [activeTab, setActiveTab] = useState<"dashboard" | "annual">("dashboard");
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
@@ -155,12 +159,14 @@ const Dashboard: React.FC = () => {
       setErrorMsg("");
 
       try {
-        const [statsRes, branchesRes, salesRes, productsRes] =
+        const [statsRes, branchesRes, salesRes, productsRes, appsRes, expsRes] =
           await Promise.all([
             api.getDashboardStats(selectedBranch),
             api.listBranches(),
             api.listSales("all", { include_cancelled: true } as any),
             api.listProducts(),
+            api.get<any>("/api/appointments").catch(() => []),
+            api.get<any>("/api/expenses").catch(() => []),
           ]);
 
         if (cancelled) return;
@@ -169,11 +175,15 @@ const Dashboard: React.FC = () => {
         setBranches(normalizeArray<Branch>(branchesRes));
         setSales(normalizeArray<Sale>(salesRes));
         setProducts(normalizeArray<Product>(productsRes));
+        setAppointments(normalizeArray<any>(appsRes));
+        setExpenses(normalizeArray<any>(expsRes));
       } catch (e: any) {
         if (cancelled) return;
         setStats(null);
         setSales([]);
         setProducts([]);
+        setAppointments([]);
+        setExpenses([]);
         setErrorMsg(e?.message || "Failed to load dashboard data");
       } finally {
         if (!cancelled) {
@@ -408,6 +418,120 @@ const Dashboard: React.FC = () => {
       .slice(0, 10);
   }, [periodSales, productNameById]);
 
+  // ✅ Weekly Breakdown (solo si es mes)
+  const weeklyBreakdown = useMemo(() => {
+    if (period.mode !== "month") return null;
+
+    const weeks = [
+      { label: "Semana 1 (1-7)", start: 1, end: 7, count: 0, amount: 0 },
+      { label: "Semana 2 (8-14)", start: 8, end: 14, count: 0, amount: 0 },
+      { label: "Semana 3 (15-21)", start: 15, end: 21, count: 0, amount: 0 },
+      { label: "Semana 4 (22-28)", start: 22, end: 28, count: 0, amount: 0 },
+    ];
+    if (period.daysInMonth > 28) {
+      weeks.push({ label: `Semana 5 (29-${period.daysInMonth})`, start: 29, end: period.daysInMonth, count: 0, amount: 0 });
+    }
+
+    periodSales.forEach((s) => {
+      const d = normalizeDate(s.date);
+      if (!d) return;
+
+      const dd = new Date(d + "T00:00:00");
+      if (dd.getFullYear() !== period.start.getFullYear() || dd.getMonth() !== period.start.getMonth()) return;
+
+      const day = dd.getDate();
+      for (const w of weeks) {
+        if (day >= w.start && day <= w.end) {
+          w.count += 1;
+          w.amount += toNum(s.amount);
+          break;
+        }
+      }
+    });
+
+    const totalCount = weeks.reduce((acc, w) => acc + w.count, 0);
+    const totalAmount = weeks.reduce((acc, w) => acc + w.amount, 0);
+
+    return { weeks, totalCount, totalAmount };
+  }, [period, periodSales]);
+
+  // ✅ Indicadores Anuales por Sucursal
+  const annualSummary = useMemo(() => {
+    if (activeTab !== "annual") return [];
+
+    const now = new Date();
+    const isCurrentYear = now.getFullYear() === selectedYear;
+    
+    const startOfYear = new Date(selectedYear, 0, 1);
+    const endOfPeriod = isCurrentYear ? now : new Date(selectedYear, 11, 31);
+    
+    let elapsedDays = Math.ceil((endOfPeriod.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+    if (elapsedDays < 1) elapsedDays = 1;
+
+    // Filter branches based on selectedBranch if needed, but prompt says "por cada branch". 
+    // Usually it implies all branches or the ones visible to the user.
+    const targetBranches = selectedBranch === "all" ? branches : branches.filter(b => String(b.id) === String(selectedBranch));
+
+    return targetBranches.map(branch => {
+      let visitas = 0;
+      let ventasCount = 0;
+      let ventasNetas = 0;
+      let devsCount = 0;
+      let devsAmount = 0;
+      let gastos = 0;
+
+      appointments.forEach(a => {
+        if (String(a.branch_id) !== String(branch.id)) return;
+        const d = normalizeDate(a.date);
+        if (!d) return;
+        const dd = new Date(d + "T00:00:00");
+        if (dd.getFullYear() === selectedYear && String(a.status).toLowerCase() !== "cancelled") {
+          visitas += 1;
+        }
+      });
+
+      sales.forEach(s => {
+        if (String(s.branch_id) !== String(branch.id)) return;
+        const d = normalizeDate(s.date);
+        if (!d) return;
+        const dd = new Date(d + "T00:00:00");
+        if (dd.getFullYear() === selectedYear) {
+          if (isSaleCancelled(s)) {
+            devsCount += 1;
+            devsAmount += toNum(s.amount);
+          } else {
+            ventasCount += 1;
+            ventasNetas += toNum(s.amount);
+          }
+        }
+      });
+
+      expenses.forEach(e => {
+        if (String(e.branch_id) !== String(branch.id)) return;
+        const d = normalizeDate(e.date || e.created_at);
+        if (!d) return;
+        const dd = new Date(d + "T00:00:00");
+        if (dd.getFullYear() === selectedYear) {
+          gastos += toNum(e.amount);
+        }
+      });
+
+      const grossYTD = ventasNetas + devsAmount;
+      const proyeccion = (grossYTD / elapsedDays) * 365;
+
+      return {
+        branchName: branch.name,
+        visitas,
+        ventasCount,
+        ventasNetas,
+        devsCount,
+        devsAmount,
+        gastos,
+        proyeccion
+      };
+    });
+  }, [activeTab, appointments, sales, expenses, branches, selectedYear, selectedBranch]);
+
   if (loading) return <div className="p-8 font-semibold">Loading dashboard...</div>;
 
   if (!stats)
@@ -419,69 +543,168 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* TABS */}
+      <div className="flex border-b border-gray-200">
+        <button
+          className={`px-4 py-2 font-semibold text-sm transition-colors ${activeTab === "dashboard" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          Resumen General
+        </button>
+        <button
+          className={`px-4 py-2 font-semibold text-sm transition-colors ${activeTab === "annual" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}
+          onClick={() => setActiveTab("annual")}
+        >
+          Resumen Anual y Proyección de Cierre
+        </button>
+      </div>
+
+      <div className="sticky top-0 z-40 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/95 backdrop-blur-sm py-4 -mx-4 px-4 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border-b border-white rounded-b-xl mb-6">
         <div>
           <h1 className="text-2xl font-bold">Panel de Control</h1>
           <p className="text-gray-500 text-sm">
-            Resumen de actividad para tus sucursales.
+            {activeTab === "annual" ? "Métricas proyectadas y volumen acumulado anual." : "Resumen de actividad para tus sucursales."}
           </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Período: <span className="font-bold text-gray-600">{periodLabel}</span>
-          </p>
+          {activeTab === "dashboard" && (
+            <p className="text-xs text-gray-400 mt-1">
+              Período: <span className="font-bold text-gray-600">{periodLabel}</span>
+            </p>
+          )}
         </div>
 
         {/* FILTROS */}
-        <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-wrap">
-          <Filter size={18} className="text-gray-400" />
+        {activeTab === "dashboard" && (
+          <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-wrap">
+            <Filter size={18} className="text-gray-400" />
 
-          {/* Branch */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            title="Filtrar por sucursal"
-          >
-            <option value="all">All Branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={String(b.id)}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+            {/* Branch */}
+            <select
+              className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              title="Filtrar por sucursal"
+            >
+              <option value="all">All Branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
 
-          {/* Month (incluye Todos) */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
-            value={String(selectedMonth)}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSelectedMonth(v === "all" ? "all" : Number(v));
-            }}
-            title="Filtrar por mes"
-          >
-            <option value="all">Todos</option>
-            {MONTHS.map((m) => (
-              <option key={m.value} value={String(m.value)}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            {/* Month (incluye Todos) */}
+            <select
+              className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
+              value={String(selectedMonth)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedMonth(v === "all" ? "all" : Number(v));
+              }}
+              title="Filtrar por mes"
+            >
+              <option value="all">Todos</option>
+              {MONTHS.map((m) => (
+                <option key={m.value} value={String(m.value)}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
 
-          {/* Year */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-2"
-            value={String(selectedYear)}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            title="Filtrar por año"
-          >
-            {yearOptions.map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Year */}
+            <select
+              className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-2"
+              value={String(selectedYear)}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              title="Filtrar por año"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={String(y)}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+
+      {activeTab === "annual" ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold">Acumulado del Año hasta la Fecha ({selectedYear})</h3>
+              <p className="text-sm text-gray-500">Indicadores clave de rendimiento acumulados desde el 1 de Enero hasta hoy, por sucursal.</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-gray-50 text-gray-600 text-xs uppercase font-bold">
+                <tr>
+                  <th className="px-6 py-3 border-b">Sucursal</th>
+                  <th className="px-6 py-3 border-b">Visitas YTD</th>
+                  <th className="px-6 py-3 border-b">Ventas YTD</th>
+                  <th className="px-6 py-3 border-b">Ventas Netas YTD</th>
+                  <th className="px-6 py-3 border-b text-red-600">Devoluciones</th>
+                  <th className="px-6 py-3 border-b text-red-600">Importe Dev.</th>
+                  <th className="px-6 py-3 border-b text-amber-600">Gastos YTD</th>
+                  <th className="px-6 py-3 border-b text-indigo-600">Proyección Gross</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {annualSummary.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4 font-bold text-gray-900 border-r">{row.branchName}</td>
+                    <td className="px-6 py-4">{row.visitas}</td>
+                    <td className="px-6 py-4">{row.ventasCount}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-600 border-r">${row.ventasNetas.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-4 text-red-500">{row.devsCount}</td>
+                    <td className="px-6 py-4 font-semibold text-red-500 border-r">${row.devsAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-4 font-semibold text-amber-600 border-r">${row.gastos.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-4 font-bold text-indigo-600">${row.proyeccion.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+                {annualSummary.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-400">No hay información para mostrar en este año o sucursal.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <React.Fragment>
+          {weeklyBreakdown && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+               <div className="p-4 border-b border-gray-100 bg-gray-50">
+                <h3 className="font-bold text-gray-800">Desglose Semanal - {periodLabel}</h3>
+               </div>
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm whitespace-nowrap">
+                   <thead className="bg-white text-gray-500 text-xs uppercase font-semibold border-b border-gray-100">
+                     <tr>
+                       <th className="px-6 py-3 border-r border-gray-50 w-1/3">Semana del Mes</th>
+                       <th className="px-6 py-3 border-r border-gray-50 w-1/3">Cantidad de Ventas</th>
+                       <th className="px-6 py-3 w-1/3">Valor de Ventas</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {weeklyBreakdown.weeks.map((w, idx) => (
+                       <tr key={idx} className="hover:bg-gray-50">
+                         <td className="px-6 py-3 font-medium text-gray-700 border-r border-gray-50">{w.label}</td>
+                         <td className="px-6 py-3 border-r border-gray-50">{w.count}</td>
+                         <td className="px-6 py-3 text-emerald-600 font-medium">${w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                       </tr>
+                     ))}
+                     <tr className="bg-gray-50/80 font-bold border-t-2 border-gray-200">
+                       <td className="px-6 py-4 text-gray-900 border-r border-white">TOTAL {periodLabel.toUpperCase()}:</td>
+                       <td className="px-6 py-4 text-gray-900 border-r border-white">{weeklyBreakdown.totalCount}</td>
+                       <td className="px-6 py-4 text-emerald-600">${weeklyBreakdown.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                     </tr>
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          )}
 
       {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -765,6 +988,8 @@ const Dashboard: React.FC = () => {
           )}
         </div>
       </div>
+        </React.Fragment>
+      )}
     </div>
   );
 };
