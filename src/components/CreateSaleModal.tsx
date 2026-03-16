@@ -137,8 +137,10 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         const qRaw = String(next.quantity ?? form.quantity ?? "").trim();
         if (!qRaw) return { ...next, quantity: "", amount: "" };
         const qty = Math.max(1, parseInt(qRaw, 10) || 1);
-        const unitPrice = toNumber(String(next.unit_price ?? form.unit_price));
-        return { ...next, quantity: String(qty), amount: unitPrice ? money(unitPrice * qty) : "" };
+        const unitPriceStr = String(next.unit_price ?? form.unit_price ?? "");
+        if (unitPriceStr === "") return { ...next, quantity: String(qty), amount: "" };
+        const unitPrice = toNumber(unitPriceStr);
+        return { ...next, quantity: String(qty), amount: money(unitPrice * qty) };
     };
 
     const handleProductSelect = (productId: string) => {
@@ -148,7 +150,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             return;
         }
         const salesPrice = toNumber(String((p as any).sales_price ?? 0));
-        setForm(prev => ({ ...prev, ...recalcTotals({ product_id: String(p.id), service_rendered: p.name, unit_price: salesPrice ? money(salesPrice) : "" }) }));
+        setForm(prev => ({ ...prev, ...recalcTotals({ product_id: String(p.id), service_rendered: p.name, unit_price: money(salesPrice) }) }));
     };
 
     const handleQuantityChange = (qtyStr: string) => {
@@ -163,7 +165,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     };
 
     const handleAddToCart = () => {
-        if (!form.product_id || !form.quantity || toNumber(form.amount) <= 0) return;
+        if (!form.product_id || !form.quantity || form.amount === "") return;
         setCart(prev => [...prev, {
             id: Date.now().toString(),
             product_id: form.product_id,
@@ -231,7 +233,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setIsLeadModalOpen(false);
     };
 
-    const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0 && form.amount && toNumber(form.amount) > 0;
+    const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0 && form.amount !== "";
     const canSubmit = form.branch_id && form.date && form.client_name && form.lead_id && cart.length > 0;
 
     if (!isOpen && !isLeadModalOpen) return null;
