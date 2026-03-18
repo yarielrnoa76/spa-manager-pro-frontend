@@ -9,8 +9,8 @@ type LoginProps = {
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("admin@local.test");
-  const [password, setPassword] = useState("Admin12345!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -100,8 +100,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </div>
 
         <div className="text-center mt-4 text-xs text-gray-400">
-          <p>Dev user: admin@local.test</p>
-          <p>Password: Admin12345!</p>
+          {/* <p>Dev user: admin@local.test</p>
+          <p>Password: Admin12345!</p> */}
         </div>
       </div>
     </div>
