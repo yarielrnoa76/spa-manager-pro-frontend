@@ -579,6 +579,94 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </button>
         </div>
       </div>
+      {/* WEEKLY BREAKDOWN */}
+      {(() => {
+        // Compute weekly breakdown for the month of the selected date
+        const selDate = new Date(selectedDate + "T00:00:00");
+        const selYear = selDate.getFullYear();
+        const selMonth = selDate.getMonth();
+        const monthNames = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+        const monthLabel = `${monthNames[selMonth]} ${selYear}`;
+
+        // Build week ranges for this month
+        const firstDay = new Date(selYear, selMonth, 1);
+        const lastDay = new Date(selYear, selMonth + 1, 0);
+        const weeks: { start: string; end: string; startDay: number; endDay: number }[] = [];
+        let current = new Date(firstDay);
+        while (current <= lastDay) {
+          const weekStart = new Date(current);
+          // end of the week = next Sunday or end of month
+          const weekEnd = new Date(current);
+          const daysUntilSunday = (7 - weekEnd.getDay()) % 7;
+          weekEnd.setDate(weekEnd.getDate() + daysUntilSunday);
+          if (weekEnd > lastDay) weekEnd.setTime(lastDay.getTime());
+
+          const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+          weeks.push({
+            start: fmt(weekStart),
+            end: fmt(weekEnd),
+            startDay: weekStart.getDate(),
+            endDay: weekEnd.getDate(),
+          });
+          current = new Date(weekEnd);
+          current.setDate(current.getDate() + 1);
+        }
+
+        // Group sales by week for this month (all branches or filtered)
+        const monthSales = (sales as any[]).filter((s: any) => {
+          const d = normalizeDateOnly(s.date);
+          if (!d || d.length < 7) return false;
+          const sYear = parseInt(d.slice(0,4),10);
+          const sMonth = parseInt(d.slice(5,7),10) - 1;
+          const branchMatch = selectedBranch === "all" || String(s.branch_id) === String(selectedBranch);
+          return sYear === selYear && sMonth === selMonth && branchMatch && !isSaleCancelled(s);
+        });
+
+        const weeklyData = weeks.map(w => {
+          const weekSales = monthSales.filter((s: any) => {
+            const d = normalizeDateOnly(s.date);
+            return d >= w.start && d <= w.end;
+          });
+          return {
+            ...w,
+            count: weekSales.length,
+            total: weekSales.reduce((acc: number, s: any) => acc + saleAmount(s), 0),
+          };
+        });
+
+        if (weeklyData.length === 0) return null;
+
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden max-w-3xl">
+            <div className="bg-blue-50/50 px-6 py-3 border-b border-blue-100">
+              <h3 className="text-blue-900 font-bold text-sm">Desglose Semanal - {monthLabel}</h3>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400">
+                <tr>
+                  <th className="px-6 py-2 text-left">Semana</th>
+                  <th className="px-6 py-2 text-center">Ventas</th>
+                  <th className="px-6 py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {weeklyData.map((w, idx) => (
+                  <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
+                    <td className="px-6 py-3">Del {String(w.startDay).padStart(2,"0")} al {String(w.endDay).padStart(2,"0")}</td>
+                    <td className="px-6 py-3 text-center">{w.count}</td>
+                    <td className="px-6 py-3 text-right font-bold">${w.total.toLocaleString()}</td>
+                  </tr>
+                ))}
+                <tr className="bg-blue-50/40 font-bold">
+                  <td className="px-6 py-3">Total Mes</td>
+                  <td className="px-6 py-3 text-center">{weeklyData.reduce((a, w) => a + w.count, 0)}</td>
+                  <td className="px-6 py-3 text-right">${weeklyData.reduce((a, w) => a + w.total, 0).toLocaleString()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* RESUMEN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

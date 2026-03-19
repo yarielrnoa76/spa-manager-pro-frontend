@@ -420,32 +420,6 @@ const Dashboard: React.FC = () => {
               ) : <div className="h-full flex items-center justify-center text-gray-400">Sin datos</div>}
             </div>
           </div>
-
-          {period.mode === "month" && weeklyBreakdown.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden max-w-4xl mx-auto">
-              <div className="bg-blue-50/50 px-6 py-4 border-b border-blue-100">
-                <h3 className="text-blue-900 font-bold">Desglose Semanal - {periodLabel}</h3>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400">
-                  <tr>
-                    <th className="px-6 py-3 text-left">Semana</th>
-                    <th className="px-6 py-3 text-center">Ventas</th>
-                    <th className="px-6 py-3 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {weeklyBreakdown.map((w, idx) => (
-                    <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
-                      <td className="px-6 py-4">Del {w.start.split('-')[2]} al {w.end.split('-')[2]}</td>
-                      <td className="px-6 py-4 text-center">{w.count}</td>
-                      <td className="px-6 py-4 text-right font-bold">${w.total.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in duration-500">
