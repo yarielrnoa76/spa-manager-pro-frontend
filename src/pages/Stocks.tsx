@@ -360,26 +360,32 @@ const Stocks: React.FC = () => {
                   </td>
 
                   <td className="px-6 py-4 text-center">
-                    <span
-                      className={`px-3 py-1 rounded-full font-bold ${Number(product.stock) < Number(product.min_stock)
-                        ? "bg-red-100 text-red-700"
-                        : "bg-green-100 text-green-700"
-                        }`}
-                    >
-                      {product.stock}
-                    </span>
+                    {product.type === 'service' ? (
+                      <span className="text-gray-400">-</span>
+                    ) : (
+                      <span
+                        className={`px-3 py-1 rounded-full font-bold ${Number(product.stock) < Number(product.min_stock)
+                          ? "bg-red-100 text-red-700"
+                          : "bg-green-100 text-green-700"
+                          }`}
+                      >
+                        {product.stock}
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-6 py-4 text-center">
-                    {product.min_stock ?? ""}
+                    {product.type === 'service' ? <span className="text-gray-400">-</span> : (product.min_stock ?? "")}
                   </td>
 
                   <td className="px-6 py-4 text-center">
-                    {product.max_stock ?? ""}
+                    {product.type === 'service' ? <span className="text-gray-400">-</span> : (product.max_stock ?? "")}
                   </td>
 
                   <td className="px-6 py-4">
-                    {product.is_low_stock ? (
+                    {product.type === 'service' ? (
+                      <span className="text-[10px] text-gray-400 font-bold uppercase">-</span>
+                    ) : product.is_low_stock ? (
                       <span className="flex items-center gap-1 text-amber-600 font-bold text-[10px] uppercase">
                         <AlertTriangle size={12} /> Stock Crítico
                       </span>
@@ -401,15 +407,17 @@ const Stocks: React.FC = () => {
                       </button>
 
                       {/* MOVIMIENTO */}
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setIsModalOpen(true);
-                        }}
-                        className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold"
-                      >
-                        <ArrowRightLeft size={16} /> Mover
-                      </button>
+                      {product.type !== 'service' && (
+                        <button
+                          onClick={() => {
+                            setSelectedProduct(product);
+                            setIsModalOpen(true);
+                          }}
+                          className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-bold"
+                        >
+                          <ArrowRightLeft size={16} /> Mover
+                        </button>
+                      )}
 
                       {/* ELIMINAR */}
                       {canDeleteProduct && (
@@ -657,38 +665,40 @@ const Stocks: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Min stock
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={editForm.min_stock}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, min_stock: e.target.value })
-                    }
-                  />
-                </div>
+              {editForm.type === 'product' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Min stock
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      className="w-full border rounded-lg p-2 text-sm"
+                      value={editForm.min_stock}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, min_stock: e.target.value })
+                      }
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Max stock
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={editForm.max_stock}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, max_stock: e.target.value })
-                    }
-                  />
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                      Max stock
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full border rounded-lg p-2 text-sm"
+                      value={editForm.max_stock}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, max_stock: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button
@@ -816,64 +826,68 @@ const Stocks: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Stock inicial
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={newProduct.stock}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, stock: e.target.value })
-                    }
-                  />
-                </div>
+              {/* Stock fields only for products */}
+              {newProduct.type === "product" && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Stock inicial
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        className="w-full border rounded-lg p-2 text-sm"
+                        value={newProduct.stock}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, stock: e.target.value })
+                        }
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Min stock
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={newProduct.min_stock}
-                    onChange={(e) =>
-                      setNewProduct({
-                        ...newProduct,
-                        min_stock: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Min stock
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        className="w-full border rounded-lg p-2 text-sm"
+                        value={newProduct.min_stock}
+                        onChange={(e) =>
+                          setNewProduct({
+                            ...newProduct,
+                            min_stock: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                    Max stock
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    className="w-full border rounded-lg p-2 text-sm"
-                    value={newProduct.max_stock}
-                    onChange={(e) =>
-                      setNewProduct({
-                        ...newProduct,
-                        max_stock: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div />
-              </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                        Max stock
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        className="w-full border rounded-lg p-2 text-sm"
+                        value={newProduct.max_stock}
+                        onChange={(e) =>
+                          setNewProduct({
+                            ...newProduct,
+                            max_stock: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button

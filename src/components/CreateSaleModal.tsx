@@ -385,7 +385,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     >
                                         <option value="">-- Seleccionar de Inventario --</option>
                                         {availableProducts.map((p: any) => (
-                                            <option key={p.id} value={String(p.id)}>{p.name} (Stock: {p.stock})(Price: {p.sales_price})</option>
+                                            <option key={p.id} value={String(p.id)}>
+                                                {p.name} {p.type !== 'service' ? `(Stock: ${p.stock})` : ''} (Price: {p.sales_price})
+                                            </option>
                                         ))}
                                     </select>
                                 </div>
