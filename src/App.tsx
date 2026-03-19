@@ -176,30 +176,36 @@ const App: React.FC = () => {
   const canSeeDashboard = hasPerm("view_dashboard");
   const canSeeSettings = hasPerm("manage_settings");
 
-  const isVendedora = user?.role?.name === "vendedora";
-
-  const navItems = isVendedora
-    ? [{ to: "/sales", icon: DollarSign, label: "Ventas Diarias" }]
-    : [
-      ...(canSeeDashboard
-        ? [{ to: "/", icon: LayoutDashboard, label: "Dashboard" }]
-        : []),
-      { to: "/sales", icon: DollarSign, label: "Ventas Diarias" },
-      { to: "/stocks", icon: Package, label: "Inventario / Stocks" },
-      { to: "/leads", icon: UserPlus, label: "Leads / Contacts" },
-      { to: "/appointments", icon: Calendar, label: "Citas" },
-      { to: "/communications", icon: MessageSquare, label: "Comm. Center" },
-      ...(hasPerm("view_ticket")
-        ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
-        : []),
-      { to: "/help", icon: HelpCircle, label: "Ayuda" },
-      ...(canSeeSettings
-        ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
-        : []),
-      ...(isSuperAdmin || hasPerm("view_logs")
-        ? [{ to: "/logs", icon: History, label: "Auditoría (Logs)" }]
-        : []),
-    ];
+  const navItems = [
+    ...(hasPerm("view_dashboard")
+      ? [{ to: "/", icon: LayoutDashboard, label: "Dashboard" }]
+      : []),
+    ...(hasPerm("view_sales")
+      ? [{ to: "/sales", icon: DollarSign, label: "Ventas Diarias" }]
+      : []),
+    ...(hasPerm("view_products")
+      ? [{ to: "/stocks", icon: Package, label: "Inventario / Stocks" }]
+      : []),
+    ...(hasPerm("view_leads")
+      ? [{ to: "/leads", icon: UserPlus, label: "Leads / Contacts" }]
+      : []),
+    ...(hasPerm("view_appointments")
+      ? [{ to: "/appointments", icon: Calendar, label: "Citas" }]
+      : []),
+    ...(hasPerm("view_conversations")
+      ? [{ to: "/communications", icon: MessageSquare, label: "Comm. Center" }]
+      : []),
+    ...(hasPerm("view_ticket")
+      ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
+      : []),
+    { to: "/help", icon: HelpCircle, label: "Ayuda" },
+    ...(canSeeSettings
+      ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
+      : []),
+    ...(isSuperAdmin || hasPerm("view_logs")
+      ? [{ to: "/logs", icon: History, label: "Auditoría (Logs)" }]
+      : []),
+  ];
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -373,14 +379,8 @@ const App: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto p-6">
           <Routes>
-            {user?.role?.name === "vendedora" ? (
               <>
-                <Route path="/sales" element={<Sales user={user} />} />
-                <Route path="*" element={<Navigate to="/sales" replace />} />
-              </>
-            ) : (
-              <>
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/" element={hasPerm("view_dashboard") ? <Dashboard /> : <Navigate to="/sales" replace />} />
                 <Route path="/sales" element={<Sales user={user} />} />
                 <Route path="/stocks" element={<Stocks />} />
                 <Route path="/leads" element={<Leads />} />
@@ -413,7 +413,6 @@ const App: React.FC = () => {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </>
-            )}
           </Routes>
         </div>
       </main>
