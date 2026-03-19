@@ -15,6 +15,7 @@ import {
   DollarSign,
   ShoppingBag,
   Filter,
+  Building2,
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
@@ -132,12 +133,10 @@ const Dashboard: React.FC = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
 
-  // ✅ Mes/Año (por defecto: actual)
   const nowInit = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(
-    nowInit.getMonth() + 1,
-  ); // 1-12 o "all"
+  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(nowInit.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(nowInit.getFullYear());
+  const [activeTab, setActiveTab] = useState<"summary" | "annual">("summary");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -146,47 +145,38 @@ const Dashboard: React.FC = () => {
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
 
+  const [user, setUser] = useState<any>(null);
+
   useEffect(() => {
     let cancelled = false;
-
     const fetchData = async () => {
       setLoading(true);
       setLoadingCharts(true);
       setErrorMsg("");
-
       try {
-        const [statsRes, branchesRes, salesRes, productsRes] =
-          await Promise.all([
-            api.getDashboardStats(selectedBranch),
-            api.listBranches(),
-            api.listSales("all", { include_cancelled: true } as any),
-            api.listProducts(),
-          ]);
-
+        const [statsRes, branchesRes, salesRes, productsRes, userRes] = await Promise.all([
+          api.getDashboardStats(selectedBranch),
+          api.listBranches(),
+          api.listSales("all", { include_cancelled: true } as any),
+          api.listProducts(),
+          api.me(),
+        ]);
         if (cancelled) return;
-
         setStats(statsRes as DashboardStats);
         setBranches(normalizeArray<Branch>(branchesRes));
         setSales(normalizeArray<Sale>(salesRes));
         setProducts(normalizeArray<Product>(productsRes));
+        setUser(userRes);
       } catch (e: any) {
         if (cancelled) return;
-        setStats(null);
-        setSales([]);
-        setProducts([]);
+        setStats(null); setSales([]); setProducts([]);
         setErrorMsg(e?.message || "Failed to load dashboard data");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setLoadingCharts(false);
-        }
+        if (!cancelled) { setLoading(false); setLoadingCharts(false); }
       }
     };
-
     fetchData();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [selectedBranch]);
 
   const productNameById = useMemo(() => {
@@ -198,91 +188,50 @@ const Dashboard: React.FC = () => {
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
     const arr: number[] = [];
-    for (let yy = y - 6; yy <= y + 1; yy++) arr.push(yy);
+    for (let yy = y - 5; yy <= y + 1; yy++) arr.push(yy);
     return arr;
   }, []);
 
-  // ✅ período seleccionado:
-  // - Mes específico: ese mes (si es mes actual -> hasta hoy)
-  // - Mes = "all": todo el año (si es año actual -> hasta hoy)
   const period = useMemo(() => {
     const now = new Date();
     const isCurrentYear = now.getFullYear() === selectedYear;
-
     if (selectedMonth === "all") {
       const start = new Date(selectedYear, 0, 1);
       const end = isCurrentYear ? now : new Date(selectedYear, 11, 31);
-      return {
-        mode: "year" as const,
-        start,
-        end,
-        startStr: toISODate(start),
-        endStr: toISODate(end),
-        isCurrentYear,
-      };
+      return { mode: "year" as const, start, end, startStr: toISODate(start), endStr: toISODate(end) };
     }
-
     const start = new Date(selectedYear, selectedMonth - 1, 1);
     const endOfMonth = new Date(selectedYear, selectedMonth, 0);
-
-    const isCurrentMonth =
-      isCurrentYear && now.getMonth() + 1 === selectedMonth;
-
+    const isCurrentMonth = isCurrentYear && now.getMonth() + 1 === selectedMonth;
     const end = isCurrentMonth ? now : endOfMonth;
-
     return {
-      mode: "month" as const,
-      start,
-      end,
-      startStr: toISODate(start),
-      endStr: toISODate(end),
-      isCurrentYear,
-      isCurrentMonth,
-      daysInMonth: endOfMonth.getDate(),
+      mode: "month" as const, start, end, startStr: toISODate(start), endStr: toISODate(end),
       daysInRange: isCurrentMonth ? end.getDate() : endOfMonth.getDate(),
     };
   }, [selectedMonth, selectedYear]);
 
-  // ✅ Ventas del período (activas, filtradas por branch)
   const periodSales = useMemo(() => {
     return (sales || []).filter((s) => {
       const d = normalizeDate(s.date);
-      if (!d) return false;
-
-      if (d < period.startStr || d > period.endStr) return false;
-
-      if (
-        selectedBranch !== "all" &&
-        String(s.branch_id ?? "") !== String(selectedBranch)
-      ) {
-        return false;
-      }
-
-      if (isSaleCancelled(s)) return false;
-
-      return true;
+      if (!d || d < period.startStr || d > period.endStr) return false;
+      if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
+      return !isSaleCancelled(s);
     });
   }, [sales, selectedBranch, period.startStr, period.endStr]);
 
-  // ✅ KPIs del período
   const kpi = useMemo(() => {
     const totalSales = periodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
     const salesCount = periodSales.length;
-    const productsSold = periodSales.reduce(
-      (acc, s) => acc + Math.max(1, toNum(s.quantity)),
-      0,
-    );
+    const productsSold = periodSales.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
     return { totalSales, salesCount, productsSold };
   }, [periodSales]);
 
-  // ✅ Label del período (para títulos)
   const periodLabel = useMemo(() => {
     if (selectedMonth === "all") return `Año ${selectedYear}`;
     const m = MONTHS.find((x) => x.value === selectedMonth)?.label || "Mes";
     return `${m} ${selectedYear}`;
   }, [selectedMonth, selectedYear]);
 
-  // ✅ Profit calculated dynamically for the selected period using cost_price
   const profitDisplay = useMemo(() => {
     let totalProfit = 0;
     periodSales.forEach((s) => {
@@ -295,478 +244,272 @@ const Dashboard: React.FC = () => {
       }
       totalProfit += (toNum(s.amount) - cost);
     });
+    return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  }, [periodSales, products]);
 
-    return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }, [periodSales, products, selectedMonth]);
-
-  // -----------------------------
-  // ✅ Chart 1:
-  // - si mes específico => ventas por día
-  // - si "all" => ventas por mes (del año)
-  // -----------------------------
   const salesByDayChartData = useMemo(() => {
     if (period.mode !== "month") return [];
-
-    const daysInRange = period.daysInRange;
-
-    const base = Array.from({ length: daysInRange }, (_, i) => ({
-      day: String(i + 1),
-      count: 0,
-    }));
-
-    const indexByDay = new Map<string, number>();
-    base.forEach((row, idx) => indexByDay.set(row.day, idx));
-
+    const base = Array.from({ length: period.daysInRange }, (_, i) => ({ day: String(i + 1), count: 0 }));
     periodSales.forEach((s) => {
       const d = normalizeDate(s.date);
-      if (!d) return;
-
-      const dd = new Date(d + "T00:00:00");
-      if (dd.getFullYear() !== period.start.getFullYear()) return;
-      if (dd.getMonth() !== period.start.getMonth()) return;
-
-      const dayNumber = String(dd.getDate());
-      const idx = indexByDay.get(dayNumber);
-      if (idx === undefined) return;
-      base[idx].count += 1;
+      if (d) {
+        const dd = new Date(d + "T00:00:00");
+        if (dd.getMonth() + 1 === selectedMonth) {
+          const row = base.find(x => x.day === String(dd.getDate()));
+          if (row) row.count++;
+        }
+      }
     });
-
     return base;
-  }, [period.mode, periodSales, period.startStr, period.endStr, periodLabel]);
+  }, [period, periodSales, selectedMonth]);
 
   const salesByMonthChartData = useMemo(() => {
     if (period.mode !== "year") return [];
-
     const base = MONTHS.map((m) => ({ month: m.short, count: 0 }));
-    const idxByMonth = new Map<number, number>();
-    MONTHS.forEach((m, idx) => idxByMonth.set(m.value, idx));
-
     periodSales.forEach((s) => {
       const d = normalizeDate(s.date);
-      if (!d) return;
-      const dd = new Date(d + "T00:00:00");
-      if (dd.getFullYear() !== selectedYear) return;
-
-      const m = dd.getMonth() + 1;
-      const idx = idxByMonth.get(m);
-      if (idx === undefined) return;
-
-      base[idx].count += 1;
+      if (d) {
+        const mIdx = new Date(d + "T00:00:00").getMonth();
+        if (base[mIdx]) base[mIdx].count++;
+      }
     });
-
     return base;
-  }, [period.mode, periodSales, selectedYear]);
+  }, [period, periodSales]);
 
-  // ✅ Chart 2: Ventas por vendedora (del período)
   const salesBySellerChartData = useMemo(() => {
     const map = new Map<string, number>();
-
-    const getSellerLabel = (s: Sale) => {
-      const name =
-        s?.seller?.name ||
-        s?.seller_name ||
-        (s?.seller_id != null ? `Seller ${String(s.seller_id)}` : null);
-
-      return String(name || "Sin vendedora");
-    };
-
     periodSales.forEach((s) => {
-      const label = getSellerLabel(s);
-      map.set(label, (map.get(label) || 0) + 1);
+      const name = s?.seller?.name || s?.seller_name || "Sin vendedora";
+      map.set(name, (map.get(name) || 0) + 1);
     });
-
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
   }, [periodSales]);
 
-  // ✅ Chart 3: Top 10 productos (del período)
   const topProducts = useMemo(() => {
     const map = new Map<string, number>();
-
-    const getProductLabel = (s: Sale) => {
-      if (s?.product?.name) return s.product.name;
-      if (s?.product_name) return s.product_name;
-
-      if (s?.product_id != null) {
-        const name = productNameById.get(String(s.product_id));
-        if (name) return name;
-      }
-
-      return "Producto sin nombre";
-    };
-
     periodSales.forEach((s) => {
-      const name = getProductLabel(s);
-      const qty = Math.max(1, toNum(s.quantity));
-      map.set(name, (map.get(name) || 0) + qty);
+      const name = s?.product?.name || s?.product_name || productNameById.get(String(s.product_id)) || "Producto sin nombre";
+      map.set(name, (map.get(name) || 0) + Math.max(1, toNum(s.quantity)));
     });
-
-    return Array.from(map.entries())
-      .map(([name, qty]) => ({ name, qty }))
-      .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10);
+    return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 10);
   }, [periodSales, productNameById]);
 
-  if (loading) return <div className="p-8 font-semibold">Loading dashboard...</div>;
+  const weeklyBreakdown = useMemo(() => {
+    if (period.mode !== "month") return [];
+    const weeks: { start: string; end: string; total: number; count: number }[] = [];
+    let curr = new Date(period.start);
+    while (curr <= period.end) {
+      const wStart = new Date(curr);
+      const wEnd = new Date(curr);
+      wEnd.setDate(wEnd.getDate() + (6 - wEnd.getDay()));
+      if (wEnd > period.end) wEnd.setTime(period.end.getTime());
+      const sStr = toISODate(wStart); const eStr = toISODate(wEnd);
+      const ws = periodSales.filter(s => { const d = normalizeDate(s.date); return d >= sStr && d <= eStr; });
+      weeks.push({ start: sStr, end: eStr, count: ws.length, total: ws.reduce((a, s) => a + toNum(s.amount), 0) });
+      curr.setDate(curr.getDate() + (7 - curr.getDay()));
+      if (curr.getDay() !== 1) curr.setDate(curr.getDate() + 1);
+    }
+    return weeks;
+  }, [period, periodSales]);
 
-  if (!stats)
-    return (
-      <div className="p-8 font-semibold text-red-600">
-        {errorMsg || "Dashboard not available"}
-      </div>
-    );
+  const annualSummary = useMemo(() => {
+    const yearSales = sales.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
+    const data = branches.map(b => {
+      const months = Array(12).fill(0);
+      yearSales.filter(s => String(s.branch_id) === String(b.id)).forEach(s => {
+        months[new Date(normalizeDate(s.date) + "T00:00:00").getMonth()] += toNum(s.amount);
+      });
+      return { branchName: b.name, months, total: months.reduce((a, b) => a + b, 0) };
+    });
+    const totals = Array(12).fill(0);
+    data.forEach(d => d.months.forEach((m, i) => totals[i] += m));
+    return { branches: data, totals, grandTotal: totals.reduce((a, b) => a + b, 0) };
+  }, [sales, branches, selectedYear]);
+
+  if (loading) return <div className="p-8 font-semibold">Cargando panel...</div>;
+  if (!stats) return <div className="p-8 text-red-600 font-bold">{errorMsg || "Error al cargar datos"}</div>;
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Panel de Control</h1>
-          <p className="text-gray-500 text-sm">
-            Resumen de actividad para tus sucursales.
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Período: <span className="font-bold text-gray-600">{periodLabel}</span>
-          </p>
+          <p className="text-gray-500 text-sm">Resumen de actividad operativa</p>
+          <p className="text-xs text-gray-400 mt-1">Período: <span className="font-bold text-gray-600">{periodLabel}</span></p>
         </div>
-
-        {/* FILTROS */}
         <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-wrap">
           <Filter size={18} className="text-gray-400" />
-
-          {/* Branch */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            title="Filtrar por sucursal"
-          >
-            <option value="all">All Branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={String(b.id)}>
-                {b.name}
-              </option>
-            ))}
+          <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+            <option value="all">Todas las Sucursales</option>
+            {branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
           </select>
-
-          {/* Month (incluye Todos) */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6"
-            value={String(selectedMonth)}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSelectedMonth(v === "all" ? "all" : Number(v));
-            }}
-            title="Filtrar por mes"
-          >
-            <option value="all">Todos</option>
-            {MONTHS.map((m) => (
-              <option key={m.value} value={String(m.value)}>
-                {m.label}
-              </option>
-            ))}
+          <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6" value={String(selectedMonth)} onChange={e => setSelectedMonth(e.target.value === "all" ? "all" : Number(e.target.value))}>
+            <option value="all">Todo el Año</option>
+            {MONTHS.map(m => <option key={m.value} value={String(m.value)}>{m.label}</option>)}
           </select>
-
-          {/* Year */}
-          <select
-            className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-2"
-            value={String(selectedYear)}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            title="Filtrar por año"
-          >
-            {yearOptions.map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
+          <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-2" value={String(selectedYear)} onChange={e => setSelectedYear(Number(e.target.value))}>
+            {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
           </select>
         </div>
       </div>
 
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title={`Valor de Ventas (${periodLabel})`}
-          value={`$${Number(kpi.totalSales || 0).toLocaleString()}`}
-          icon={DollarSign}
-          color="bg-indigo-600"
-        />
-
-        <StatCard
-          title={`Ganancia Neta (${selectedMonth === "all" ? "Año" : "Mes"})`}
-          value={profitDisplay}
-          icon={TrendingUp}
-          color="bg-emerald-600"
-        />
-
-        <StatCard
-          title={`Cantidad de Ventas (${periodLabel})`}
-          value={kpi.salesCount}
-          icon={Users}
-          color="bg-amber-500"
-        />
-
-        <StatCard
-          title={`Productos Vendidos (${periodLabel})`}
-          value={kpi.productsSold}
-          icon={ShoppingBag}
-          color="bg-rose-500"
-        />
+      <div className="flex border-b border-gray-200 gap-8">
+        <button onClick={() => setActiveTab("summary")} className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'summary' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          Resumen de Actividad
+          {activeTab === 'summary' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
+        </button>
+        <button onClick={() => setActiveTab("annual")} className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'annual' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          Resumen Anual y Cierre
+          {activeTab === 'annual' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
+        </button>
       </div>
 
-      {/* CHARTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Chart 1 dinámico */}
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold mb-2">
-            {selectedMonth === "all"
-              ? `Ventas por mes (${selectedYear})`
-              : `Ventas por día (${periodLabel})`}
-          </h3>
-          <p className="text-xs text-gray-500 mb-6">
-            {selectedMonth === "all"
-              ? "Conteo de ventas activas por mes del año seleccionado."
-              : "Conteo de ventas activas por día del mes seleccionado."}
-          </p>
-
-          <div className="h-80">
-            {loadingCharts ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                Cargando gráfico...
-              </div>
-            ) : selectedMonth === "all" ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ReBarChart data={salesByMonthChartData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f3f4f6"
-                  />
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "none",
-                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                    }}
-                    formatter={(value: any) => [value, "Ventas"]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="#4f46e5"
-                    radius={[4, 4, 0, 0]}
-                    barSize={18}
-                  >
-                    <LabelList
-                      dataKey="count"
-                      position="top"
-                      style={{ fill: "#111827", fontSize: 12 }}
-                    />
-                  </Bar>
-                </ReBarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <ReBarChart data={salesByDayChartData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f3f4f6"
-                  />
-                  <XAxis
-                    dataKey="day"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "none",
-                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                    }}
-                    formatter={(value: any) => [value, "Ventas"]}
-                    labelFormatter={(label: any) => `Día ${label}`}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="#4f46e5"
-                    radius={[4, 4, 0, 0]}
-                    barSize={18}
-                  >
-                    <LabelList
-                      dataKey="count"
-                      position="top"
-                      style={{ fill: "#111827", fontSize: 12 }}
-                    />
-                  </Bar>
-                </ReBarChart>
-              </ResponsiveContainer>
-            )}
+      {activeTab === "summary" ? (
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard title={`Ventas (${periodLabel})`} value={`$${kpi.totalSales.toLocaleString()}`} icon={DollarSign} color="bg-indigo-600" />
+            <StatCard title="Ganancia Est." value={profitDisplay} icon={TrendingUp} color="bg-emerald-600" />
+            <StatCard title="Cant. Ventas" value={kpi.salesCount} icon={Users} color="bg-amber-500" />
+            <StatCard title="Productos" value={kpi.productsSold} icon={ShoppingBag} color="bg-rose-500" />
           </div>
-        </div>
 
-        {/* Chart 2: Ventas por vendedora */}
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold mb-2">
-            Ventas por vendedora ({periodLabel})
-          </h3>
-          <p className="text-xs text-gray-500 mb-6">
-            Conteo de ventas activas agrupadas por vendedora.
-          </p>
-
-          <div className="h-80">
-            {loadingCharts ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                Cargando gráfico...
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+              <h3 className="text-lg font-bold mb-4">{selectedMonth === "all" ? "Ventas por mes" : "Ventas por día"}</h3>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ReBarChart data={selectedMonth === "all" ? salesByMonthChartData : salesByDayChartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey={selectedMonth === "all" ? "month" : "day"} axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                    <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                    <Tooltip contentStyle={{ borderRadius: "8px", border: "none" }} />
+                    <Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={18} />
+                  </ReBarChart>
+                </ResponsiveContainer>
               </div>
-            ) : salesBySellerChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                No hay ventas en el período seleccionado.
+            </div>
+            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+              <h3 className="text-lg font-bold mb-4">Ventas por vendedora</h3>
+              <div className="h-80">
+                {salesBySellerChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ReBarChart data={salesBySellerChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 10 }} interval={0} angle={-10} height={40} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
+                    </ReBarChart>
+                  </ResponsiveContainer>
+                ) : <div className="h-full flex items-center justify-center text-gray-400">Sin datos</div>}
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <ReBarChart data={salesBySellerChartData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f3f4f6"
-                  />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                    interval={0}
-                    angle={-10}
-                    height={60}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "none",
-                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                    }}
-                    formatter={(value: any) => [value, "Ventas"]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="#10b981"
-                    radius={[4, 4, 0, 0]}
-                    barSize={40}
-                  >
-                    <LabelList
-                      dataKey="count"
-                      position="top"
-                      style={{ fill: "#111827", fontSize: 12 }}
-                    />
-                  </Bar>
-                </ReBarChart>
-              </ResponsiveContainer>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* TOP PRODUCTOS */}
-      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-        <h3 className="text-lg font-bold mb-2">
-          Productos más vendidos (Top 10) — {periodLabel}
-        </h3>
-        <p className="text-xs text-gray-500 mb-6">
-          Cantidad vendida, ordenado de mayor a menor.
-        </p>
-
-        <div className="h-96">
-          {loadingCharts ? (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              Cargando gráfico...
+          <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <h3 className="text-lg font-bold mb-6">Top 10 Productos</h3>
+            <div className="h-80">
+              {topProducts.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ReBarChart data={topProducts} layout="vertical">
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    <Bar dataKey="qty" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                  </ReBarChart>
+                </ResponsiveContainer>
+              ) : <div className="h-full flex items-center justify-center text-gray-400">Sin datos</div>}
             </div>
-          ) : topProducts.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              No hay ventas en el período seleccionado.
+          </div>
+
+          {period.mode === "month" && weeklyBreakdown.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden max-w-4xl mx-auto">
+              <div className="bg-blue-50/50 px-6 py-4 border-b border-blue-100">
+                <h3 className="text-blue-900 font-bold">Desglose Semanal - {periodLabel}</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400">
+                  <tr>
+                    <th className="px-6 py-3 text-left">Semana</th>
+                    <th className="px-6 py-3 text-center">Ventas</th>
+                    <th className="px-6 py-3 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {weeklyBreakdown.map((w, idx) => (
+                    <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
+                      <td className="px-6 py-4">Del {w.start.split('-')[2]} al {w.end.split('-')[2]}</td>
+                      <td className="px-6 py-4 text-center">{w.count}</td>
+                      <td className="px-6 py-4 text-right font-bold">${w.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ReBarChart
-                data={topProducts}
-                layout="vertical"
-                margin={{ top: 8, right: 16, left: 24, bottom: 8 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  horizontal={false}
-                  stroke="#f3f4f6"
-                />
-
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  width={160}
-                  tick={{ fill: "#6b7280", fontSize: 12 }}
-                />
-
-                <XAxis
-                  type="number"
-                  allowDecimals={false}
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "#9ca3af", fontSize: 12 }}
-                />
-
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "8px",
-                    border: "none",
-                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                  }}
-                  formatter={(value: any) => [value, "Cantidad"]}
-                />
-
-                <Bar
-                  dataKey="qty"
-                  fill="#6366f1"
-                  radius={[0, 6, 6, 0]}
-                  barSize={18}
-                >
-                  <LabelList
-                    dataKey="qty"
-                    position="right"
-                    style={{ fill: "#111827", fontSize: 12 }}
-                  />
-                </Bar>
-              </ReBarChart>
-            </ResponsiveContainer>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-indigo-600 p-6 text-white">
+              <h2 className="text-xl font-bold uppercase">Resumen Anual {selectedYear}</h2>
+              <p className="text-indigo-100 text-xs">Cierre consolidado por sucursal</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400 border-b">
+                    <th className="px-6 py-3 sticky left-0 bg-gray-50">Sucursal</th>
+                    {MONTHS.map(m => <th key={m.value} className="px-2 py-3 text-center">{m.short}</th>)}
+                    <th className="px-6 py-3 text-right text-indigo-600">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {user?.tenant?.name && (
+                    <tr className="bg-indigo-50/30">
+                      <td colSpan={14} className="px-6 py-2 text-indigo-700 font-black uppercase tracking-wider text-[10px]">
+                        Empresa: {user.tenant.name}
+                      </td>
+                    </tr>
+                  )}
+                  {annualSummary.branches.map((b, idx) => (
+                    <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/10" : "bg-white"}>
+                      <td className="px-6 py-4 font-bold sticky left-0 bg-inherit">{b.branchName}</td>
+                      {b.months.map((m, i) => <td key={i} className="px-2 py-4 text-center">{m > 0 ? `$${Math.round(m/1000)}k` : "—"}</td>)}
+                      <td className="px-6 py-4 text-right font-black text-indigo-600">${b.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-indigo-50 font-black text-indigo-900 border-t-2 border-indigo-100">
+                  <tr>
+                    <td className="px-6 py-4">TOTALES</td>
+                    {annualSummary.totals.map((t, i) => <td key={i} className="px-2 py-4 text-center">{t > 0 ? `$${Math.round(t/1000)}k` : "—"}</td>)}
+                    <td className="px-6 py-4 text-right">${annualSummary.grandTotal.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex items-center gap-4">
+              <div className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg"><TrendingUp size={24} /></div>
+              <div>
+                <p className="text-[10px] uppercase font-black text-emerald-600">Proyección anual</p>
+                <h3 className="text-xl font-black">${annualSummary.grandTotal.toLocaleString()}</h3>
+              </div>
+            </div>
+            <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center gap-4">
+              <div className="p-3 bg-indigo-500 text-white rounded-xl shadow-lg"><Building2 size={24} /></div>
+              <div>
+                <p className="text-[10px] uppercase font-black text-indigo-600">Sucursales</p>
+                <h3 className="text-xl font-black">{branches.length}</h3>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Dashboard;
+

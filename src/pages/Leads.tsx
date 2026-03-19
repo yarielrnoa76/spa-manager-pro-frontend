@@ -19,16 +19,30 @@ type LeadStatus = Lead["status"];
 
 const STATUS_MAP: Record<LeadStatus, { title: string; color: string }> = {
   new: { title: "Nuevo", color: "bg-blue-500" },
-  contacted: { title: "Contactado", color: "bg-amber-500" },
+  contacted: { title: "Contactado", color: "bg-indigo-400" },
+  appointment_set: { title: "Cita Programada", color: "bg-purple-500" },
+  attended: { title: "Atendido", color: "bg-amber-500" },
   sold: { title: "Vendido", color: "bg-green-500" },
+  lost: { title: "Perdido", color: "bg-red-500" },
   discarded: { title: "Descartado", color: "bg-gray-500" },
 };
 
-const STATUS_KEYS = Object.keys(STATUS_MAP) as LeadStatus[];
+const STATUS_KEYS: LeadStatus[] = [
+  "new",
+  "contacted",
+  "appointment_set",
+  "attended",
+  "sold",
+  "lost",
+  "discarded"
+];
 
 const PREV_STATUS: Partial<Record<LeadStatus, LeadStatus>> = {
   contacted: "new",
-  sold: "contacted",
+  appointment_set: "contacted",
+  attended: "appointment_set",
+  sold: "attended",
+  lost: "attended",
   discarded: "contacted",
 };
 
@@ -131,16 +145,48 @@ const LeadCard: React.FC<{
               onClick={() => onStatusChange(lead.id, "contacted")}
               className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
             >
-              Marcar Contactado <ArrowRight size={12} />
+              Contactar <ArrowRight size={12} />
             </button>
           )}
           {lead.status === "contacted" && (
             <button
-              onClick={() => onStatusChange(lead.id, "sold")}
-              className="flex-1 py-1.5 px-2 bg-green-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-green-600 transition"
+              onClick={() => onStatusChange(lead.id, "appointment_set")}
+              className="w-full py-1.5 px-2 bg-purple-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-purple-700 transition"
             >
-              <DollarSign size={12} /> Vender
+              Agendar Cita <ArrowRight size={12} />
             </button>
+          )}
+          {lead.status === "appointment_set" && (
+            <button
+              onClick={() => onStatusChange(lead.id, "attended")}
+              className="w-full py-1.5 px-2 bg-amber-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-amber-600 transition"
+            >
+              Marcar Atendido <ArrowRight size={12} />
+            </button>
+          )}
+          {lead.status === "attended" && (
+            <div className="flex w-full gap-2">
+              <button
+                onClick={() => onStatusChange(lead.id, "sold")}
+                className="flex-1 py-1.5 px-2 bg-green-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-green-600 transition"
+              >
+                <DollarSign size={12} /> Vender
+              </button>
+              <button
+                onClick={() => onStatusChange(lead.id, "lost")}
+                className="flex-1 py-1.5 px-2 bg-red-500 text-white rounded font-semibold hover:bg-red-600 transition"
+              >
+                Perdido
+              </button>
+            </div>
+          )}
+          {(lead.status === "lost" || lead.status === "discarded") && (
+             <button
+                onClick={() => onStatusChange(lead.id, "new")}
+                className="w-full py-1.5 px-2 bg-gray-600 text-white rounded font-semibold hover:bg-gray-700 transition"
+             >
+               Reactivar
+             </button>
           )}
         </div>
       </div>
@@ -241,11 +287,11 @@ const Leads: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 overflow-x-auto pb-4">
+      <div className="flex-1 flex gap-4 overflow-x-auto pb-4 custom-scrollbar items-start">
         {STATUS_KEYS.map((statusKey) => (
           <div
             key={statusKey}
-            className="bg-gray-50 rounded-xl flex flex-col min-w-[250px] border border-gray-100"
+            className="bg-gray-50 rounded-xl flex flex-col min-w-[320px] max-w-[320px] h-full border border-gray-100 shadow-sm"
           >
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">

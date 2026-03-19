@@ -53,6 +53,7 @@ export interface Product {
   stock: number;
   min_stock: number;
   max_stock?: number | null;
+  type?: 'product' | 'service';
   is_low_stock: boolean;
   tenant_id?: number;
   transactions?: InventoryTransaction[];
@@ -92,7 +93,7 @@ export interface Lead {
   branch_id: string;
   source: 'whatsapp' | 'call' | 'web' | 'other';
   message: string;
-  status: 'new' | 'contacted' | 'sold' | 'discarded';
+  status: 'new' | 'contacted' | 'appointment_set' | 'attended' | 'sold' | 'lost' | 'discarded';
   created_at: string;
   tenant_id?: number;
   assigned_to?: string;

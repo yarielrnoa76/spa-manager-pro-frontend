@@ -394,6 +394,7 @@ export const api = {
   async createProduct(payload: {
     name: string;
     sku?: string | null;
+    type?: 'product' | 'service';
     sales_price: number;
     cost_price: number;
     stock: number;
@@ -426,6 +427,7 @@ export const api = {
     payload: Partial<{
       name: string;
       sku: string | null;
+      type: 'product' | 'service';
       sales_price: number;
       cost_price: number;
       min_stock: number;

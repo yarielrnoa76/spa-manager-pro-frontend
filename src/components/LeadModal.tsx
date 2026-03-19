@@ -47,6 +47,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         branch_id: "",
         source: "other" as Lead["source"],
         message: "",
+        status: "new" as Lead["status"],
         assigned_to: "",
     });
 
@@ -88,6 +89,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: String(leadToEdit.branch_id),
                     source: leadToEdit.source,
                     message: leadToEdit.message || "",
+                    status: leadToEdit.status,
                     assigned_to: leadToEdit.assigned_to ? String(leadToEdit.assigned_to) : "",
                 });
                 loadLeadTickets(leadToEdit.id);
@@ -102,6 +104,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: initialBranchId || prev.branch_id,
                     source: "other",
                     message: "",
+                    status: "new",
                     assigned_to: "",
                 }));
                 setLeadTickets([]);
@@ -304,6 +307,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     branch_id: "",
                     source: "other",
                     message: "",
+                    status: "new",
                     assigned_to: "",
                 });
             }
@@ -493,6 +497,28 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                 {b.name}
                                             </option>
                                         ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Status and Source */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Estado
+                                    </label>
+                                    <select
+                                        value={formData.status}
+                                        onChange={(e) => handleChange("status", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    >
+                                        <option value="new">Nuevo</option>
+                                        <option value="contacted">Contactado</option>
+                                        <option value="appointment_set">Cita Programada</option>
+                                        <option value="attended">Atendido</option>
+                                        <option value="sold">Vendido</option>
+                                        <option value="lost">Perdido</option>
+                                        <option value="discarded">Descartado</option>
                                     </select>
                                 </div>
 

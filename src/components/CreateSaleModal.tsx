@@ -114,7 +114,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         });
     }, [isOpen, initialData, user]);
 
-    const availableProducts = useMemo(() => products.filter((p: any) => Number(p.stock) > 0), [products]);
+    const availableProducts = products; // Allow all products, services might have 0 stock
 
     const leadSuggestions = useMemo(() => {
         if (!form.branch_id || initialData?.lead_id) return []; // Si ya está forzado el lead, no sugerimos
@@ -157,12 +157,15 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         }
         let qty = parseInt(qtyStr.replace(/[^\d]/g, ""), 10);
         if (!Number.isFinite(qty) || qty <= 0) qty = 1;
-        if (selectedProduct && qty > Number((selectedProduct as any).stock)) qty = Number((selectedProduct as any).stock);
+        // Only cap quantity for physical products (not services)
+        if (selectedProduct && (selectedProduct as any).type !== 'service' && qty > Number((selectedProduct as any).stock)) {
+            qty = Math.max(1, Number((selectedProduct as any).stock));
+        }
         setForm(prev => ({ ...prev, ...recalcTotals({ quantity: String(qty) }) }));
     };
 
     const handleAddToCart = () => {
-        if (!form.product_id || !form.quantity || toNumber(form.amount) <= 0) return;
+        if (!form.product_id || !form.quantity) return;
         setCart(prev => [...prev, {
             id: Date.now().toString(),
             product_id: form.product_id,
@@ -230,7 +233,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setIsLeadModalOpen(false);
     };
 
-    const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0 && form.amount && toNumber(form.amount) > 0;
+    const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0;
     const canSubmit = form.branch_id && form.date && form.client_name && form.lead_id && cart.length > 0;
 
     if (!isOpen && !isLeadModalOpen) return null;

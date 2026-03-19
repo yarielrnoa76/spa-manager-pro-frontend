@@ -26,6 +26,7 @@ const Stocks: React.FC = () => {
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
+    type: "product" as "product" | "service",
     sales_price: "0",
     cost_price: "0",
     stock: "0",
@@ -39,6 +40,7 @@ const Stocks: React.FC = () => {
   const [editForm, setEditForm] = useState({
     name: "",
     sku: "",
+    type: "product" as "product" | "service",
     sales_price: "0",
     cost_price: "0",
     min_stock: "0",
@@ -117,6 +119,7 @@ const Stocks: React.FC = () => {
       await api.createProduct({
         name: newProduct.name.trim(),
         sku: newProduct.sku.trim() || null,
+        type: newProduct.type,
         sales_price: Number(newProduct.sales_price),
         cost_price: Number(newProduct.cost_price),
         stock: Number(newProduct.stock),
@@ -128,6 +131,7 @@ const Stocks: React.FC = () => {
       setNewProduct({
         name: "",
         sku: "",
+        type: "product",
         sales_price: "0",
         cost_price: "0",
         stock: "0",
@@ -146,6 +150,7 @@ const Stocks: React.FC = () => {
     setEditForm({
       name: p.name ?? "",
       sku: p.sku ?? "",
+      type: p.type ?? "product",
       sales_price: String(p.sales_price ?? 0),
       cost_price: String(p.cost_price ?? 0),
       min_stock: String(p.min_stock ?? 0),
@@ -170,6 +175,7 @@ const Stocks: React.FC = () => {
       const payload: any = {
         name: editForm.name.trim(),
         sku: editForm.sku.trim() || null,
+        type: editForm.type,
         sales_price: toNum(editForm.sales_price),
         cost_price: toNum(editForm.cost_price),
         min_stock: Math.max(0, Math.trunc(toNum(editForm.min_stock))),
@@ -323,6 +329,7 @@ const Stocks: React.FC = () => {
             <tr>
               <th className="px-6 py-4">Producto</th>
               <th className="px-6 py-4">SKU</th>
+              <th className="px-6 py-4">Tipo</th>
               <th className="px-6 py-4">Sales Price</th>
               <th className="px-6 py-4 text-center">Stock Actual</th>
               <th className="px-6 py-4 text-center">Stock Mínimo</th>
@@ -340,6 +347,12 @@ const Stocks: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-gray-500">
                     {product.sku || ""}
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <span className={`text-[10px] uppercase font-black px-2 py-1 rounded-full ${product.type === 'service' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {product.type === 'service' ? 'Servicio' : 'Producto'}
+                    </span>
                   </td>
 
                   <td className="px-6 py-4 font-medium">
@@ -577,17 +590,35 @@ const Stocks: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  SKU (opcional)
-                </label>
-                <input
-                  className="w-full border rounded-lg p-2 text-sm"
-                  value={editForm.sku}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, sku: e.target.value })
-                  }
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    SKU (opcional)
+                  </label>
+                  <input
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={editForm.sku}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, sku: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Tipo
+                  </label>
+                  <select
+                    className="w-full border rounded-lg p-2 text-sm bg-white"
+                    value={editForm.type}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, type: e.target.value as "product" | "service" })
+                    }
+                  >
+                    <option value="product">Producto</option>
+                    <option value="service">Servicio</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -710,19 +741,37 @@ const Stocks: React.FC = () => {
                     setNewProduct({ ...newProduct, name: e.target.value })
                   }
                 />
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  SKU (opcional)
-                </label>
-                <input
-                  className="w-full border rounded-lg p-2 text-sm"
-                  value={newProduct.sku}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, sku: e.target.value })
-                  }
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    SKU (opcional)
+                  </label>
+                  <input
+                    className="w-full border rounded-lg p-2 text-sm"
+                    value={newProduct.sku}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, sku: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                    Tipo
+                  </label>
+                  <select
+                    className="w-full border rounded-lg p-2 text-sm bg-white"
+                    value={newProduct.type}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, type: e.target.value as "product" | "service" })
+                    }
+                  >
+                    <option value="product">Producto</option>
+                    <option value="service">Servicio</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
