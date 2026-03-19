@@ -513,6 +513,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                                     >
                                         <option value="new">Nuevo</option>
+                                        <option value="first_contact">Primer Contacto</option>
+                                        <option value="second_contact">Segundo Contacto</option>
+                                        <option value="third_contact">Tercer Contacto</option>
                                         <option value="contacted">Contactado</option>
                                         <option value="appointment_set">Cita Programada</option>
                                         <option value="attended">Atendido</option>

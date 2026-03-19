@@ -539,10 +539,15 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Estado</label>
                                                     <select disabled={!isEditingLead} className={`w-full text-sm font-bold text-gray-700 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-colors ${!isEditingLead ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} value={leadForm.status} onChange={e => setLeadForm({ ...leadForm, status: e.target.value })}>
                                                         <option value="new">Nuevo</option>
+                                                        <option value="first_contact">Primer Contacto</option>
+                                                        <option value="second_contact">Segundo Contacto</option>
+                                                        <option value="third_contact">Tercer Contacto</option>
                                                         <option value="contacted">Contactado</option>
                                                         <option value="appointment_set">Cita Programada</option>
+                                                        <option value="attended">Atendido</option>
                                                         <option value="sold">Venta Cerrada</option>
                                                         <option value="lost">Perdido</option>
+                                                        <option value="discarded">Descartado</option>
                                                     </select>
                                                 </div>
                                             </div>

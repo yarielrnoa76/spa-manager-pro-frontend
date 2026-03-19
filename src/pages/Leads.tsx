@@ -19,7 +19,10 @@ type LeadStatus = Lead["status"];
 
 const STATUS_MAP: Record<LeadStatus, { title: string; color: string }> = {
   new: { title: "Nuevo", color: "bg-blue-500" },
-  contacted: { title: "Contactado", color: "bg-indigo-400" },
+  first_contact: { title: "Primer Contacto", color: "bg-cyan-500" },
+  second_contact: { title: "Segundo Contacto", color: "bg-teal-500" },
+  third_contact: { title: "Tercer Contacto", color: "bg-indigo-400" },
+  contacted: { title: "Contactado", color: "bg-indigo-500" },
   appointment_set: { title: "Cita Programada", color: "bg-purple-500" },
   attended: { title: "Atendido", color: "bg-amber-500" },
   sold: { title: "Vendido", color: "bg-green-500" },
@@ -29,6 +32,9 @@ const STATUS_MAP: Record<LeadStatus, { title: string; color: string }> = {
 
 const STATUS_KEYS: LeadStatus[] = [
   "new",
+  "first_contact",
+  "second_contact",
+  "third_contact",
   "contacted",
   "appointment_set",
   "attended",
@@ -38,7 +44,10 @@ const STATUS_KEYS: LeadStatus[] = [
 ];
 
 const PREV_STATUS: Partial<Record<LeadStatus, LeadStatus>> = {
-  contacted: "new",
+  first_contact: "new",
+  second_contact: "first_contact",
+  third_contact: "second_contact",
+  contacted: "third_contact",
   appointment_set: "contacted",
   attended: "appointment_set",
   sold: "attended",

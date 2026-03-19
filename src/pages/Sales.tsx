@@ -13,6 +13,8 @@ import {
   DollarSign,
   ShoppingBag,
   UserPlus,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -156,6 +158,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [weeklyExpanded, setWeeklyExpanded] = useState(false);
 
   const initialNewSale: NewSaleState = useMemo(
     () => ({
@@ -588,28 +591,19 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         const monthNames = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
         const monthLabel = `${monthNames[selMonth]} ${selYear}`;
 
-        // Build week ranges for this month
-        const firstDay = new Date(selYear, selMonth, 1);
-        const lastDay = new Date(selYear, selMonth + 1, 0);
+        // Build week ranges for this month (fixed 7-day blocks: 1-7, 8-14, 15-21, 22-end)
+        const lastDayNum = new Date(selYear, selMonth + 1, 0).getDate();
         const weeks: { start: string; end: string; startDay: number; endDay: number }[] = [];
-        let current = new Date(firstDay);
-        while (current <= lastDay) {
-          const weekStart = new Date(current);
-          // end of the week = next Sunday or end of month
-          const weekEnd = new Date(current);
-          const daysUntilSunday = (7 - weekEnd.getDay()) % 7;
-          weekEnd.setDate(weekEnd.getDate() + daysUntilSunday);
-          if (weekEnd > lastDay) weekEnd.setTime(lastDay.getTime());
+        const fmt = (day: number) => `${selYear}-${String(selMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-          const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        for (let startDay = 1; startDay <= lastDayNum; startDay += 7) {
+          const endDay = Math.min(startDay + 6, lastDayNum);
           weeks.push({
-            start: fmt(weekStart),
-            end: fmt(weekEnd),
-            startDay: weekStart.getDate(),
-            endDay: weekEnd.getDate(),
+            start: fmt(startDay),
+            end: fmt(endDay),
+            startDay,
+            endDay,
           });
-          current = new Date(weekEnd);
-          current.setDate(current.getDate() + 1);
         }
 
         // Group sales by week for this month (all branches or filtered)
@@ -636,34 +630,49 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
         if (weeklyData.length === 0) return null;
 
+        const totalCount = weeklyData.reduce((a, w) => a + w.count, 0);
+        const totalAmount = weeklyData.reduce((a, w) => a + w.total, 0);
+
         return (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden max-w-3xl">
-            <div className="bg-blue-50/50 px-6 py-3 border-b border-blue-100">
-              <h3 className="text-blue-900 font-bold text-sm">Desglose Semanal - {monthLabel}</h3>
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400">
-                <tr>
-                  <th className="px-6 py-2 text-left">Semana</th>
-                  <th className="px-6 py-2 text-center">Ventas</th>
-                  <th className="px-6 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {weeklyData.map((w, idx) => (
-                  <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
-                    <td className="px-6 py-3">Del {String(w.startDay).padStart(2,"0")} al {String(w.endDay).padStart(2,"0")}</td>
-                    <td className="px-6 py-3 text-center">{w.count}</td>
-                    <td className="px-6 py-3 text-right font-bold">${w.total.toLocaleString()}</td>
+            <button
+              type="button"
+              onClick={() => setWeeklyExpanded(prev => !prev)}
+              className="w-full bg-blue-50/50 px-6 py-3 border-b border-blue-100 flex items-center justify-between hover:bg-blue-50/80 transition-colors cursor-pointer"
+            >
+              <h3 className="text-blue-900 font-bold text-sm flex items-center gap-2">
+                {weeklyExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                Desglose Semanal - {monthLabel}
+              </h3>
+              <span className="text-xs text-blue-600 font-medium">
+                {totalCount} ventas · ${totalAmount.toLocaleString()}
+              </span>
+            </button>
+            {weeklyExpanded && (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400">
+                  <tr>
+                    <th className="px-6 py-2 text-left">Semana</th>
+                    <th className="px-6 py-2 text-center">Ventas</th>
+                    <th className="px-6 py-2 text-right">Total</th>
                   </tr>
-                ))}
-                <tr className="bg-blue-50/40 font-bold">
-                  <td className="px-6 py-3">Total Mes</td>
-                  <td className="px-6 py-3 text-center">{weeklyData.reduce((a, w) => a + w.count, 0)}</td>
-                  <td className="px-6 py-3 text-right">${weeklyData.reduce((a, w) => a + w.total, 0).toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {weeklyData.map((w, idx) => (
+                    <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
+                      <td className="px-6 py-3">Del {String(w.startDay).padStart(2,"0")} al {String(w.endDay).padStart(2,"0")}</td>
+                      <td className="px-6 py-3 text-center">{w.count}</td>
+                      <td className="px-6 py-3 text-right font-bold">${w.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-blue-50/40 font-bold">
+                    <td className="px-6 py-3">Total Mes</td>
+                    <td className="px-6 py-3 text-center">{totalCount}</td>
+                    <td className="px-6 py-3 text-right">${totalAmount.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
           </div>
         );
       })()}
