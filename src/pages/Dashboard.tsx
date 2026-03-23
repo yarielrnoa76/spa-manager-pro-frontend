@@ -144,6 +144,8 @@ const Dashboard: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [refunds, setRefunds] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
 
   const [user, setUser] = useState<any>(null);
 
@@ -154,22 +156,27 @@ const Dashboard: React.FC = () => {
       setLoadingCharts(true);
       setErrorMsg("");
       try {
-        const [statsRes, branchesRes, salesRes, productsRes, userRes] = await Promise.all([
+        const [statsRes, branchesRes, salesRes, productsRes, userRes, refundsRes, expensesRes] = await Promise.all([
           api.getDashboardStats(selectedBranch),
           api.listBranches(),
           api.listSales("all", { include_cancelled: true } as any),
           api.listProducts(),
           api.me(),
+          api.get<any[]>("/refunds"),
+          api.get<any[]>("/expenses"),
         ]);
         if (cancelled) return;
         setStats(statsRes as DashboardStats);
         setBranches(normalizeArray<Branch>(branchesRes));
         setSales(normalizeArray<Sale>(salesRes));
         setProducts(normalizeArray<Product>(productsRes));
+        setRefunds(normalizeArray<any>(refundsRes));
+        setExpenses(normalizeArray<any>(expensesRes));
         setUser(userRes);
       } catch (e: any) {
         if (cancelled) return;
         setStats(null); setSales([]); setProducts([]);
+        setRefunds([]); setExpenses([]);
         setErrorMsg(e?.message || "Failed to load dashboard data");
       } finally {
         if (!cancelled) { setLoading(false); setLoadingCharts(false); }
@@ -314,17 +321,87 @@ const Dashboard: React.FC = () => {
 
   const annualSummary = useMemo(() => {
     const yearSales = sales.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
+    const yearRefunds = refunds.filter(r => normalizeDate(r.date || r.created_at).startsWith(String(selectedYear)));
+    const yearExpenses = expenses.filter(e => normalizeDate(e.date || e.created_at).startsWith(String(selectedYear)));
+
+    // Map to find products by ID quickly
+    const prodMap = new Map();
+    products.forEach(p => prodMap.set(String(p.id), p));
+
+    const isVisit = (s: Sale) => {
+      const p = prodMap.get(String(s.product_id));
+      return (p?.type === 'service' || (p as any)?.category?.toLowerCase().includes('servicio')) && toNum(s.amount) === 0;
+    };
+
     const data = branches.map(b => {
+      const bSales = yearSales.filter(s => String(s.branch_id) === String(b.id));
+      const bRefunds = yearRefunds.filter(r => String(r.branch_id) === String(b.id));
+      const bExpenses = yearExpenses.filter(e => String(e.branch_id) === String(b.id));
+
       const months = Array(12).fill(0);
-      yearSales.filter(s => String(s.branch_id) === String(b.id)).forEach(s => {
+      bSales.forEach(s => {
         months[new Date(normalizeDate(s.date) + "T00:00:00").getMonth()] += toNum(s.amount);
       });
-      return { branchName: b.name, months, total: months.reduce((a, b) => a + b, 0) };
+
+      const visitsYTD = bSales.filter(isVisit).length;
+      const grossSalesYTD = bSales.filter(s => !isVisit(s)).reduce((acc, s) => acc + toNum(s.amount), 0);
+      const refundCount = bRefunds.length;
+      const refundAmount = bRefunds.reduce((acc, r) => acc + toNum(r.amount), 0);
+      const netSalesYTD = grossSalesYTD - refundAmount;
+      const gastosYTD = bExpenses.reduce((acc, e) => acc + toNum(e.amount), 0);
+
+      // Days with sales in the year (for projection)
+      const distinctDates = new Set();
+      bSales.forEach(s => {
+        const d = normalizeDate(s.date);
+        if (d) distinctDates.add(d);
+      });
+      const daysWorked = distinctDates.size;
+
+      // Work days in year (so far or total? let's use 312 as estimated annual work days)
+      const ANN_WORK_DAYS = 312;
+      const projectionGross = daysWorked > 0 ? (grossSalesYTD / daysWorked) * ANN_WORK_DAYS : 0;
+
+      return {
+        branchName: b.name,
+        months,
+        total: bSales.reduce((acc, s) => acc + toNum(s.amount), 0),
+        visitsYTD,
+        grossSalesYTD,
+        refundCount,
+        refundAmount,
+        netSalesYTD,
+        gastosYTD,
+        projectionGross
+      };
     });
-    const totals = Array(12).fill(0);
-    data.forEach(d => d.months.forEach((m, i) => totals[i] += m));
-    return { branches: data, totals, grandTotal: totals.reduce((a, b) => a + b, 0) };
-  }, [sales, branches, selectedYear]);
+
+    const totals = {
+      months: Array(12).fill(0),
+      visitsYTD: 0,
+      grossSalesYTD: 0,
+      refundCount: 0,
+      refundAmount: 0,
+      netSalesYTD: 0,
+      gastosYTD: 0,
+      grandTotal: 0,
+      projectionGross: 0,
+    };
+
+    data.forEach(d => {
+      d.months.forEach((m, i) => totals.months[i] += m);
+      totals.visitsYTD += d.visitsYTD;
+      totals.grossSalesYTD += d.grossSalesYTD;
+      totals.refundCount += d.refundCount;
+      totals.refundAmount += d.refundAmount;
+      totals.netSalesYTD += d.netSalesYTD;
+      totals.gastosYTD += d.gastosYTD;
+      totals.grandTotal += d.total;
+      totals.projectionGross += d.projectionGross;
+    });
+
+    return { branches: data, ...totals };
+  }, [sales, branches, selectedYear, refunds, expenses, products]);
 
   if (loading) return <div className="p-8 font-semibold">Cargando panel...</div>;
   if (!stats) return <div className="p-8 text-red-600 font-bold">{errorMsg || "Error al cargar datos"}</div>;
@@ -430,28 +507,46 @@ const Dashboard: React.FC = () => {
               <p className="text-indigo-100 text-xs">Total consolidado por punto de venta</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400 border-b">
-                    <th className="px-6 py-3 text-left">Sucursal</th>
-                    <th className="px-6 py-3 text-right text-indigo-600">Total Anual</th>
+                  <tr className="bg-gray-100 text-[10px] uppercase font-bold text-gray-500 border-b">
+                    <th className="px-4 py-3 text-left">Sucursal</th>
+                    <th className="px-2 py-3 text-center text-indigo-600">Visitas YTD</th>
+                    <th className="px-2 py-3 text-right">Ventas YTD</th>
+                    <th className="px-2 py-3 text-right text-emerald-600">Ventas Netas YTD</th>
+                    <th className="px-2 py-3 text-center">Devoluciones</th>
+                    <th className="px-2 py-3 text-right text-red-500">Imp. Devoluc.</th>
+                    <th className="px-2 py-3 text-right text-amber-600">Gastos YTD</th>
+                    <th className="px-4 py-3 text-right text-indigo-700 bg-indigo-50">Proyeccion Gross</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {annualSummary.branches.map((b, idx) => (
                     <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/10" : "bg-white"}>
-                      <td className="px-6 py-4 font-bold text-gray-700">{b.branchName}</td>
-                      <td className="px-6 py-4 text-right font-black text-indigo-600 text-lg">
-                        ${b.total.toLocaleString()}
+                      <td className="px-4 py-3 font-bold text-gray-700">{b.branchName}</td>
+                      <td className="px-2 py-3 text-center font-medium">{b.visitsYTD}</td>
+                      <td className="px-2 py-3 text-right font-semibold">${b.grossSalesYTD.toLocaleString()}</td>
+                      <td className="px-2 py-3 text-right font-bold text-emerald-600">${b.netSalesYTD.toLocaleString()}</td>
+                      <td className="px-2 py-3 text-center text-red-400">{b.refundCount}</td>
+                      <td className="px-2 py-3 text-right text-red-500">${b.refundAmount.toLocaleString()}</td>
+                      <td className="px-2 py-3 text-right text-amber-600">${b.gastosYTD.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-black text-indigo-700 bg-indigo-50/30">
+                        ${Math.round(b.projectionGross).toLocaleString()}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-indigo-50 font-black text-indigo-900 border-t-2 border-indigo-100">
+                <tfoot className="bg-gray-100 font-black text-gray-900 border-t-2 border-gray-200">
                   <tr>
-                    <td className="px-6 py-4">TOTAL EMPRESA</td>
-                    <td className="px-6 py-4 text-right text-xl">
-                      ${annualSummary.grandTotal.toLocaleString()}
+                    <td className="px-4 py-3">TOTAL EMPRESA</td>
+                    <td className="px-2 py-3 text-center">{annualSummary.visitsYTD}</td>
+                    <td className="px-2 py-3 text-right font-black">${annualSummary.grossSalesYTD.toLocaleString()}</td>
+                    <td className="px-2 py-3 text-right font-black text-emerald-700">${annualSummary.netSalesYTD.toLocaleString()}</td>
+                    <td className="px-2 py-3 text-center">{annualSummary.refundCount}</td>
+                    <td className="px-2 py-3 text-right text-red-600">${annualSummary.refundAmount.toLocaleString()}</td>
+                    <td className="px-2 py-3 text-right text-amber-700">${annualSummary.gastosYTD.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-indigo-900 bg-indigo-100/50">
+                      ${Math.round(annualSummary.projectionGross).toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
@@ -486,7 +581,7 @@ const Dashboard: React.FC = () => {
                 <tfoot className="bg-indigo-50 font-black text-indigo-900 border-t-2 border-indigo-100">
                   <tr>
                     <td className="px-6 py-4">TOTALES</td>
-                    {annualSummary.totals.map((t, i) => <td key={i} className="px-2 py-4 text-center">{t > 0 ? `$${Math.round(t/1000)}k` : "—"}</td>)}
+                    {annualSummary.months.map((t, i) => <td key={i} className="px-2 py-4 text-center">{t > 0 ? `$${Math.round(t/1000)}k` : "—"}</td>)}
                     <td className="px-6 py-4 text-right">${annualSummary.grandTotal.toLocaleString()}</td>
                   </tr>
                 </tfoot>

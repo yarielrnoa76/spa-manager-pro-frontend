@@ -736,7 +736,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
       {/* RESUMEN */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
             <ShoppingBag size={24} />
           </div>
@@ -744,11 +744,11 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Ventas del Día
             </p>
-            <p className="text-xl font-black text-gray-900">{stats.count}</p>
+            <p className="text-xl font-black text-indigo-900">{stats.count}</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-4 border-l-4 border-l-green-600">
           <div className="p-3 bg-green-50 text-green-600 rounded-lg">
             <DollarSign size={24} />
           </div>
@@ -756,7 +756,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Importe Filtrado
             </p>
-            <p className="text-xl font-black text-gray-900">
+            <p className="text-xl font-black text-green-900">
               ${money(stats.total)}
             </p>
           </div>

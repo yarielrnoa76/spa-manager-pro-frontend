@@ -114,6 +114,7 @@ export interface MonthlyExpense {
   date: string;
   branch_id: string;
   category: string;
+  type: 'Fijo' | 'Variable';
   description: string;
   amount: number;
 }

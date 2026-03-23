@@ -43,6 +43,8 @@ import SettingsPage from "./pages/Settings";
 import Tenants from "./pages/Tenants";
 import LogManagement from "./pages/LogManagement";
 import CommunicationCenter from "./pages/CommunicationCenter";
+import Expenses from "./pages/Expenses";
+import Refunds from "./pages/Refunds";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 
@@ -197,6 +199,12 @@ const App: React.FC = () => {
       : []),
     ...(hasPerm("view_ticket")
       ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
+      : []),
+    ...(hasPerm("view_expenses")
+      ? [{ to: "/expenses", icon: DollarSign, label: "Gastos" }]
+      : []),
+    ...(hasPerm("view_refunds")
+      ? [{ to: "/refunds", icon: History, label: "Devoluciones" }]
       : []),
     { to: "/help", icon: HelpCircle, label: "Ayuda" },
     ...(canSeeSettings
@@ -387,6 +395,8 @@ const App: React.FC = () => {
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/communications" element={<CommunicationCenter user={user} />} />
                 <Route path="/tickets" element={<Tickets />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/refunds" element={<Refunds />} />
                 <Route path="/help" element={<Help />} />
                 <Route
                   path="/settings"
