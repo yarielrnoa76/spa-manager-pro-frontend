@@ -119,16 +119,33 @@ const Stocks: React.FC = () => {
     e.preventDefault();
 
     try {
-      await api.createProduct({
+      const isService = newProduct.type === "service";
+
+      const payload: any = {
         name: newProduct.name.trim(),
         sku: newProduct.sku.trim() || null,
         type: newProduct.type,
         sales_price: Number(newProduct.sales_price),
         cost_price: Number(newProduct.cost_price),
-        stock: Number(newProduct.stock),
-        min_stock: Number(newProduct.min_stock),
-        max_stock: Number(newProduct.max_stock),
-      });
+      };
+
+      if (!isService) {
+        payload.stock = Math.max(0, Math.trunc(Number(newProduct.stock)));
+        payload.min_stock = Math.max(0, Math.trunc(Number(newProduct.min_stock)));
+
+        const ms = String(newProduct.max_stock ?? "").trim();
+        if (ms === "" || Number(ms) === 0) {
+          payload.max_stock = null;
+        } else {
+          payload.max_stock = Math.max(0, Math.trunc(Number(ms)));
+        }
+      } else {
+        payload.stock = 0;
+        payload.min_stock = 0;
+        payload.max_stock = null;
+      }
+
+      await api.createProduct(payload);
 
       setIsCreateModalOpen(false);
       setNewProduct({
@@ -144,6 +161,7 @@ const Stocks: React.FC = () => {
 
       fetchData();
     } catch (err: any) {
+      console.log("CREATE PRODUCT ERROR =>", err);
       alert(err?.message || "Error creando producto");
     }
   };
