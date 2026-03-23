@@ -316,16 +316,61 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   }, [dateBranchFilteredSales, searchTerm]);
 
   const stats = useMemo(() => {
+    // 1. Stats for the selected day/branch
     const totalAmount = visibleSales.reduce(
       (acc, curr) => acc + saleAmount(curr),
       0,
     );
 
+    // 2. Stats for the selected month/branch
+    const selDate = new Date(selectedDate + "T00:00:00");
+    const selYear = selDate.getFullYear();
+    const selMonth = selDate.getMonth();
+
+    const monthSales = (sales as any[]).filter((s: any) => {
+      const d = normalizeDateOnly(s.date);
+      if (!d || d.length < 7) return false;
+      const sYear = parseInt(d.slice(0, 4), 10);
+      const sMonth = parseInt(d.slice(5, 7), 10) - 1;
+      const branchMatch = selectedBranch === "all" || String(s.branch_id) === String(selectedBranch);
+      return sYear === selYear && sMonth === selMonth && branchMatch && !isSaleCancelled(s);
+    });
+
+    const monthlyTotal = monthSales.reduce(
+      (acc, curr) => acc + saleAmount(curr),
+      0,
+    );
+
+    // Days worked: distinct dates in monthSales
+    const distinctDates = new Set();
+    monthSales.forEach(s => {
+      const d = normalizeDateOnly(s.date);
+      if (d) distinctDates.add(d);
+    });
+    const daysWorked = distinctDates.size;
+
+    // Working days in month (Mon-Sat)
+    let totalWorkingDays = 0;
+    const tempDate = new Date(selYear, selMonth, 1);
+    while (tempDate.getMonth() === selMonth) {
+      if (tempDate.getDay() !== 0) { // 0 = Sunday
+        totalWorkingDays++;
+      }
+      tempDate.setDate(tempDate.getDate() + 1);
+    }
+
+    // Projection
+    const projection = daysWorked > 0 ? (monthlyTotal / daysWorked) * totalWorkingDays : 0;
+
     return {
       count: visibleSales.length,
       total: totalAmount,
+      monthlyTotal,
+      daysWorked,
+      totalWorkingDays,
+      projection,
     };
-  }, [visibleSales]);
+  }, [visibleSales, sales, selectedDate, selectedBranch]);
 
   const availableProducts = useMemo(
     () => products.filter((p: any) => Number((p as any).stock) > 0),
@@ -678,16 +723,16 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       })()}
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
             <ShoppingBag size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-400 uppercase">
-              Ventas del Día (según filtro)
+            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Ventas del Día
             </p>
-            <p className="text-2xl font-black text-gray-900">{stats.count}</p>
+            <p className="text-xl font-black text-gray-900">{stats.count}</p>
           </div>
         </div>
 
@@ -696,12 +741,59 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <DollarSign size={24} />
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-400 uppercase">
-              Monto Total (según filtro)
+            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Importe Filtrado
             </p>
-            <p className="text-2xl font-black text-gray-900">
+            <p className="text-xl font-black text-gray-900">
               ${money(stats.total)}
             </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
+          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-lg">
+            <Package size={24} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Acumulado Mes
+            </p>
+            <p className="text-xl font-black text-indigo-900">
+              ${money(stats.monthlyTotal)}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-4 border-l-4 border-l-amber-500">
+          <div className="p-3 bg-amber-50 text-amber-700 rounded-lg">
+            <ChevronRight size={24} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Días Trabajados
+            </p>
+            <p className="text-xl font-black text-amber-900">
+              {stats.daysWorked} <span className="text-[10px] text-gray-400 font-normal">días</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-4 border-l-4 border-l-emerald-500">
+          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-lg">
+            <DollarSign size={24} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Proyección Mes
+            </p>
+            <div className="flex flex-col">
+              <p className="text-xl font-black text-emerald-900">
+                ${money(stats.projection)}
+              </p>
+              <p className="text-[9px] text-gray-400 font-medium">
+                ({stats.totalWorkingDays} días laborables)
+              </p>
+            </div>
           </div>
         </div>
       </div>
