@@ -129,6 +129,17 @@ function localISODate(d = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function isSaleCancelled(sale: any) {
+  return Boolean(
+    sale?.deleted_at ||
+    sale?.deletedAt ||
+    sale?.is_deleted ||
+    sale?.isDeleted ||
+    String(sale?.status || "").toLowerCase() === "cancelled" ||
+    String(sale?.status || "").toLowerCase() === "canceled",
+  );
+}
+
 type SalesProps = { user?: any };
 
 const Sales: React.FC<SalesProps> = ({ user }) => {
@@ -463,17 +474,6 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         unit_price: salesPrice ? money(salesPrice) : "",
       }),
     }));
-  };
-
-  const isSaleCancelled = (sale: any) => {
-    return Boolean(
-      sale?.deleted_at ||
-      sale?.deletedAt ||
-      sale?.is_deleted ||
-      sale?.isDeleted ||
-      String(sale?.status || "").toLowerCase() === "cancelled" ||
-      String(sale?.status || "").toLowerCase() === "canceled",
-    );
   };
 
   const handleCancelSale = async (sale: any) => {
