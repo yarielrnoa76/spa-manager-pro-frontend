@@ -423,10 +423,47 @@ const Dashboard: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in duration-500">
+          {/* TABLA 1: Acumulado Anual por Sucursal */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="bg-indigo-600 p-6 text-white">
-              <h2 className="text-xl font-bold uppercase">Resumen Anual {selectedYear}</h2>
-              <p className="text-indigo-100 text-xs">Cierre consolidado por sucursal</p>
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-6 text-white">
+              <h2 className="text-xl font-bold uppercase">Acumulado Anual {selectedYear}</h2>
+              <p className="text-indigo-100 text-xs">Total consolidado por punto de venta</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-[10px] uppercase font-bold text-gray-400 border-b">
+                    <th className="px-6 py-3 text-left">Sucursal</th>
+                    <th className="px-6 py-3 text-right text-indigo-600">Total Anual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {annualSummary.branches.map((b, idx) => (
+                    <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/10" : "bg-white"}>
+                      <td className="px-6 py-4 font-bold text-gray-700">{b.branchName}</td>
+                      <td className="px-6 py-4 text-right font-black text-indigo-600 text-lg">
+                        ${b.total.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-indigo-50 font-black text-indigo-900 border-t-2 border-indigo-100">
+                  <tr>
+                    <td className="px-6 py-4">TOTAL EMPRESA</td>
+                    <td className="px-6 py-4 text-right text-xl">
+                      ${annualSummary.grandTotal.toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          {/* TABLA 2: Desglose por Meses */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-700 uppercase">Desglose por Meses</h2>
+              <p className="text-gray-400 text-[10px] font-bold uppercase">Valores en miles (k = $1,000)</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -438,13 +475,6 @@ const Dashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {user?.tenant?.name && (
-                    <tr className="bg-indigo-50/30">
-                      <td colSpan={14} className="px-6 py-2 text-indigo-700 font-black uppercase tracking-wider text-[10px]">
-                        Empresa: {user.tenant.name}
-                      </td>
-                    </tr>
-                  )}
                   {annualSummary.branches.map((b, idx) => (
                     <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/10" : "bg-white"}>
                       <td className="px-6 py-4 font-bold sticky left-0 bg-inherit">{b.branchName}</td>
@@ -463,18 +493,20 @@ const Dashboard: React.FC = () => {
               </table>
             </div>
           </div>
+
+          {/* TARJETAS DE ESTADÍSTICAS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex items-center gap-4">
               <div className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg"><TrendingUp size={24} /></div>
               <div>
-                <p className="text-[10px] uppercase font-black text-emerald-600">Proyección anual</p>
+                <p className="text-[10px] uppercase font-black text-emerald-600">Rendimiento anual</p>
                 <h3 className="text-xl font-black">${annualSummary.grandTotal.toLocaleString()}</h3>
               </div>
             </div>
             <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center gap-4">
               <div className="p-3 bg-indigo-500 text-white rounded-xl shadow-lg"><Building2 size={24} /></div>
               <div>
-                <p className="text-[10px] uppercase font-black text-indigo-600">Sucursales</p>
+                <p className="text-[10px] uppercase font-black text-indigo-600">Sucursales Activas</p>
                 <h3 className="text-xl font-black">{branches.length}</h3>
               </div>
             </div>
