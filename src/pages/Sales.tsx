@@ -323,9 +323,17 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     );
 
     // 2. Stats for the selected month/branch
-    const selDate = new Date(selectedDate + "T00:00:00");
-    const selYear = selDate.getFullYear();
-    const selMonth = selDate.getMonth();
+    if (!selectedDate || selectedDate.length < 7) {
+      return { count: visibleSales.length, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
+    }
+
+    const parts = selectedDate.split("-");
+    const selYear = parseInt(parts[0], 10);
+    const selMonth = parseInt(parts[1], 10) - 1;
+
+    if (isNaN(selYear) || isNaN(selMonth)) {
+      return { count: visibleSales.length, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
+    }
 
     const monthSales = (sales as any[]).filter((s: any) => {
       const d = normalizeDateOnly(s.date);
@@ -630,10 +638,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       {/* WEEKLY BREAKDOWN */}
       {(() => {
         // Compute weekly breakdown for the month of the selected date
-        const selDate = new Date(selectedDate + "T00:00:00");
-        const selYear = selDate.getFullYear();
-        const selMonth = selDate.getMonth();
-        const monthNames = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+        if (!selectedDate || selectedDate.length < 7) return null;
+        const parts = selectedDate.split("-");
+        const selYear = parseInt(parts[0], 10);
+        const selMonth = parseInt(parts[1], 10) - 1;
+
+        if (isNaN(selYear) || isNaN(selMonth)) return null;
+
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
         const monthLabel = `${monthNames[selMonth]} ${selYear}`;
 
         // Build week ranges for this month (fixed 7-day blocks: 1-7, 8-14, 15-21, 22-end)
