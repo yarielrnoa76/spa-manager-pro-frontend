@@ -397,8 +397,8 @@ const App: React.FC = () => {
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/communications" element={<CommunicationCenter user={user} />} />
                 <Route path="/tickets" element={<Tickets />} />
-                <Route path="/expenses" element={<Expenses />} />
-                <Route path="/refunds" element={<Refunds />} />
+                <Route path="/expenses" element={<Expenses user={user} />} />
+                <Route path="/refunds" element={<Refunds user={user} />} />
                 <Route path="/help" element={<Help />} />
                 <Route
                   path="/settings"

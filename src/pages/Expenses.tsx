@@ -7,11 +7,17 @@ import StatCard from '../components/StatCard';
 
 const CATEGORIES = ["Alquiler", "Servicios (Luz/Agua)", "Sueldos", "Insumos", "Marketing", "Mantenimiento", "Otros"];
 
-const Expenses: React.FC = () => {
+interface ExpensesProps {
+  user: any;
+}
+
+const Expenses: React.FC<ExpensesProps> = ({ user }) => {
   const [expenses, setExpenses] = useState<MonthlyExpense[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
 
   // Default to current month/year
   const now = new Date();
@@ -224,9 +230,11 @@ const Expenses: React.FC = () => {
                     <td className="px-6 py-5 text-gray-600 max-w-xs truncate">{cleanDesc}</td>
                     <td className="px-6 py-5 text-right font-black text-gray-900 text-base">${expense.amount.toLocaleString()}</td>
                     <td className="px-6 py-5 text-center">
-                      <button onClick={() => handleDelete(expense.id)} className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300">
-                        <Trash2 size={16} />
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => handleDelete(expense.id)} className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

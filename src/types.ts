@@ -104,6 +104,7 @@ export interface RefundLog {
   id: string;
   date: string;
   branch_id: string;
+  quantity: number;
   amount: number;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
