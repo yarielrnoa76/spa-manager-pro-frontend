@@ -114,7 +114,7 @@ const Expenses: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string | number) => {
     if (!window.confirm("¿Seguro que deseas eliminar este gasto?")) return;
     try {
       await api.delete(`/expenses/${id}`);

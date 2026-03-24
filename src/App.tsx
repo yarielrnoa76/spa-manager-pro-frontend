@@ -47,6 +47,8 @@ import Expenses from "./pages/Expenses";
 import Refunds from "./pages/Refunds";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
+console.log("=== DEPLOYMENT HEARTBEAT: V-24.03-EXPENSES-DEPLOYED ===");
+console.log("LAST SYNC: 2026-03-24 11:13:22");
 
 const SidebarItem = ({
   to,

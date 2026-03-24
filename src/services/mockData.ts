@@ -29,8 +29,8 @@ export const MOCK_REFUNDS: RefundLog[] = [
 ];
 
 export const MOCK_EXPENSES: MonthlyExpense[] = [
-  { id: 'e1', date: '2024-05-01', branch_id: '1', category: 'Rent', description: 'Monthly rent', amount: 2000 },
-  { id: 'e2', date: '2024-05-05', branch_id: '2', category: 'Supplies', description: 'Oils and towels', amount: 350 },
+  { id: 'e1', date: '2024-05-01', branch_id: '1', category: 'Rent', type: 'Fijo', description: '[Fijo] Monthly rent', amount: 2000 },
+  { id: 'e2', date: '2024-05-05', branch_id: '2', category: 'Supplies', type: 'Variable', description: '[Variable] Oils and towels', amount: 350 },
 ];
 
 export const MOCK_LEADS: Lead[] = [
