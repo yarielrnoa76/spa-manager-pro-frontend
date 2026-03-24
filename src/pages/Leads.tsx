@@ -19,14 +19,11 @@ type LeadStatus = Lead["status"];
 
 const STATUS_MAP: Record<LeadStatus, { title: string; color: string }> = {
   new: { title: "Nuevo", color: "bg-blue-500" },
-  first_contact: { title: "Primer Contacto", color: "bg-cyan-500" },
-  second_contact: { title: "Segundo Contacto", color: "bg-teal-500" },
-  third_contact: { title: "Tercer Contacto", color: "bg-indigo-400" },
-  contacted: { title: "Contactado", color: "bg-indigo-500" },
+  first_contact: { title: "1er Contacto", color: "bg-cyan-500" },
+  second_contact: { title: "2do Contacto", color: "bg-teal-500" },
+  third_contact: { title: "3er Contacto", color: "bg-indigo-400" },
   appointment_set: { title: "Cita Programada", color: "bg-purple-500" },
-  attended: { title: "Atendido", color: "bg-amber-500" },
-  sold: { title: "Vendido", color: "bg-green-500" },
-  lost: { title: "Perdido", color: "bg-red-500" },
+  sold: { title: "Vendido / Éxito", color: "bg-green-500" },
   discarded: { title: "Descartado", color: "bg-gray-500" },
 };
 
@@ -35,11 +32,8 @@ const STATUS_KEYS: LeadStatus[] = [
   "first_contact",
   "second_contact",
   "third_contact",
-  "contacted",
   "appointment_set",
-  "attended",
   "sold",
-  "lost",
   "discarded"
 ];
 
@@ -47,12 +41,9 @@ const PREV_STATUS: Partial<Record<LeadStatus, LeadStatus>> = {
   first_contact: "new",
   second_contact: "first_contact",
   third_contact: "second_contact",
-  contacted: "third_contact",
-  appointment_set: "contacted",
-  attended: "appointment_set",
-  sold: "attended",
-  lost: "attended",
-  discarded: "contacted",
+  appointment_set: "third_contact",
+  sold: "appointment_set",
+  discarded: "appointment_set",
 };
 
 function normalize(s: string) {
@@ -83,116 +74,117 @@ const LeadCard: React.FC<{
   const prev = PREV_STATUS[lead.status];
 
   return (
-    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col justify-between min-h-[160px]">
+    <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[140px] hover:border-indigo-200 transition-all duration-300">
       <div>
-        <div className="flex justify-between items-start gap-2">
-          <div>
-            <h3 className="font-bold text-sm">{lead.name}</h3>
-            <p className="text-xs text-gray-500">{lead.phone}</p>
+        <div className="flex justify-between items-start gap-1 pb-2 border-b border-gray-50 mb-2">
+          <div className="min-w-0">
+            <h3 className="font-bold text-sm text-gray-800 truncate">{lead.name}</h3>
+            <p className="text-[10px] text-gray-400 font-medium">{lead.phone}</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-shrink-0">
             <button
               onClick={() => onDeleteRequest(lead)}
-              className="text-gray-400 hover:text-red-600 transition-colors"
+              className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
               title={
                 lead.status === "discarded"
                   ? "Eliminar permanentemente"
                   : "Mover a descartado"
               }
             >
-              <Trash2 size={16} />
+              <Trash2 size={14} />
             </button>
             <button
-              className="text-gray-400 hover:text-gray-600"
+              className="p-1 text-gray-300 hover:text-indigo-600"
               onClick={() => onEdit(lead)}
               title="Editar lead"
             >
-              <MoreHorizontal size={16} />
+              <MoreHorizontal size={14} />
             </button>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mb-3 line-clamp-2 italic">
-          "{lead.message || ""}"
+        <p className="text-[10px] text-gray-500 mb-3 line-clamp-2 italic leading-relaxed">
+          {lead.message ? `"${lead.message}"` : "Sin mensaje"}
         </p>
       </div>
 
       <div>
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-1 text-xs text-gray-400">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
             {getSourceIcon(lead.source)}
-            <span className="capitalize">{lead.source}</span>
+            <span>{lead.source}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {prev && (
               <button
                 type="button"
                 onClick={() => onStatusChange(lead.id, prev)}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 bg-gray-100 rounded-full transition-colors"
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 bg-gray-50 rounded-full transition-all"
               >
-                <ArrowLeft size={14} />
+                <ArrowLeft size={12} />
               </button>
             )}
             <a
               href={`https://wa.me/${formatWhatsAppPhone(lead.phone)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-green-500 bg-gray-100 rounded-full transition-colors"
+              className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 bg-green-50 rounded-full transition-all"
             >
-              <MessageSquare size={14} />
+              <MessageSquare size={12} />
             </a>
             <a
               href={`tel:${lead.phone}`}
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-blue-500 bg-gray-100 rounded-full transition-colors"
+              className="p-1.5 text-blue-500 hover:text-white hover:bg-blue-500 bg-blue-50 rounded-full transition-all"
             >
-              <Phone size={14} />
+              <Phone size={12} />
             </a>
           </div>
         </div>
-        <div className="flex gap-2 text-xs">
+        
+        <div className="flex gap-1.5 text-[10px]">
           {lead.status === "new" && (
             <button
-              onClick={() => onStatusChange(lead.id, "contacted")}
-              className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
+              onClick={() => onStatusChange(lead.id, "first_contact")}
+              className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
             >
-              Contactar <ArrowRight size={12} />
+              1er Contacto <ArrowRight size={10} />
             </button>
           )}
-          {lead.status === "contacted" && (
+          {lead.status === "first_contact" && (
+            <button
+              onClick={() => onStatusChange(lead.id, "second_contact")}
+              className="w-full py-1.5 px-2 bg-cyan-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-cyan-700 transition"
+            >
+              2do Contacto <ArrowRight size={10} />
+            </button>
+          )}
+          {lead.status === "second_contact" && (
+            <button
+              onClick={() => onStatusChange(lead.id, "third_contact")}
+              className="w-full py-1.5 px-2 bg-teal-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-teal-700 transition"
+            >
+              3er Contacto <ArrowRight size={10} />
+            </button>
+          )}
+          {lead.status === "third_contact" && (
             <button
               onClick={() => onStatusChange(lead.id, "appointment_set")}
-              className="w-full py-1.5 px-2 bg-purple-600 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-purple-700 transition"
+              className="w-full py-1.5 px-2 bg-indigo-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-indigo-600 transition"
             >
-              Agendar Cita <ArrowRight size={12} />
+              Agendar Cita <ArrowRight size={10} />
             </button>
           )}
           {lead.status === "appointment_set" && (
             <button
-              onClick={() => onStatusChange(lead.id, "attended")}
-              className="w-full py-1.5 px-2 bg-amber-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-amber-600 transition"
+              onClick={() => onStatusChange(lead.id, "sold")}
+              className="w-full py-1.5 px-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-emerald-700 transition"
             >
-              Marcar Atendido <ArrowRight size={12} />
+              Vendido / Éxito <DollarSign size={10} />
             </button>
           )}
-          {lead.status === "attended" && (
-            <div className="flex w-full gap-2">
-              <button
-                onClick={() => onStatusChange(lead.id, "sold")}
-                className="flex-1 py-1.5 px-2 bg-green-500 text-white rounded font-semibold flex items-center justify-center gap-1 hover:bg-green-600 transition"
-              >
-                <DollarSign size={12} /> Vender
-              </button>
-              <button
-                onClick={() => onStatusChange(lead.id, "lost")}
-                className="flex-1 py-1.5 px-2 bg-red-500 text-white rounded font-semibold hover:bg-red-600 transition"
-              >
-                Perdido
-              </button>
-            </div>
-          )}
-          {(lead.status === "lost" || lead.status === "discarded") && (
+          {(lead.status === "sold" || lead.status === "discarded") && (
              <button
                 onClick={() => onStatusChange(lead.id, "new")}
-                className="w-full py-1.5 px-2 bg-gray-600 text-white rounded font-semibold hover:bg-gray-700 transition"
+                className="w-full py-1.5 px-2 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition"
              >
                Reactivar
              </button>
@@ -212,9 +204,18 @@ const Leads: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const l = await api.listLeads();
-      await api.listBranches(); // Just let it execute if required by API logic or just remove it if not needed. Actually, not needed. Let's just fetch leads.
-      setLeads(l);
+      const data = await api.listLeads();
+      
+      // Backward compatibility mapping
+      const normalized = data.map(l => {
+        let s = l.status as any;
+        if (s === 'contacted') s = 'first_contact';
+        if (s === 'attended') s = 'sold';
+        if (s === 'lost') s = 'discarded';
+        return { ...l, status: s };
+      });
+
+      setLeads(normalized);
     } catch (err) {
       console.error("Error fetching data", err);
     }
@@ -296,11 +297,11 @@ const Leads: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 overflow-x-auto pb-4 custom-scrollbar items-start">
+      <div className="flex-1 flex gap-4 overflow-x-auto pb-6 custom-scrollbar items-start">
         {STATUS_KEYS.map((statusKey) => (
           <div
             key={statusKey}
-            className="bg-gray-50 rounded-xl flex flex-col min-w-[320px] max-w-[320px] h-full border border-gray-100 shadow-sm"
+            className="bg-gray-50/50 rounded-2xl flex flex-col min-w-[280px] max-w-[280px] h-full border border-gray-100 shadow-sm"
           >
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">

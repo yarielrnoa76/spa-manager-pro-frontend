@@ -193,7 +193,7 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
       </div>
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Total Devoluciones" value={`$${stats.total.toLocaleString()}`} icon={TrendingDown} color="bg-rose-600" />
         <StatCard title="Total Global (Mes)" value={`$${stats.monthlyTotalAll.toLocaleString()}`} icon={Building2} color="bg-gray-800" />
         <StatCard title="Monto Aprobado" value={`$${stats.approved.toLocaleString()}`} icon={CheckCircle2} color="bg-emerald-600" />

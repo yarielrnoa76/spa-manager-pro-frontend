@@ -190,7 +190,7 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
       </div>
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title={`Total ${selectedBranch === 'all' ? 'Empresa' : 'Sucursal'}`} value={`$${stats.total.toLocaleString()}`} icon={Wallet} color="bg-indigo-600" />
         <StatCard title="Total Global (Mes)" value={`$${stats.totalCompany.toLocaleString()}`} icon={Building2} color="bg-purple-600" />
         <StatCard title="Gastos Fijos" value={`$${stats.fixed.toLocaleString()}`} icon={PieChart} color="bg-emerald-600" />

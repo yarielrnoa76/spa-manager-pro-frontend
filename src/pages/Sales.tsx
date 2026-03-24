@@ -735,7 +735,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       })()}
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 lg:gap-4">
         <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
             <ShoppingBag size={24} />

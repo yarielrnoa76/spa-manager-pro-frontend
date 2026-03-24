@@ -35,7 +35,7 @@ export const MOCK_EXPENSES: MonthlyExpense[] = [
 
 export const MOCK_LEADS: Lead[] = [
   { id: 'l1', name: 'Juan Perez', phone: '305-123-4567', branch_id: '1', source: 'whatsapp', message: 'Hi, I want a massage', status: 'new', created_at: new Date().toISOString() },
-  { id: 'l2', name: 'Ana Gomez', phone: '786-987-6543', branch_id: '2', source: 'web', message: 'Facial booking', status: 'contacted', created_at: new Date().toISOString() },
+  { id: 'l2', name: 'Ana Gomez', phone: '786-987-6543', branch_id: '2', source: 'web', message: 'Facial booking', status: 'first_contact', created_at: new Date().toISOString() },
   { id: 'l3', name: 'Carlos Rivas', phone: '305-555-1234', branch_id: '1', source: 'call', message: 'Called for prices', status: 'new', created_at: new Date().toISOString() },
   { id: 'l4', name: 'Maria Rodriguez', phone: '786-111-2222', branch_id: '2', source: 'whatsapp', message: 'Asking about laser', status: 'sold', created_at: new Date().toISOString() },
   { id: 'l5', name: 'Pedro Martinez', phone: '305-444-5555', branch_id: '1', source: 'web', message: 'No longer interested', status: 'discarded', created_at: new Date().toISOString() },

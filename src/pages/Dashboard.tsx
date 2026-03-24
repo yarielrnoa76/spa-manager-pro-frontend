@@ -443,7 +443,7 @@ const Dashboard: React.FC = () => {
 
       {activeTab === "summary" ? (
         <div className="space-y-8 animate-in fade-in duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6">
             <StatCard title={`Ventas (${periodLabel})`} value={`$${kpi.totalSales.toLocaleString()}`} icon={DollarSign} color="bg-indigo-600" />
             <StatCard title="Ganancia Est." value={profitDisplay} icon={TrendingUp} color="bg-emerald-600" />
             <StatCard title="Cant. Ventas" value={kpi.salesCount} icon={Users} color="bg-amber-500" />
