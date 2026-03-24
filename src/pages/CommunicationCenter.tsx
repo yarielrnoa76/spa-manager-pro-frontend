@@ -72,7 +72,7 @@ export default function CommunicationCenter({ user }: { user: any }) {
                 <div className="p-4 border-b border-gray-100 bg-gray-50/50">
                     <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                         <MessageSquare className="text-indigo-600" size={20} />
-                        Communication Center
+                        Live Chat
                     </h2>
 
                     <div className="relative mb-3">

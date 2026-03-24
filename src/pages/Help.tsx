@@ -54,7 +54,7 @@ const Help: React.FC = () => {
         { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-amber-600 bg-amber-50' },
         { id: 'sales', label: 'Ventas Diarias', icon: DollarSign, color: 'text-emerald-600 bg-emerald-50' },
         { id: 'leads', label: 'Contactos / Leads', icon: UserPlus, color: 'text-indigo-600 bg-indigo-50' },
-        { id: 'communication', label: 'Communication Center', icon: Radio, color: 'text-teal-600 bg-teal-50' },
+        { id: 'communication', label: 'Live Chat', icon: Radio, color: 'text-teal-600 bg-teal-50' },
         { id: 'audit', label: 'Auditoría / Logs', icon: Activity, color: 'text-slate-600 bg-slate-50' },
         { id: 'settings', label: 'Configuración', icon: Settings, color: 'text-rose-600 bg-rose-50' },
         { id: 'notifications', label: 'Notificaciones', icon: Bell, color: 'text-orange-600 bg-orange-50' },
@@ -533,7 +533,7 @@ const Help: React.FC = () => {
                         </div>
                     )}
 
-                    {/* COMMUNICATION CENTER HELP */}
+                    {/* LIVE CHAT HELP */}
                     {activeModule === 'communication' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
                             <header className="flex items-center gap-4 mb-8">
@@ -541,13 +541,13 @@ const Help: React.FC = () => {
                                     <Radio size={28} />
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Communication Center</h2>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Live Chat</h2>
                                     <p className="text-sm text-gray-500 font-medium">Mensajería centralizada vía WhatsApp / Chatwoot</p>
                                 </div>
                             </header>
 
                             <HelpSection title="Visión General" icon={Info} defaultOpen={true}>
-                                <p>El Communication Center centraliza toda la comunicación entre clientes/leads y su equipo. Los mensajes fluyen a través de la siguiente arquitectura:</p>
+                                <p>El Live Chat centraliza toda la comunicación entre clientes/leads y su equipo. Los mensajes fluyen a través de la siguiente arquitectura:</p>
                                 <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 mt-4">
                                     <p className="text-sm text-teal-900 font-medium">Cliente (WhatsApp) → Meta Cloud API → Chatwoot → Webhook → SPA Manager Pro</p>
                                     <p className="text-sm text-teal-900 font-medium mt-1">SPA Manager Pro → Chatwoot API → Meta → Cliente (WhatsApp)</p>

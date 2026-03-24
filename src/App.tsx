@@ -197,7 +197,7 @@ const App: React.FC = () => {
       ? [{ to: "/appointments", icon: Calendar, label: "Citas" }]
       : []),
     ...(hasPerm("view_conversations")
-      ? [{ to: "/communications", icon: MessageSquare, label: "Comm. Center" }]
+      ? [{ to: "/communications", icon: MessageSquare, label: "Live Chat" }]
       : []),
     ...(hasPerm("view_ticket")
       ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]

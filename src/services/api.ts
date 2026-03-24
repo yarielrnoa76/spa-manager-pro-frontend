@@ -570,7 +570,7 @@ export const api = {
     return request(`/api/notifications/read-all`, { method: "POST", auth: true });
   },
 
-  // --- Communication Center ---
+  // --- Live Chat ---
   async listConversations(params: any = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
