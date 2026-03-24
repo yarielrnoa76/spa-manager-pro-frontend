@@ -25,7 +25,7 @@ export const MOCK_SALES: DailyLog[] = Array.from({ length: 50 }, (_, i) => ({
 }));
 
 export const MOCK_REFUNDS: RefundLog[] = [
-  { id: 'r1', date: '2024-05-10', branch_id: '1', amount: 45, reason: 'Client dissatisfied', status: 'approved' },
+  { id: 'r1', date: '2024-05-10', branch_id: '1', quantity: 1, amount: 45, reason: 'Client dissatisfied', status: 'approved' },
 ];
 
 export const MOCK_EXPENSES: MonthlyExpense[] = [
