@@ -9,6 +9,8 @@ import {
     X,
     AlertTriangle,
     Shield,
+    CheckCircle,
+    RefreshCw,
 } from "lucide-react";
 
 /* ─────────────────────── DELETE CONFIRMATION MODAL ─────────────────────── */
@@ -229,32 +231,71 @@ const TenantFormModal: React.FC<{
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Tenant API Token (n8n → SPA)
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center justify-between">
+                                    <span>Tenant API Token (n8n → SPA)</span>
+                                    {tenantApiToken === '••••••••' && (
+                                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium normal-case">
+                                            <CheckCircle size={10} /> Configurado
+                                        </span>
+                                    )}
                                 </label>
-                                <input
-                                    type="text"
-                                    value={tenantApiToken}
-                                    onChange={(e) => setTenantApiToken(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
-                                    placeholder="Clave que n8n debe usar en el header X-API-KEY"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={tenantApiToken}
+                                        onChange={(e) => {
+                                            if (tenantApiToken === '••••••••' && !confirm("Este campo ya tiene una clave guardada. ¿Deseas reemplazarla?")) return;
+                                            setTenantApiToken(e.target.value);
+                                        }}
+                                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm ${tenantApiToken === '••••••••' ? 'bg-emerald-50/30 border-emerald-100 text-emerald-700 font-mono' : 'border-gray-300'}`}
+                                        placeholder="Clave que n8n debe usar en el header X-API-KEY"
+                                    />
+                                    {tenantApiToken === '••••••••' && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => setTenantApiToken("")}
+                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                            title="Limpiar para escribir nueva clave"
+                                        >
+                                            <RefreshCw size={14} />
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-[10px] text-gray-400 mt-1 italic">
                                     Proporcione este token a n8n para autenticar las llamadas entrantes.
                                 </p>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    N8N API Key (SPA → n8n API)
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center justify-between">
+                                    <span>N8N API Key (SPA → n8n API)</span>
+                                    {n8nApiKey === '••••••••' && (
+                                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium normal-case">
+                                            <CheckCircle size={10} /> Configurado
+                                        </span>
+                                    )}
                                 </label>
-                                <input
-                                    type="text"
-                                    value={n8nApiKey}
-                                    onChange={(e) => setN8nApiKey(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
-                                    placeholder="API Key interna de n8n"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={n8nApiKey}
+                                        onChange={(e) => {
+                                            if (n8nApiKey === '••••••••' && !confirm("¿Deseas reemplazar la clave de n8n guardada?")) return;
+                                            setN8nApiKey(e.target.value);
+                                        }}
+                                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm ${n8nApiKey === '••••••••' ? 'bg-emerald-50/30 border-emerald-100 text-emerald-700 font-mono' : 'border-gray-300'}`}
+                                        placeholder="API Key interna de n8n"
+                                    />
+                                    {n8nApiKey === '••••••••' && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => setN8nApiKey("")}
+                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                        >
+                                            <RefreshCw size={14} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
@@ -297,16 +338,35 @@ const TenantFormModal: React.FC<{
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Chatwoot API Token
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center justify-between">
+                                    <span>Chatwoot API Token</span>
+                                    {chatwootApiToken === '••••••••' && (
+                                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium normal-case">
+                                            <CheckCircle size={10} /> Configurado
+                                        </span>
+                                    )}
                                 </label>
-                                <input
-                                    type="text"
-                                    value={chatwootApiToken}
-                                    onChange={(e) => setChatwootApiToken(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
-                                    placeholder="Token de acceso para Chatwoot"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        value={chatwootApiToken}
+                                        onChange={(e) => {
+                                            if (chatwootApiToken === '••••••••' && !confirm("¿Deseas reemplazar el token de Chatwoot guardado?")) return;
+                                            setChatwootApiToken(e.target.value);
+                                        }}
+                                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm ${chatwootApiToken === '••••••••' ? 'bg-emerald-50/30 border-emerald-100 text-emerald-700 font-mono' : 'border-gray-300'}`}
+                                        placeholder="Tu API de acceso personal"
+                                    />
+                                    {chatwootApiToken === '••••••••' && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => setChatwootApiToken("")}
+                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                        >
+                                            <RefreshCw size={14} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
