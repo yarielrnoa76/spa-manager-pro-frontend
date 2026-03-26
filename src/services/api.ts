@@ -223,11 +223,11 @@ export const api = {
     return request<Tenant[]>(`/api/tenants`, { method: "GET", auth: true });
   },
 
-  async createTenant(payload: { name: string; slug?: string; status?: string }) {
+  async createTenant(payload: Partial<Tenant>) {
     return request<Tenant>(`/api/tenants`, { method: "POST", body: payload, auth: true });
   },
 
-  async updateTenant(tenantId: number, payload: { name?: string; slug?: string; status?: string }) {
+  async updateTenant(tenantId: number, payload: Partial<Tenant>) {
     return request<Tenant>(`/api/tenants/${tenantId}`, { method: "PUT", body: payload, auth: true });
   },
 
