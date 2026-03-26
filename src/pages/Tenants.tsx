@@ -122,7 +122,9 @@ const TenantFormModal: React.FC<{
     const [name, setName] = useState(tenant?.name || "");
     const [slug, setSlug] = useState(tenant?.slug || "");
     const [status, setStatus] = useState(tenant?.status || "active");
+    const [tenantApiToken, setTenantApiToken] = useState(tenant?.tenant_api_token || "");
     const [n8nApiKey, setN8nApiKey] = useState(tenant?.n8n_api_key || "");
+    const [n8nWebhookUrl, setN8nWebhookUrl] = useState(tenant?.n8n_webhook_url || "");
     const [chatwootBaseUrl, setChatwootBaseUrl] = useState(tenant?.chatwoot_base_url || "");
     const [chatwootApiToken, setChatwootApiToken] = useState(tenant?.chatwoot_api_token || "");
     const [chatwootAccountId, setChatwootAccountId] = useState(tenant?.chatwoot_account_id || "");
@@ -139,7 +141,9 @@ const TenantFormModal: React.FC<{
                 name,
                 slug: slug || undefined,
                 status,
+                tenant_api_token: tenantApiToken || undefined,
                 n8n_api_key: n8nApiKey || undefined,
+                n8n_webhook_url: n8nWebhookUrl || undefined,
                 chatwoot_base_url: chatwootBaseUrl || undefined,
                 chatwoot_api_token: chatwootApiToken || undefined,
                 chatwoot_account_id: chatwootAccountId || undefined,
@@ -226,14 +230,43 @@ const TenantFormModal: React.FC<{
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    N8N API Key
+                                    Tenant API Token (n8n → SPA)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={tenantApiToken}
+                                    onChange={(e) => setTenantApiToken(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="Clave que n8n debe usar en el header X-API-KEY"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    Proporcione este token a n8n para autenticar las llamadas entrantes.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    N8N API Key (SPA → n8n API)
                                 </label>
                                 <input
                                     type="text"
                                     value={n8nApiKey}
                                     onChange={(e) => setN8nApiKey(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
-                                    placeholder="Bearer Token para n8n"
+                                    placeholder="API Key interna de n8n"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    N8N Webhook URL (Salida)
+                                </label>
+                                <input
+                                    type="url"
+                                    value={n8nWebhookUrl}
+                                    onChange={(e) => setN8nWebhookUrl(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
+                                    placeholder="https://n8n.tudominio.com/webhook/..."
                                 />
                             </div>
 
