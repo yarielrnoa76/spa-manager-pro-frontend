@@ -606,123 +606,124 @@ const Help: React.FC = () => {
                                     <Settings size={28} />
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Configuración</h2>
-                                    <p className="text-sm text-gray-500 font-medium">Ajustes generales, integraciones y administración</p>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Configuración e Integraciones</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Guía técnica para la gestión multi-tenant y flujos de Chatwoot/n8n</p>
                                 </div>
                             </header>
 
-                            <HelpSection title="Pestañas de Configuración" icon={Info} defaultOpen={true}>
-                                <p>La sección de Configuración se divide en pestañas según su rol:</p>
+                            <HelpSection title="Gestión Multi-Tenant" icon={Shield} defaultOpen={true}>
+                                <p>El sistema está diseñado bajo una arquitectura multi-inquilino (Multi-Tenant). Cada empresa o sucursal principal funciona como un compartimento estanco:</p>
                                 <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
-                                    <li><strong>Tenants:</strong> (Solo Super Admin) Gestión de organizaciones/inquilinos del sistema multi-tenant. Incluye la configuración de integraciones externas.</li>
-                                    <li><strong>Sucursales:</strong> Cree, edite o desactive ubicaciones físicas donde opera su negocio.</li>
-                                    <li><strong>Roles y Permisos:</strong> Defina los roles del equipo y asigne permisos granulares que controlen qué puede ver o hacer cada uno.</li>
-                                    <li><strong>Usuarios:</strong> Administre los perfiles de login del personal.</li>
+                                    <li><strong>Aislamiento Total:</strong> Los datos de un tenant (Leads, Ventas, Usuarios, Claves API) son invisibles para los demás.</li>
+                                    <li><strong>Configuración Independiente:</strong> Cada tenant tiene sus propias credenciales de Chatwoot y su propio flujo de n8n.</li>
+                                    <li><strong>Permisos de SuperAdmin:</strong> Solo los usuarios con rol SuperAdmin pueden ver y editar la pestaña de "Tenants" para crear nuevos entornos.</li>
                                 </ul>
-                                <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 flex gap-4 mt-4">
-                                    <Info className="text-indigo-600 shrink-0" size={20} />
-                                    <p className="text-sm text-indigo-900"><strong>Importante:</strong> Cualquier dato creado en esta pantalla pertenece automáticamente al tenant activo. Si es Super Admin, utilice el selector de tenant en la esquina superior derecha para cambiar de contexto.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Esquema de Integración Bidireccional" icon={Radio}>
+                                <p>La comunicación fluye a través de <strong>n8n</strong>, que actúa como el cerebro u orquestador entre el chat (Chatwoot) y la gestión (SPA Manager Pro):</p>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                                    <div className="p-5 rounded-2xl bg-indigo-50 border border-indigo-100">
+                                        <h4 className="font-black text-indigo-900 text-xs mb-3 uppercase tracking-wider flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                            1. Flujo de Entrada (Cliente → App)
+                                        </h4>
+                                        <p className="text-xs text-indigo-800 leading-relaxed">
+                                            Cliente escribe en <strong>WhatsApp</strong> → <strong>Chatwoot</strong> recibe el mensaje → Envía Webhook a <strong>n8n</strong> → n8n procesa (IA/Lógica) → n8n envía mensaje a <strong>App</strong> usando el <code className="bg-indigo-200 px-1 rounded">Tenant API Token</code>.
+                                        </p>
+                                    </div>
+                                    <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-100">
+                                        <h4 className="font-black text-emerald-900 text-xs mb-3 uppercase tracking-wider flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                            2. Flujo de Salida (App → Cliente)
+                                        </h4>
+                                        <p className="text-xs text-emerald-800 leading-relaxed">
+                                            Usuario responde en <strong>App</strong> → App envía mensaje al Webhook de <strong>n8n</strong> usando el <code className="bg-emerald-200 px-1 rounded">N8N API Key</code> para seguridad → n8n envía respuesta a <strong>Chatwoot</strong> → Chatwoot entrega a <strong>WhatsApp</strong>.
+                                        </p>
+                                    </div>
                                 </div>
                             </HelpSection>
 
-                            <HelpSection title="Integración con Chatwoot" icon={Globe2}>
-                                <p>Para habilitar la comunicación bidireccional vía WhatsApp, configure los siguientes campos en la edición del Tenant (sección "Integraciones y API"):</p>
-                                <div className="grid grid-cols-1 gap-3 mt-4">
-                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_BASE_URL</span>
-                                        <p className="text-xs text-gray-800 mt-1 font-medium">URL base de su instancia de Chatwoot (ej: <em>https://app.chatwoot.com</em>). No incluir barra al final.</p>
+                            <HelpSection title="Configuración de Integración (Campo por Campo)" icon={Key}>
+                                <p className="mb-4">Para configurar un nuevo Tenant, acceda a la edición en la sección "Integraciones y API":</p>
+                                
+                                <div className="space-y-4">
+                                    {/* SECCIÓN N8N */}
+                                    <div className="border border-gray-100 rounded-2xl p-4">
+                                        <h4 className="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest">Integración con n8n</h4>
+                                        <div className="space-y-3">
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-slate-100 px-2 py-1 rounded h-min shrink-0">Tenant API Token</div>
+                                                <p className="text-xs text-gray-600"><strong>Sentido: n8n → App.</strong> Es la clave que n8n debe enviar en el header <code className="bg-gray-100 px-1 rounded">X-API-KEY</code> cuando llama a nuestra API. Es visible para el administrador pero se oculta tras guardarse.</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-slate-100 px-2 py-1 rounded h-min shrink-0">N8N API Key</div>
+                                                <p className="text-xs text-gray-600"><strong>Sentido: App → n8n.</strong> Si tu webhook en n8n tiene seguridad activada (Header Auth), pon aquí la clave. La App la enviará en el header <code className="bg-gray-100 px-1 rounded">X-API-KEY</code> al responder. Se guarda encriptada.</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-slate-100 px-2 py-1 rounded h-min shrink-0">N8N Webhook URL</div>
+                                                <p className="text-xs text-gray-600"><strong>Sentido: Salida.</strong> La URL del nodo Webhook en n8n que recibirá las respuestas manuales de tus vendedores.</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_ACCOUNT_ID</span>
-                                        <p className="text-xs text-gray-800 mt-1 font-medium">ID numérico de su cuenta en Chatwoot. Se obtiene desde Configuración → Cuenta en la interfaz de Chatwoot.</p>
+
+                                    {/* SECCIÓN CHATWOOT */}
+                                    <div className="border border-gray-100 rounded-2xl p-4">
+                                        <h4 className="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest">Conexión con Chatwoot (WhatsApp)</h4>
+                                        <div className="space-y-3">
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded h-min shrink-0">Base URL</div>
+                                                <p className="text-xs text-gray-600">URL base de tu instancia (ej: <em>https://app.chatwoot.com</em>). No incluir "/" al final.</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded h-min shrink-0">Account / Inbox ID</div>
+                                                <p className="text-xs text-gray-600">IDs numéricos que identifican tu cuenta y la bandeja de WhatsApp específica dentro de Chatwoot.</p>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <div className="font-mono text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded h-min shrink-0">API Token</div>
+                                                <p className="text-xs text-gray-600">Token de acceso (Perfil → Configuración → Token). Permite a la App enviar mensajes de vuelta.</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_API_TOKEN</span>
-                                        <p className="text-xs text-gray-800 mt-1 font-medium">Token de acceso a la API de Chatwoot. Se genera en Configuración → Perfil → token de acceso. Este valor se almacena <strong>encriptado</strong> en la base de datos.</p>
-                                    </div>
-                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                        <span className="text-[10px] font-black uppercase text-teal-600">CHATWOOT_INBOX_ID</span>
-                                        <p className="text-xs text-gray-800 mt-1 font-medium">ID del Inbox (bandeja) de WhatsApp en Chatwoot. Se obtiene desde Configuración → Bandejas.</p>
-                                    </div>
-                                </div>
-                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
-                                    <Shield className="text-amber-600 shrink-0" size={20} />
-                                    <p className="text-sm text-amber-900"><strong>Seguridad:</strong> El API Token se almacena encriptado con AES-256. En la interfaz solo se muestra como "••••••••" para indicar que está configurado. Para actualizarlo, simplemente ingrese un nuevo valor.</p>
                                 </div>
                             </HelpSection>
 
-                            <HelpSection title="Webhook de Chatwoot" icon={Link}>
-                                <p>Para que los mensajes de clientes lleguen a SPA Manager Pro, configure un webhook en Chatwoot apuntando a su servidor:</p>
-                                <div className="bg-gray-900 p-4 rounded-2xl mt-4 overflow-x-auto">
-                                    <code className="text-emerald-400 text-xs font-mono">POST https://su-dominio.com/api/communications/webhooks/chatwoot</code>
-                                </div>
-                                <p className="mt-3 text-sm font-bold text-gray-800">Configuración en Chatwoot:</p>
-                                <ol className="list-decimal pl-5 space-y-2 mt-2 text-sm">
-                                    <li>Vaya a <strong>Settings → Integrations → Webhooks</strong> en Chatwoot.</li>
-                                    <li>Agregue un nuevo webhook con la URL de arriba.</li>
-                                    <li>Seleccione el evento <strong>message_created</strong>.</li>
-                                    <li>Configure el header de autenticación: <code className="bg-gray-100 px-2 py-0.5 rounded text-xs">X-API-KEY: su_token_seguro</code></li>
+                            <HelpSection title="Guía de Implementación para Nuevo Tenant" icon={BookOpen}>
+                                <p className="mb-4">Para poner en marcha un nuevo inquilino desde cero, siga este orden:</p>
+                                <ol className="list-decimal pl-5 space-y-4 text-xs font-medium text-gray-700">
+                                    <li>
+                                        <strong>Crear el Tenant:</strong> Registre el nombre en la App y genere un <code className="bg-gray-100 px-1 rounded">Tenant API Token</code> aleatorio.
+                                    </li>
+                                    <li>
+                                        <strong>Configurar n8n:</strong> Cree un nuevo flujo en n8n para este inquilino. 
+                                        <ul className="list-disc pl-5 mt-2 space-y-1 text-gray-500 font-normal">
+                                            <li>Nodo de entrada (Webhook): Pon su URL en la App como "N8N Webhook URL".</li>
+                                            <li>Nodo de salida (HTTP Request): Configúralo para llamar a <code className="bg-indigo-50 px-1 rounded text-indigo-600">POST /api/communications/webhooks/chatwoot</code> incluyendo el API Token del paso 1.</li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <strong>Vincular Chatwoot:</strong> En Configuración → Integraciones de Chatwoot, agrega un Webhook que apunte **directamente a n8n** (no a la App), para que n8n pueda procesar el mensaje antes de enviarlo a nuestra plataforma.
+                                    </li>
+                                    <li>
+                                        <strong>Activar el flujo:</strong> Una vez guardado todo, los mensajes de WhatsApp aparecerán automáticamente en el "Live Chat" de la App para ese Tenant.
+                                    </li>
                                 </ol>
-                                <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex gap-4 mt-4">
-                                    <Shield className="text-red-600 shrink-0" size={20} />
-                                    <p className="text-sm text-red-900"><strong>Obligatorio:</strong> El webhook requiere autenticación vía header <code className="bg-red-100 px-1 rounded">X-API-KEY</code>. Sin el token correcto, el servidor rechazará las peticiones con error 401. El token debe coincidir con el <em>N8N_API_KEY</em> configurado en el tenant o en las variables de entorno.</p>
-                                </div>
                             </HelpSection>
 
-                            <HelpSection title="Estructura del Payload (Webhook)" icon={ExternalLink}>
-                                <p>El webhook espera recibir payloads en formato JSON con la estructura estándar de Chatwoot. Ejemplo de payload entrante:</p>
-                                <div className="bg-gray-900 p-4 rounded-2xl mt-4 overflow-x-auto">
-                                    <pre className="text-green-400 text-xs font-mono leading-relaxed">{`{
-  "event": "message_created",
-  "account": { "id": 1 },
-  "inbox": { "id": 5 },
-  "conversation": {
-    "id": 1234,
-    "contact": {
-      "name": "María García",
-      "phone_number": "+13051234567"
-    }
-  },
-  "message": {
-    "id": 5678,
-    "content": "Hola, quiero agendar un masaje",
-    "message_type": 0
-  }
-}`}</pre>
-                                </div>
-                                <p className="mt-3 text-sm">Campos importantes:</p>
-                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
-                                    <li><strong>event:</strong> Solo se procesan eventos <code className="bg-gray-100 px-1 rounded text-xs">message_created</code>. Otros eventos son ignorados.</li>
-                                    <li><strong>account.id:</strong> Se usa para identificar automáticamente el Tenant (por <em>chatwoot_account_id</em>).</li>
-                                    <li><strong>conversation.contact.phone_number:</strong> Se usa para vincular automáticamente con un Lead existente.</li>
-                                    <li><strong>message.message_type:</strong> <code className="bg-gray-100 px-1 rounded text-xs">0</code> = entrada (cliente), <code className="bg-gray-100 px-1 rounded text-xs">1</code> = salida (bot/agente).</li>
-                                </ul>
-                            </HelpSection>
-
-                            <HelpSection title="Integración con n8n" icon={Key}>
-                                <p>n8n actúa como orquestador de flujos automatizados. La integración se configura con:</p>
-                                <div className="grid grid-cols-1 gap-3 mt-4">
-                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                        <span className="text-[10px] font-black uppercase text-violet-600">N8N_API_KEY</span>
-                                        <p className="text-xs text-gray-800 mt-1 font-medium">Clave de autenticación que los flujos de n8n deben enviar como header <code className="bg-gray-200 px-1 rounded">X-API-KEY</code> al comunicarse con SPA Manager Pro. Se almacena <strong>encriptado</strong>.</p>
+                            <HelpSection title="Seguridad y Protección contra Sobreescritura" icon={Shield}>
+                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4">
+                                    <Info className="text-amber-600 shrink-0" size={20} />
+                                    <div className="text-xs text-amber-900 leading-relaxed">
+                                        <p className="font-bold mb-1 underline">Protección de Credenciales:</p>
+                                        <p>Las claves sensibles se ocultan tras el símbolo <code className="bg-amber-200">••••••••</code> una vez guardadas. Para proteger la operatividad:</p>
+                                        <ul className="list-disc pl-5 mt-2 space-y-1">
+                                            <li>Si intenta borrar o cambiar un campo ya configurado, el sistema solicitará una <strong>confirmación obligatoria</strong>.</li>
+                                            <li>Para actualizar una clave, puede usar el botón de **"Reset"** (icono de flecha circular) para limpiar el campo y escribir el valor nuevo.</li>
+                                            <li>El servidor ignora automáticamente los valores "<code className="font-mono">••••••••</code>" durante una actualización, por lo que puede editar el nombre del Tenant sin riesgo de borrar las llaves guardadas por accidente.</li>
+                                        </ul>
                                     </div>
                                 </div>
-                                <p className="mt-3 text-sm font-bold text-gray-800">Endpoints disponibles para n8n:</p>
-                                <div className="space-y-2 mt-2">
-                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
-                                        <code className="text-cyan-400 text-xs font-mono">POST /api/bot/appointments</code>
-                                        <span className="text-gray-500 text-xs ml-3">— Crear citas automáticas desde el chatbot</span>
-                                    </div>
-                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
-                                        <code className="text-cyan-400 text-xs font-mono">POST /api/leads/webhook</code>
-                                        <span className="text-gray-500 text-xs ml-3">— Capturar leads desde formularios o bots</span>
-                                    </div>
-                                    <div className="bg-gray-900 p-3 rounded-xl overflow-x-auto">
-                                        <code className="text-cyan-400 text-xs font-mono">POST /api/communications/webhooks/chatwoot</code>
-                                        <span className="text-gray-500 text-xs ml-3">— Recibir mensajes de conversación</span>
-                                    </div>
-                                </div>
-                                <p className="mt-3 text-sm text-gray-500">Todos los endpoints protegidos requieren el header <code className="bg-gray-100 px-1 rounded text-xs">X-API-KEY</code> con el valor configurado.</p>
                             </HelpSection>
 
                             <HelpSection title="Rate Limiting (Protección)" icon={Shield}>
