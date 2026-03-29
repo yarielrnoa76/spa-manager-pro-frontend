@@ -11,6 +11,7 @@ import {
     Shield,
     CheckCircle,
     RefreshCw,
+    Copy,
 } from "lucide-react";
 
 /* ─────────────────────── DELETE CONFIRMATION MODAL ─────────────────────── */
@@ -152,9 +153,9 @@ const TenantFormModal: React.FC<{
                 chatwoot_inbox_id: chatwootInboxId || undefined,
             };
             if (isEdit && tenant) {
-                await api.updateTenant(tenant.id, payload as any);
+                await api.updateTenant(tenant.id, payload as unknown as Partial<Tenant>);
             } else {
-                await api.createTenant(payload as any);
+                await api.createTenant(payload as unknown as Partial<Tenant>);
             }
             onSaved();
         } catch (err: unknown) {
@@ -250,15 +251,30 @@ const TenantFormModal: React.FC<{
                                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm ${tenantApiToken === '••••••••' ? 'bg-emerald-50/30 border-emerald-100 text-emerald-700 font-mono' : 'border-gray-300'}`}
                                         placeholder="Clave que n8n debe usar en el header X-API-KEY"
                                     />
-                                    {tenantApiToken === '••••••••' && (
-                                        <button 
-                                            type="button"
-                                            onClick={() => setTenantApiToken("")}
-                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
-                                            title="Limpiar para escribir nueva clave"
-                                        >
-                                            <RefreshCw size={14} />
-                                        </button>
+                                     {tenantApiToken === '••••••••' && (
+                                        <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (tenant?.tenant_api_token) {
+                                                        navigator.clipboard.writeText(tenant.tenant_api_token);
+                                                        alert("Token copiado al portapapeles");
+                                                    }
+                                                }}
+                                                className="p-1 text-gray-400 hover:text-indigo-500 rounded transition-colors"
+                                                title="Copiar token"
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setTenantApiToken("")}
+                                                className="p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                                title="Limpiar para escribir nueva clave"
+                                            >
+                                                <RefreshCw size={14} />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                                 <p className="text-[10px] text-gray-400 mt-1 italic">
@@ -287,13 +303,29 @@ const TenantFormModal: React.FC<{
                                         placeholder="API Key interna de n8n"
                                     />
                                     {n8nApiKey === '••••••••' && (
-                                        <button 
-                                            type="button"
-                                            onClick={() => setN8nApiKey("")}
-                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
-                                        >
-                                            <RefreshCw size={14} />
-                                        </button>
+                                        <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (tenant?.n8n_api_key) {
+                                                        navigator.clipboard.writeText(tenant.n8n_api_key);
+                                                        alert("API Key n8n copiada al portapapeles");
+                                                    }
+                                                }}
+                                                className="p-1 text-gray-400 hover:text-indigo-500 rounded transition-colors"
+                                                title="Copiar n8n API Key"
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setN8nApiKey("")}
+                                                className="p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                                title="Limpiar clave"
+                                            >
+                                                <RefreshCw size={14} />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -358,13 +390,29 @@ const TenantFormModal: React.FC<{
                                         placeholder="Tu API de acceso personal"
                                     />
                                     {chatwootApiToken === '••••••••' && (
-                                        <button 
-                                            type="button"
-                                            onClick={() => setChatwootApiToken("")}
-                                            className="absolute right-2 top-1.5 p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
-                                        >
-                                            <RefreshCw size={14} />
-                                        </button>
+                                        <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    if (tenant?.chatwoot_api_token) {
+                                                        navigator.clipboard.writeText(tenant.chatwoot_api_token);
+                                                        alert("Token de Chatwoot copiado al portapapeles");
+                                                    }
+                                                }}
+                                                className="p-1 text-gray-400 hover:text-indigo-500 rounded transition-colors"
+                                                title="Copiar token de Chatwoot"
+                                            >
+                                                <Copy size={16} />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setChatwootApiToken("")}
+                                                className="p-1 text-gray-400 hover:text-rose-500 rounded transition-colors"
+                                                title="Limpiar token"
+                                            >
+                                                <RefreshCw size={14} />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
