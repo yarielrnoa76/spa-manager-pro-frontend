@@ -593,8 +593,8 @@ export const api = {
     return request<any>(`/api/communications/conversations/${id}/messages?page=${page}`, { method: "GET", auth: true });
   },
 
-  async sendConversationMessage(id: number, body: string) {
-    return request<any>(`/api/communications/conversations/${id}/messages`, { method: "POST", body: { body }, auth: true });
+  async sendConversationMessage(id: number, body: string, opts?: { force_template?: boolean; template_name?: string; template_language?: string }) {
+    return request<any>(`/api/communications/conversations/${id}/messages`, { method: "POST", body: { body, ...opts }, auth: true });
   },
 
   async toggleConversationBot(id: number) {
