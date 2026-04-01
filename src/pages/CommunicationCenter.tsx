@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Filter, MessageSquare, Star, Circle, Bot, AlertCircle, User } from "lucide-react";
+import { Search, Filter, MessageSquare, Star, Circle, Bot, AlertCircle, User, Trash2 } from "lucide-react";
 import { api } from "../services/api";
 import { Conversation } from "../types";
 import { ConversationChat } from "../components/ConversationChat";
@@ -63,6 +63,26 @@ export default function CommunicationCenter({ user }: { user: any }) {
             console.error(error);
         }
     }
+
+    const handleDeleteConversation = async (e: React.MouseEvent, id: number) => {
+        e.stopPropagation();
+        if (!window.confirm("¿Estás seguro de que deseas eliminar esta conversación? Esto ocultará todos sus mensajes.")) {
+            return;
+        }
+
+        try {
+            await api.deleteConversation(id);
+            setConversations(prev => prev.filter(c => c.id !== id));
+            if (selectedId === id) {
+                setSelectedId(null);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("No tienes permisos o ocurrió un error al eliminar la conversación.");
+        }
+    }
+
+    const isAuthorizedToDelete = user?.is_superadmin || ['admin', 'superadmin'].includes(user?.role?.name?.toLowerCase());
 
     return (
         <div className="h-full flex flex-col md:flex-row bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -143,6 +163,11 @@ export default function CommunicationCenter({ user }: { user: any }) {
                                                 <button onClick={(e) => toggleImportantFromList(e, conv.id)} className="text-gray-300 hover:text-yellow-400 focus:outline-none transition-colors">
                                                     <Star size={14} className={conv.is_important ? "fill-yellow-400 text-yellow-400" : ""} />
                                                 </button>
+                                                {isAuthorizedToDelete && (
+                                                    <button onClick={(e) => handleDeleteConversation(e, conv.id)} className="text-gray-300 hover:text-red-500 focus:outline-none transition-colors">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
                                                 <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">
                                                     {new Date(conv.last_message_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                 </span>

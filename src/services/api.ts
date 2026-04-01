@@ -601,6 +601,10 @@ export const api = {
     return request<any>(`/api/communications/conversations/${id}/toggle-bot`, { method: "POST", auth: true });
   },
 
+  async deleteConversation(id: number) {
+    return request<any>(`/api/communications/conversations/${id}`, { method: "DELETE", auth: true });
+  },
+
   async toggleConversationImportant(id: number) {
     return request<any>(`/api/communications/conversations/${id}/toggle-important`, { method: "POST", auth: true });
   },
