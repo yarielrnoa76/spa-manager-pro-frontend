@@ -215,6 +215,7 @@ export interface ConversationMessage {
   status: string;
   is_read: boolean;
   created_at: string;
+  deleted_at?: string | null;
   sender?: User;
 }
 
@@ -233,6 +234,8 @@ export interface Conversation {
   last_message_preview: string;
   unread_count: number;
   created_at: string;
+  updated_at?: string;
+  deleted_at?: string | null;
   lead?: Lead;
   assignedUser?: User;
   branch?: Branch;

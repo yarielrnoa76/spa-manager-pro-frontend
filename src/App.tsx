@@ -43,6 +43,7 @@ import SettingsPage from "./pages/Settings";
 import Tenants from "./pages/Tenants";
 import LogManagement from "./pages/LogManagement";
 import CommunicationCenter from "./pages/CommunicationCenter";
+import ChatAdmin from "./pages/ChatAdmin";
 import Expenses from "./pages/Expenses";
 import Refunds from "./pages/Refunds";
 
@@ -198,6 +199,9 @@ const App: React.FC = () => {
       : []),
     ...(hasPerm("view_conversations")
       ? [{ to: "/communications", icon: MessageSquare, label: "Live Chat" }]
+      : []),
+    ...(isSuperAdmin || hasPerm("ConversationAdmin")
+      ? [{ to: "/chat-admin", icon: Shield, label: "Chat Admin" }]
       : []),
     ...(hasPerm("view_ticket")
       ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
@@ -396,6 +400,7 @@ const App: React.FC = () => {
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/communications" element={<CommunicationCenter user={user} />} />
+                <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />
                 <Route path="/tickets" element={<Tickets />} />
                 <Route path="/expenses" element={<Expenses user={user} />} />
                 <Route path="/refunds" element={<Refunds user={user} />} />

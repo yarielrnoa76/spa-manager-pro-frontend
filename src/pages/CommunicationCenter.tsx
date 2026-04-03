@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Filter, MessageSquare, Star, Circle, Bot, AlertCircle, User, Trash2 } from "lucide-react";
+import { Search, Filter, MessageSquare, Star, Circle, Bot, AlertCircle, User, Trash2, Plus } from "lucide-react";
 import { api } from "../services/api";
 import { Conversation } from "../types";
 import { ConversationChat } from "../components/ConversationChat";
@@ -17,6 +17,10 @@ export default function CommunicationCenter({ user }: { user: any }) {
     const [botEnabled, setBotEnabled] = useState("");
 
     const [pagination, setPagination] = useState({ current_page: 1, last_page: 1 });
+    
+    const [showNewChatModal, setShowNewChatModal] = useState(false);
+    const [newChatPhone, setNewChatPhone] = useState("");
+    const [newChatLoading, setNewChatLoading] = useState(false);
 
     const loadConversations = async (page = 1) => {
         setLoading(true);
@@ -84,16 +88,44 @@ export default function CommunicationCenter({ user }: { user: any }) {
 
     const isAuthorizedToDelete = user?.is_superadmin || ['admin', 'superadmin'].includes(user?.role?.name?.toLowerCase());
 
+    const handleInitiateChat = async () => {
+        if (!newChatPhone) return;
+        setNewChatLoading(true);
+        try {
+            const res = await api.initiateConversation(newChatPhone);
+            setShowNewChatModal(false);
+            setNewChatPhone("");
+            await loadConversations(1);
+            if (res.conversation && res.conversation.id) {
+                setSelectedId(res.conversation.id);
+            }
+        } catch (e: any) {
+            console.error(e);
+            if (e.status === 404) {
+               alert("Lead no encontrado con ese teléfono. Por favor, crea el Lead primero o verifica el número.");
+            } else {
+               alert("Error al iniciar chat. Verifica el número.");
+            }
+        } finally {
+            setNewChatLoading(false);
+        }
+    };
+
     return (
         <div className="h-full flex flex-col md:flex-row bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {/* PANEL IZQUIERDO: Listado */}
             <div className={`md:w-80 lg:w-96 flex flex-col border-r border-gray-100 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
                 {/* Cabecera & Filtros */}
                 <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
-                        <MessageSquare className="text-indigo-600" size={20} />
-                        Live Chat
-                    </h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            <MessageSquare className="text-indigo-600" size={20} />
+                            Live Chat
+                        </h2>
+                        <button onClick={() => setShowNewChatModal(true)} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition" title="Nuevo Chat Directo">
+                            <Plus size={16} />
+                        </button>
+                    </div>
 
                     <div className="relative mb-3">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -261,6 +293,39 @@ export default function CommunicationCenter({ user }: { user: any }) {
                             </div>
                         )}
 
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Nuevo Chat */}
+            {showNewChatModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl relative animate-in fade-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">Iniciar Nuevo Chat</h3>
+                        <p className="text-xs text-gray-500 mb-4">Ingresa el teléfono del lead con el que deseas chatear.</p>
+                        <input
+                            type="text"
+                            placeholder="Ej: +1234567890"
+                            value={newChatPhone}
+                            onChange={(e) => setNewChatPhone(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
+                        />
+                        <div className="flex justify-end gap-2 text-sm font-medium">
+                            <button
+                                onClick={() => setShowNewChatModal(false)}
+                                className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-xl transition"
+                                disabled={newChatLoading}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleInitiateChat}
+                                disabled={newChatLoading || !newChatPhone}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 flex items-center justify-center min-w-[80px]"
+                            >
+                                {newChatLoading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : 'Iniciar'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

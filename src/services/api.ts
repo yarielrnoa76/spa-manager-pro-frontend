@@ -617,4 +617,25 @@ export const api = {
   async updateConversationStatus(id: number, status: string) {
     return request<any>(`/api/communications/conversations/${id}/status`, { method: "PATCH", body: { status }, auth: true });
   },
+  
+  async deleteMessage(messageId: number) {
+    return request<any>(`/api/communications/messages/${messageId}`, { method: "DELETE", auth: true });
+  },
+  async initiateConversation(phone: string) {
+    return request<any>(`/api/communications/conversations/initiate`, { method: "POST", body: { phone }, auth: true });
+  },
+  
+  // --- Chat Admin ---
+  async listAdminConversations(page: number = 1) {
+    return request<any>(`/api/communications/admin/conversations?page=${page}`, { method: "GET", auth: true });
+  },
+  async restoreAdminConversation(id: number) {
+    return request<any>(`/api/communications/admin/conversations/${id}/restore`, { method: "POST", auth: true });
+  },
+  async getAdminConversationMessages(id: number) {
+    return request<any>(`/api/communications/admin/conversations/${id}/messages`, { method: "GET", auth: true });
+  },
+  async restoreAdminMessage(id: number) {
+    return request<any>(`/api/communications/admin/messages/${id}/restore`, { method: "POST", auth: true });
+  },
 };

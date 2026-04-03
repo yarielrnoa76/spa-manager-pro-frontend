@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Send, CheckCircle2, User, Bot, AlertCircle, Clock, Check, CheckCheck } from "lucide-react";
+import { Send, CheckCircle2, User, Bot, AlertCircle, Clock, Check, CheckCheck, Trash2 } from "lucide-react";
 import { api } from "../services/api";
 import { Conversation, ConversationMessage } from "../types";
 
@@ -117,6 +117,16 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
             console.error(e);
         }
     }
+
+    const handleDeleteMessage = async (msgId: number) => {
+        if (!window.confirm("¿Seguro que deseas eliminar este mensaje de la vista?")) return;
+        try {
+            await api.deleteMessage(msgId);
+            setMessages(prev => prev.filter(m => m.id !== msgId));
+        } catch (e) {
+            alert("No se pudo eliminar el mensaje o no tienes permiso");
+        }
+    };
 
     if (loading) return <div className="flex-1 flex justify-center items-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
     if (!conversation) return <div className="flex-1 flex justify-center items-center h-full text-gray-400">Conversación no encontrada.</div>;
@@ -236,6 +246,15 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
                                                             msg.is_read ? <CheckCheck size={12} className="text-blue-300" /> :
                                                                 <Check size={12} />}
                                                 </span>
+                                            )}
+                                            {(isAdminOrSuperAdmin || hasPerm('delete_messages')) && msg.id && (
+                                                <button
+                                                    onClick={() => handleDeleteMessage(msg.id)}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-black/10 rounded ml-1"
+                                                    title="Eliminar mensaje"
+                                                >
+                                                    <Trash2 size={10} />
+                                                </button>
                                             )}
                                         </div>
                                     </div>
