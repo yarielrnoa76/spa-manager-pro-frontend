@@ -590,7 +590,8 @@ export const api = {
   },
 
   async getConversationMessages(id: number, page: number = 1) {
-    return request<any>(`/api/communications/conversations/${id}/messages?page=${page}`, { method: "GET", auth: true });
+    const t = Date.now();
+    return request<any>(`/api/communications/conversations/${id}/messages?page=${page}&_t=${t}`, { method: "GET", auth: true });
   },
 
   async sendConversationMessage(id: number, body: string, opts?: { force_template?: boolean; template_name?: string; template_language?: string }) {
