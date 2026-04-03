@@ -18,31 +18,50 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const loadData = async () => {
+    const loadData = async (silent = false) => {
         try {
+            if (!silent) setLoading(true);
             const conv = await api.getConversation(conversationId);
             setConversation(conv);
             const msgsRes = await api.getConversationMessages(conversationId);
-            setMessages(msgsRes.data.reverse()); // Because we query DESC, reverse to ascending for chat
-            if (conv.unread_count > 0) {
+            
+            setMessages(prev => {
+                const newMsgs = msgsRes.data.reverse(); // Because we query DESC, reverse to ascending for chat
+                // Replace safely to avoid losing optimistic messages or forcing unwanted scroll
+                if (JSON.stringify(prev) !== JSON.stringify(newMsgs)) {
+                    return newMsgs;
+                }
+                return prev;
+            });
+            
+            if (conv.unread_count > 0 && !silent) {
+                // If it's silent polling, let's also mark as read if new unread messages arrived
+                await api.markConversationRead(conversationId);
+            } else if (conv.unread_count > 0 && silent) {
                 await api.markConversationRead(conversationId);
             }
         } catch (e) {
             console.error(e);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
     useEffect(() => {
         if (conversationId) {
             loadData();
+            const intervalId = setInterval(() => {
+                loadData(true);
+            }, 5000); // Poll every 5 seconds for live updates
+            
+            return () => clearInterval(intervalId);
         }
     }, [conversationId]);
 
     useEffect(() => {
+        // Only scroll seamlessly if a new message arrives, not when status updates
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages.length]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
