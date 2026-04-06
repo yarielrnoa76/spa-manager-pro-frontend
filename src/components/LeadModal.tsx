@@ -94,6 +94,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 });
                 loadLeadTickets(leadToEdit.id);
                 loadLeadDataExtras(leadToEdit.id);
+                loadLeadConversations(leadToEdit.id);
             } else {
                 // Pre-llenar datos si vienen en props (solo si no es edit)
                 setFormData((prev) => ({
