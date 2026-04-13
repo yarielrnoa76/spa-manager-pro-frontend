@@ -78,7 +78,7 @@ const LeadCard: React.FC<{
       <div>
         <div className="flex justify-between items-start gap-1 pb-2 border-b border-gray-50 mb-2">
           <div className="min-w-0">
-            <h3 className="font-bold text-sm text-gray-800 truncate">{lead.name}</h3>
+            <h3 className="font-bold text-sm text-gray-800 truncate">{lead.name} {lead.last_name || ""}</h3>
             <p className="text-[10px] text-gray-400 font-medium">{lead.phone}</p>
           </div>
           <div className="flex gap-1 flex-shrink-0">

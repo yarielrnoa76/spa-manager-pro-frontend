@@ -90,6 +90,7 @@ export interface DailyLog {
 export interface Lead {
   id: string;
   name: string;
+  last_name?: string;
   phone: string;
   email?: string;
   branch_id: string;

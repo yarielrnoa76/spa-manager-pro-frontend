@@ -42,6 +42,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     // Estado local para el formulario
     const [formData, setFormData] = useState({
         name: "",
+        last_name: "",
         phone: "",
         email: "",
         branch_id: "",
@@ -84,6 +85,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (leadToEdit) {
                 setFormData({
                     name: leadToEdit.name,
+                    last_name: leadToEdit.last_name || "",
                     phone: leadToEdit.phone,
                     email: leadToEdit.email || "",
                     branch_id: String(leadToEdit.branch_id),
@@ -100,6 +102,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 setFormData((prev) => ({
                     ...prev,
                     name: initialName || "",
+                    last_name: "",
                     phone: "",
                     email: "",
                     branch_id: initialBranchId || prev.branch_id,
@@ -272,7 +275,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         const validPhone = formData.phone.trim() === "" || phoneDigitsLength >= 7;
 
         const hasContactInfo = Boolean(
-            formData.name.trim() || formData.phone.trim() || formData.email.trim()
+            formData.name.trim() || formData.last_name.trim() || formData.phone.trim() || formData.email.trim()
         );
         const hasBranch = Boolean(formData.branch_id);
         const hasSource = Boolean(formData.source);
@@ -303,6 +306,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (!leadToEdit) {
                 setFormData({
                     name: "",
+                    last_name: "",
                     phone: "",
                     email: "",
                     branch_id: "",
@@ -436,19 +440,33 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     {activeTab === 'details' ? (
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Nombre */}
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Nombre Completo <span className="text-gray-400 font-normal normal-case">(Opcional si hay tel/email)</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={(e) => handleChange("name", e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                        placeholder="Ej. María López"
-                                    />
-                                </div>
+                                 {/* Nombre */}
+                                 <div>
+                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                         Nombre <span className="text-gray-400 font-normal normal-case">(Obligatorio si no hay tel)</span>
+                                     </label>
+                                     <input
+                                         type="text"
+                                         value={formData.name}
+                                         onChange={(e) => handleChange("name", e.target.value)}
+                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                         placeholder="Ej. María"
+                                     />
+                                 </div>
+
+                                 {/* Apellidos */}
+                                 <div>
+                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                         Apellidos
+                                     </label>
+                                     <input
+                                         type="text"
+                                         value={formData.last_name}
+                                         onChange={(e) => handleChange("last_name", e.target.value)}
+                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                         placeholder="Ej. López Pérez"
+                                     />
+                                 </div>
 
                                 {/* Teléfono */}
                                 <div>
