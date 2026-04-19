@@ -401,13 +401,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
                         >
                             Detalles
                         </button>
-                        <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
-                        >
-                            Chat
-                            {leadConversations.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>}
-                        </button>
+                        {hasPerm('view_conversations') && (
+                            <button
+                                onClick={() => setActiveTab('chat')}
+                                className={`py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'chat' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400'} hover:text-indigo-600`}
+                            >
+                                Chat
+                                {leadConversations.length > 0 && <span className="bg-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded-full">{leadConversations.length}</span>}
+                            </button>
+                        )}
                         {hasPerm('view_sales') && (
                             <button
                                 onClick={() => setActiveTab('sales')}
