@@ -3,7 +3,13 @@ import { api } from "../services/api";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 type Permission = { id: number; name: string };
-type Role = { id: number; name: string; view_scope?: string; permissions?: Permission[] };
+type Role = { 
+  id: number; 
+  name: string; 
+  view_scope?: string; 
+  resource_scopes?: Record<string, string>;
+  permissions?: Permission[] 
+};
 
 export default function RolesPermissionsSettings() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -45,6 +51,8 @@ export default function RolesPermissionsSettings() {
         appointment: "appointments",
         branch: "branches",
         ticket: "tickets",
+        refund: "refunds",
+        conversation: "conversations",
       };
 
       const groupName = groupMap[rawGroup] || rawGroup;
@@ -130,16 +138,17 @@ export default function RolesPermissionsSettings() {
     }
   };
 
-  const updateRoleScope = async (scope: string) => {
+  const updateResourceScope = async (resource: string, scope: string) => {
     if (!selectedRole) return;
     try {
+      const nextScopes = { ...(selectedRole.resource_scopes || {}), [resource]: scope };
       await api.put(`/roles/${selectedRole.id}`, {
         name: selectedRole.name,
-        view_scope: scope
+        resource_scopes: nextScopes
       });
       await load();
     } catch (e: any) {
-      setError(e?.message || "Error al actualizar alcance");
+      setError(e?.message || "Error al actualizar alcance del recurso");
     }
   };
 
@@ -203,52 +212,14 @@ export default function RolesPermissionsSettings() {
         </div>
       ) : (
         <div className="space-y-2">
-          {/* View Scope Configuration */}
-          <div className="bg-white border-2 border-indigo-100 p-5 rounded-2xl mb-6 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z"/><circle cx="12" cy="12" r="3"/></svg>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-gray-900">Alcance de Visualización de Datos</h4>
-                <p className="text-xs text-gray-500">Define qué registros puede ver este rol (Seguridad a nivel de fila)</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { id: 'own', label: 'Solo lo propio', desc: 'Ventas, leads y citas asignadas o creadas por el usuario.' },
-                { id: 'branch', label: 'Toda la sucursal', desc: 'Todo lo que pertenece a su sucursal actual.' },
-                { id: 'all', label: 'Todo el tenant', desc: 'Acceso total a todas las sucursales del tenant.' },
-              ].map(opt => {
-                const isSelected = selectedRole.view_scope === opt.id || (opt.id === 'all' && !selectedRole.view_scope);
-                return (
-                  <label
-                    key={opt.id}
-                    className={`flex flex-col border-2 rounded-xl p-4 cursor-pointer transition-all relative ${isSelected
-                      ? "border-indigo-600 bg-indigo-50/30 ring-4 ring-indigo-50"
-                      : "border-gray-100 hover:border-gray-200 bg-gray-50/30 hover:bg-white"
-                      }`}
-                  >
-                    <input
-                      type="radio"
-                      name="view_scope"
-                      className="absolute top-4 right-4 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                      checked={isSelected}
-                      onChange={() => updateRoleScope(opt.id)}
-                    />
-                    <div className={`font-bold text-sm ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}>{opt.label}</div>
-                    <div className="text-xs text-gray-500 mt-2 leading-relaxed">{opt.desc}</div>
-                    {isSelected && (
-                      <div className="mt-3 flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></div>
-                        Seleccionado
-                      </div>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
+          <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6 flex items-center gap-3">
+             <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white shrink-0">
+               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+             </div>
+             <div>
+               <h4 className="text-sm font-bold text-indigo-900">Configuración de Seguridad por Módulo</h4>
+               <p className="text-xs text-indigo-700">Ahora puedes definir el alcance de visibilidad de datos para cada sección de forma independiente.</p>
+             </div>
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm text-gray-600">
@@ -296,6 +267,22 @@ export default function RolesPermissionsSettings() {
                     </button>
 
                     <div className="flex items-center gap-3">
+                      {/* Per-resource scope selector */}
+                      {["leads", "appointments", "sales", "tickets", "refunds", "conversations"].includes(groupName) && (
+                        <div className="flex items-center gap-2 border-r pr-3 mr-1">
+                          <span className="text-[10px] font-bold text-indigo-400 uppercase">Alcance:</span>
+                          <select
+                            className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none"
+                            value={selectedRole.resource_scopes?.[groupName] || selectedRole.view_scope || 'all'}
+                            onChange={(e) => updateResourceScope(groupName, e.target.value)}
+                           >
+                            <option value="own">Solo lo Propio</option>
+                            <option value="branch">Sucursal</option>
+                            <option value="all">Todo</option>
+                          </select>
+                        </div>
+                      )}
+
                       <span className="hidden sm:inline-block text-xs font-semibold text-gray-500 tracking-wide uppercase">
                         {assignedCount}/{groupPerms.length} asignados
                       </span>
