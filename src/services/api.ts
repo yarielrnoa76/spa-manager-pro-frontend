@@ -638,4 +638,67 @@ export const api = {
   async restoreAdminMessage(id: number) {
     return request<any>(`/api/communications/admin/messages/${id}/restore`, { method: "POST", auth: true });
   },
+
+  // --- Chatwoot Proxy (SuperAdmin only) ---
+  async chatwootTestConnection(baseUrl: string, apiToken: string) {
+    return request<{
+      ok: boolean;
+      message: string;
+      profile?: { id: number; name: string; email: string; role: string; type: string };
+      accounts?: Array<{ id: number; name: string; role: string; status: string }>;
+      details?: string;
+    }>(`/api/chatwoot/test-connection`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_token: apiToken },
+      auth: true,
+    });
+  },
+
+  async chatwootListAccounts(baseUrl: string, apiToken: string) {
+    return request<{
+      ok: boolean;
+      accounts: Array<{ id: number; name: string; role: string; status: string }>;
+    }>(`/api/chatwoot/accounts`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_token: apiToken },
+      auth: true,
+    });
+  },
+
+  async chatwootListInboxes(baseUrl: string, apiToken: string, accountId: number) {
+    return request<{
+      ok: boolean;
+      inboxes: Array<{ id: number; name: string; channel_type: string; phone_number?: string }>;
+    }>(`/api/chatwoot/accounts/${accountId}/inboxes`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_token: apiToken },
+      auth: true,
+    });
+  },
+
+  async chatwootCreateAccount(baseUrl: string, apiToken: string, name: string) {
+    return request<{
+      ok: boolean;
+      message: string;
+      account?: { id: number; name: string };
+      details?: string;
+    }>(`/api/chatwoot/accounts/create`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_token: apiToken, name },
+      auth: true,
+    });
+  },
+
+  async chatwootCreateInbox(baseUrl: string, apiToken: string, accountId: number, name: string) {
+    return request<{
+      ok: boolean;
+      message: string;
+      inbox?: { id: number; name: string; channel_type: string };
+      details?: string;
+    }>(`/api/chatwoot/accounts/${accountId}/inboxes/create`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_token: apiToken, name },
+      auth: true,
+    });
+  },
 };
