@@ -42,7 +42,10 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
     const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
     const canViewLeads = isAdmin || perms.includes("view_leads");
-    const canViewBranch = isAdmin || perms.includes("view_branch");
+    
+    // Un usuario está restringido a su sucursal si no es admin ni superadmin y tiene una sucursal asignada
+    const isBranchRestricted = user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin;
+    const canSelectBranch = !isBranchRestricted && (isAdmin || perms.includes("view_branch"));
 
     const today = localISODate();
 
@@ -93,11 +96,11 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setError(null);
 
         Promise.all([
-            canViewBranch ? api.listBranches() : (user?.branch ? Promise.resolve([user.branch]) : Promise.resolve([])),
+            canSelectBranch ? api.listBranches() : (user?.branch ? Promise.resolve([user.branch]) : Promise.resolve([])),
             api.listProducts(),
             canViewLeads ? api.listLeads() : Promise.resolve([]),
             api.listPaymentMethods(),
-            canViewBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
+            canSelectBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
         ]).then(([b, p, l, pm, u]) => {
             setBranches(Array.isArray(b) ? b : []);
             setProducts(Array.isArray(p) ? p : []);
@@ -267,9 +270,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sucursal</label>
                                     <select
-                                        required={canViewBranch}
-                                        disabled={!canViewBranch || !!initialData?.branch_id}
-                                        className={`w-full border rounded-lg p-2 text-sm ${(!canViewBranch || !!initialData?.branch_id) ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
+                                        required
+                                        disabled={!canSelectBranch || !!initialData?.branch_id}
+                                        className={`w-full border rounded-lg p-2 text-sm ${(!canSelectBranch || !!initialData?.branch_id) ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
                                         value={form.branch_id}
                                         onChange={(e) => setForm(prev => ({ ...prev, branch_id: e.target.value, client_name: "", lead_id: "" }))}
                                     >

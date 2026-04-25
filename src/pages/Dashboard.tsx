@@ -186,6 +186,15 @@ const Dashboard: React.FC = () => {
     return () => { cancelled = true; };
   }, [selectedBranch]);
 
+  // Set default branch for restricted users
+  useEffect(() => {
+    if (user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin) {
+      setSelectedBranch(String(user.branch_id));
+    }
+  }, [user]);
+
+  const isBranchRestricted = user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin;
+
   const productNameById = useMemo(() => {
     const map = new Map<string, string>();
     products.forEach((p) => map.set(String(p.id), p.name));
@@ -415,11 +424,15 @@ const Dashboard: React.FC = () => {
           <p className="text-xs text-gray-400 mt-1">Período: <span className="font-bold text-gray-600">{periodLabel}</span></p>
         </div>
         <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm flex-wrap">
-          <Filter size={18} className="text-gray-400" />
-          <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
-            <option value="all">Todas las Sucursales</option>
-            {branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
-          </select>
+          {isBranchRestricted ? null : (
+            <>
+              <Filter size={18} className="text-gray-400" />
+              <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+                <option value="all">Todas las Sucursales</option>
+                {branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+              </select>
+            </>
+          )}
           <select className="bg-transparent border-none focus:ring-0 text-sm font-medium pr-6" value={String(selectedMonth)} onChange={e => setSelectedMonth(e.target.value === "all" ? "all" : Number(e.target.value))}>
             <option value="all">Todo el Año</option>
             {MONTHS.map(m => <option key={m.value} value={String(m.value)}>{m.label}</option>)}

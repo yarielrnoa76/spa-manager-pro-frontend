@@ -38,6 +38,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>('');
+    const [userBranchId, setUserBranchId] = useState<number | null>(null);
+    const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -124,6 +126,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (u) {
                 setUserPermissions(u.permissions || []);
                 setUserRole(u.role?.name || '');
+                setUserBranchId(u.branch_id || null);
+                setIsSuperAdmin(u.is_super_admin === true);
             }
         } catch (err) {
             console.error(err);
@@ -508,9 +512,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     </label>
                                     <select
                                         required
+                                        disabled={userBranchId !== null && userRole !== 'admin' && !isSuperAdmin && !leadToEdit}
                                         value={formData.branch_id}
                                         onChange={(e) => handleChange("branch_id", e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                        className={`w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${(userBranchId !== null && userRole !== 'admin' && !isSuperAdmin && !leadToEdit) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                                     >
                                         <option value="">-- Seleccionar --</option>
                                         {branches.map((b) => (
