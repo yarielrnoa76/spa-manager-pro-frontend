@@ -400,7 +400,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                         className="w-full border rounded-lg p-2 text-sm"
                                         value={form.seller_id}
                                         onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
-                                        disabled={!canViewBranch}
+                                        disabled={!canSelectBranch}
                                     >
                                         {users.length === 0 && <option value={user?.id}>{user?.name}</option>}
                                         {users.map(u => (
