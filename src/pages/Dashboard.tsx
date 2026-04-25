@@ -188,12 +188,14 @@ const Dashboard: React.FC = () => {
 
   // Set default branch for restricted users
   useEffect(() => {
-    if (user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin) {
-      setSelectedBranch(String(user.branch_id));
+    const userBranchId = user?.branch_id || user?.branch?.id;
+    if (userBranchId && user?.role?.name !== "admin" && !user?.is_super_admin) {
+      setSelectedBranch(String(userBranchId));
     }
   }, [user]);
 
-  const isBranchRestricted = user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin;
+  const userBranchId = user?.branch_id || user?.branch?.id;
+  const isBranchRestricted = userBranchId && user?.role?.name !== "admin" && !user?.is_super_admin;
 
   const productNameById = useMemo(() => {
     const map = new Map<string, string>();

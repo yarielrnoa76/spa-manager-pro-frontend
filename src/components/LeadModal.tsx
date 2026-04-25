@@ -126,8 +126,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (u) {
                 setUserPermissions(u.permissions || []);
                 setUserRole(u.role?.name || '');
-                setUserBranchId(u.branch_id || null);
+                const fetchedBranchId = u.branch_id || u.branch?.id || null;
+                setUserBranchId(fetchedBranchId);
                 setIsSuperAdmin(u.is_super_admin === true);
+                
+                if (fetchedBranchId && u.role?.name !== 'admin' && u.is_super_admin !== true && !leadToEdit && !initialBranchId) {
+                    setFormData(prev => ({ ...prev, branch_id: String(fetchedBranchId) }));
+                }
             }
         } catch (err) {
             console.error(err);

@@ -44,7 +44,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const canViewLeads = isAdmin || perms.includes("view_leads");
     
     // Un usuario está restringido a su sucursal si no es admin ni superadmin y tiene una sucursal asignada
-    const isBranchRestricted = user?.branch_id && user?.role?.name !== "admin" && !user?.is_super_admin;
+    const userBranchId = user?.branch_id || user?.branch?.id;
+    const isBranchRestricted = userBranchId && user?.role?.name !== "admin" && !user?.is_super_admin;
     const canSelectBranch = !isBranchRestricted && (isAdmin || perms.includes("view_branch"));
 
     const today = localISODate();
@@ -80,7 +81,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
         setForm({
             date: today,
-            branch_id: initialData?.branch_id ? String(initialData.branch_id) : (user?.branch?.id ? String(user.branch.id) : ""),
+            branch_id: initialData?.branch_id ? String(initialData.branch_id) : (userBranchId ? String(userBranchId) : ""),
             product_id: "",
             lead_id: initialData?.lead_id ? String(initialData.lead_id) : "",
             client_name: initialData?.client_name || "",
