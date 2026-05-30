@@ -63,6 +63,22 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         }
     }, [isOpen, saleId]);
 
+    const filteredUsers = React.useMemo(() => {
+        if (!sale?.branch_id) {
+            return users;
+        }
+        return users.filter(u => !u.branch_id || String(u.branch_id) === String(sale.branch_id));
+    }, [users, sale?.branch_id]);
+
+    useEffect(() => {
+        if (sale?.branch_id && formData.seller_id) {
+            const selectedSeller = users.find(u => String(u.id) === String(formData.seller_id));
+            if (selectedSeller && selectedSeller.branch_id && String(selectedSeller.branch_id) !== String(sale.branch_id)) {
+                setFormData(prev => ({ ...prev, seller_id: "" }));
+            }
+        }
+    }, [sale?.branch_id, users, formData.seller_id]);
+
     useEffect(() => {
         if (sale) {
             setFormData({
@@ -370,7 +386,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                         onChange={(e) => setFormData({ ...formData, seller_id: e.target.value })}
                                                     >
                                                         <option value="">Seleccionar...</option>
-                                                        {users.map(u => (
+                                                        {filteredUsers.map(u => (
                                                             <option key={u.id} value={String(u.id)}>{u.name}</option>
                                                         ))}
                                                     </select>

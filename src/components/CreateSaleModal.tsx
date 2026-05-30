@@ -131,6 +131,22 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
     const availableProducts = products; // Allow all products, services might have 0 stock
 
+    const filteredUsers = useMemo(() => {
+        if (!form.branch_id) {
+            return users;
+        }
+        return users.filter(u => !u.branch_id || String(u.branch_id) === String(form.branch_id));
+    }, [users, form.branch_id]);
+
+    useEffect(() => {
+        if (form.branch_id && form.seller_id) {
+            const selectedSeller = users.find(u => String(u.id) === String(form.seller_id));
+            if (selectedSeller && selectedSeller.branch_id && String(selectedSeller.branch_id) !== String(form.branch_id)) {
+                setForm(prev => ({ ...prev, seller_id: "" }));
+            }
+        }
+    }, [form.branch_id, users, form.seller_id]);
+
     const leadSuggestions = useMemo(() => {
         if (!form.branch_id || initialData?.lead_id) return []; // Si ya está forzado el lead, no sugerimos
         const term = (form.client_name || "").toLowerCase();
@@ -408,8 +424,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                         onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
                                         disabled={!canSelectBranch}
                                     >
-                                        {users.length === 0 && <option value={user?.id}>{user?.name}</option>}
-                                        {users.map(u => (
+                                        {filteredUsers.length === 0 && <option value={user?.id}>{user?.name}</option>}
+                                        {filteredUsers.map(u => (
                                             <option key={u.id} value={String(u.id)}>{u.name}</option>
                                         ))}
                                     </select>
