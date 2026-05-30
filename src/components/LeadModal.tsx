@@ -280,6 +280,24 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    const filteredResponsibles = React.useMemo(() => {
+        if (!formData.branch_id) {
+            return responsibles;
+        }
+        return responsibles.filter((u) => {
+            return !u.branch_id || String(u.branch_id) === String(formData.branch_id);
+        });
+    }, [responsibles, formData.branch_id]);
+
+    useEffect(() => {
+        if (formData.branch_id && formData.assigned_to) {
+            const assignedUser = responsibles.find(r => String(r.id) === String(formData.assigned_to));
+            if (assignedUser && assignedUser.branch_id && String(assignedUser.branch_id) !== String(formData.branch_id)) {
+                setFormData(prev => ({ ...prev, assigned_to: "" }));
+            }
+        }
+    }, [formData.branch_id, responsibles, formData.assigned_to]);
+
     const isFormValid = React.useMemo(() => {
         // Phone must contain at least 7 digits to be considered "valid", if it has any text
         const phoneDigitsLength = formData.phone.replace(/\D/g, "").length;
@@ -604,7 +622,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                                     >
                                         <option value="">-- Sin Asignar --</option>
-                                        {responsibles.map((r) => (
+                                        {filteredResponsibles.map((r) => (
                                             <option key={r.id} value={r.id}>
                                                 {r.name}
                                             </option>
