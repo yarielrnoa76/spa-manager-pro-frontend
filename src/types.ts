@@ -94,6 +94,7 @@ export interface Lead {
   phone: string;
   email?: string;
   branch_id: string;
+  branch?: Branch;
   source: 'whatsapp' | 'call' | 'web' | 'other';
   message: string;
   status: 'new' | 'first_contact' | 'second_contact' | 'third_contact' | 'appointment_set' | 'sold' | 'discarded';

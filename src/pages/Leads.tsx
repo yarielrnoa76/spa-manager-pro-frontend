@@ -55,7 +55,8 @@ const LeadCard: React.FC<{
   onStatusChange: (id: string, status: LeadStatus) => void;
   onDeleteRequest: (lead: Lead) => void;
   onEdit: (lead: Lead) => void;
-}> = ({ lead, onStatusChange, onDeleteRequest, onEdit }) => {
+  branchName?: string;
+}> = ({ lead, onStatusChange, onDeleteRequest, onEdit, branchName }) => {
   const getSourceIcon = (source: string) => {
     switch (source) {
       case "whatsapp":
@@ -80,6 +81,11 @@ const LeadCard: React.FC<{
           <div className="min-w-0">
             <h3 className="font-bold text-sm text-gray-800 truncate">{lead.name} {lead.last_name || ""}</h3>
             <p className="text-[10px] text-gray-400 font-medium">{lead.phone}</p>
+            {branchName && (
+              <p className="text-[9px] text-indigo-600/70 font-semibold mt-0.5 truncate" title={`Sucursal: ${branchName}`}>
+                {branchName}
+              </p>
+            )}
           </div>
           <div className="flex gap-1 flex-shrink-0">
             <button
@@ -197,6 +203,7 @@ const LeadCard: React.FC<{
 
 const Leads: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,7 +211,15 @@ const Leads: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const data = await api.listLeads();
+      const [data, branchesData] = await Promise.all([
+        api.listLeads(),
+        api.listBranches().catch((err) => {
+          console.error("Error listing branches", err);
+          return [] as Branch[];
+        }),
+      ]);
+
+      setBranches(branchesData);
       
       // Backward compatibility mapping
       const normalized = data.map(l => {
@@ -319,18 +334,22 @@ const Leads: React.FC = () => {
             <div className="p-3 space-y-3 flex-1 overflow-y-auto">
               {filteredLeads
                 .filter((l) => l.status === statusKey)
-                .map((lead) => (
-                  <LeadCard
-                    key={lead.id}
-                    lead={lead}
-                    onStatusChange={handleStatusChange}
-                    onDeleteRequest={handleDeleteRequest}
-                    onEdit={(l) => {
-                      setEditingLead(l);
-                      setIsModalOpen(true);
-                    }}
-                  />
-                ))}
+                .map((lead) => {
+                  const branch = branches.find((b) => String(b.id) === String(lead.branch_id)) || lead.branch;
+                  return (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      onStatusChange={handleStatusChange}
+                      onDeleteRequest={handleDeleteRequest}
+                      onEdit={(l) => {
+                        setEditingLead(l);
+                        setIsModalOpen(true);
+                      }}
+                      branchName={branch?.name}
+                    />
+                  );
+                })}
             </div>
           </div>
         ))}
