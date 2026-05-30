@@ -118,6 +118,17 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         });
     }, [isOpen, initialData, user]);
 
+    const clientNameInputRef = React.useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!isLeadModalOpen && isOpen) {
+            const timer = setTimeout(() => {
+                clientNameInputRef.current?.focus();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isLeadModalOpen, isOpen]);
+
     const availableProducts = products; // Allow all products, services might have 0 stock
 
     const leadSuggestions = useMemo(() => {
@@ -250,6 +261,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                 onSuccess={handleLeadCreatedFromModal}
                 initialBranchId={form.branch_id}
                 initialName={form.client_name}
+                zIndex={150}
             />
 
             {isOpen && (
@@ -302,6 +314,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre del Cliente</label>
                                     <div className="relative">
                                         <input
+                                            ref={clientNameInputRef}
                                             type="text"
                                             required
                                             disabled={!form.branch_id || !!initialData?.lead_id}

@@ -13,6 +13,7 @@ type LeadModalProps = {
     initialBranchId?: string;
     initialName?: string;
     leadToEdit?: Lead | null;
+    zIndex?: number;
 };
 
 const LeadModal: React.FC<LeadModalProps> = ({
@@ -22,6 +23,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     initialBranchId,
     initialName,
     leadToEdit,
+    zIndex,
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
@@ -375,7 +377,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm transition-opacity">
+        <div 
+            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity"
+            style={{ zIndex: zIndex || 60 }}
+        >
             <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-[1400px] h-[85vh] flex flex-col overflow-hidden transform transition-all scale-100">
 
                 {/* Header */}
@@ -458,6 +463,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                      </label>
                                      <input
                                          type="text"
+                                         autoFocus
                                          value={formData.name}
                                          onChange={(e) => handleChange("name", e.target.value)}
                                          className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
