@@ -424,10 +424,13 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                         onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
                                         disabled={!canSelectBranch}
                                     >
-                                        {filteredUsers.length === 0 && <option value={user?.id}>{user?.name}</option>}
                                         {filteredUsers.map(u => (
                                             <option key={u.id} value={String(u.id)}>{u.name}</option>
                                         ))}
+                                        {/* Garantizar que el usuario logueado esté disponible si no está en la lista filtrada */}
+                                        {user?.id && !filteredUsers.some(u => String(u.id) === String(user.id)) && (
+                                            <option value={String(user.id)}>{user.name}</option>
+                                        )}
                                     </select>
                                 </div>
                             </div>
