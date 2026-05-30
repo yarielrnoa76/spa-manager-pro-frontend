@@ -13,7 +13,7 @@ type LeadModalProps = {
     initialBranchId?: string;
     initialName?: string;
     leadToEdit?: Lead | null;
-    zIndex?: number;
+    zIndexClass?: string;
 };
 
 const LeadModal: React.FC<LeadModalProps> = ({
@@ -23,7 +23,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     initialBranchId,
     initialName,
     leadToEdit,
-    zIndex,
+    zIndexClass = "z-[60]",
 }) => {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
@@ -378,8 +378,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     return (
         <div 
-            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity"
-            style={{ zIndex: zIndex || 60 }}
+            className={`fixed inset-0 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity ${zIndexClass}`}
         >
             <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-[1400px] h-[85vh] flex flex-col overflow-hidden transform transition-all scale-100">
 

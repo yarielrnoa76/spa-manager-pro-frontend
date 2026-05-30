@@ -244,7 +244,8 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
     const handleLeadCreatedFromModal = (lead: any) => {
         setLeads(prev => [lead, ...prev]);
-        setForm(prev => ({ ...prev, client_name: lead.name, lead_id: String(lead.id) }));
+        const fullName = [lead.name, lead.last_name].filter(Boolean).join(" ");
+        setForm(prev => ({ ...prev, client_name: fullName, lead_id: String(lead.id) }));
         setIsLeadModalOpen(false);
     };
 
@@ -255,15 +256,6 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
     return (
         <>
-            <LeadModal
-                isOpen={isLeadModalOpen}
-                onClose={() => setIsLeadModalOpen(false)}
-                onSuccess={handleLeadCreatedFromModal}
-                initialBranchId={form.branch_id}
-                initialName={form.client_name}
-                zIndex={150}
-            />
-
             {isOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -517,6 +509,15 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                     </div>
                 </div>
             )}
+
+            <LeadModal
+                isOpen={isLeadModalOpen}
+                onClose={() => setIsLeadModalOpen(false)}
+                onSuccess={handleLeadCreatedFromModal}
+                initialBranchId={form.branch_id}
+                initialName={form.client_name}
+                zIndexClass="z-[150]"
+            />
         </>
     );
 };
