@@ -75,7 +75,10 @@ const LeadCard: React.FC<{
   const prev = PREV_STATUS[lead.status];
 
   return (
-    <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[140px] hover:border-indigo-200 transition-all duration-300">
+    <div
+      onClick={() => onEdit(lead)}
+      className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[140px] hover:border-indigo-200 cursor-pointer transition-all duration-300"
+    >
       <div>
         <div className="flex justify-between items-start gap-1 pb-2 border-b border-gray-50 mb-2">
           <div className="min-w-0">
@@ -89,7 +92,10 @@ const LeadCard: React.FC<{
           </div>
           <div className="flex gap-1 flex-shrink-0">
             <button
-              onClick={() => onDeleteRequest(lead)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteRequest(lead);
+              }}
               className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
               title={
                 lead.status === "discarded"
@@ -101,7 +107,10 @@ const LeadCard: React.FC<{
             </button>
             <button
               className="p-1 text-gray-300 hover:text-indigo-600"
-              onClick={() => onEdit(lead)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(lead);
+              }}
               title="Editar lead"
             >
               <MoreHorizontal size={14} />
@@ -123,7 +132,10 @@ const LeadCard: React.FC<{
             {prev && (
               <button
                 type="button"
-                onClick={() => onStatusChange(lead.id, prev)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStatusChange(lead.id, prev);
+                }}
                 className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 bg-gray-50 rounded-full transition-all"
               >
                 <ArrowLeft size={12} />
@@ -133,12 +145,14 @@ const LeadCard: React.FC<{
               href={`https://wa.me/${formatWhatsAppPhone(lead.phone)}`}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="p-1.5 text-green-500 hover:text-white hover:bg-green-500 bg-green-50 rounded-full transition-all"
             >
               <MessageSquare size={12} />
             </a>
             <a
               href={`tel:${lead.phone}`}
+              onClick={(e) => e.stopPropagation()}
               className="p-1.5 text-blue-500 hover:text-white hover:bg-blue-500 bg-blue-50 rounded-full transition-all"
             >
               <Phone size={12} />
@@ -149,7 +163,10 @@ const LeadCard: React.FC<{
         <div className="flex gap-1.5 text-[10px]">
           {lead.status === "new" && (
             <button
-              onClick={() => onStatusChange(lead.id, "first_contact")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange(lead.id, "first_contact");
+              }}
               className="w-full py-1.5 px-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-indigo-700 transition"
             >
               1er Contacto <ArrowRight size={10} />
@@ -157,7 +174,10 @@ const LeadCard: React.FC<{
           )}
           {lead.status === "first_contact" && (
             <button
-              onClick={() => onStatusChange(lead.id, "second_contact")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange(lead.id, "second_contact");
+              }}
               className="w-full py-1.5 px-2 bg-cyan-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-cyan-700 transition"
             >
               2do Contacto <ArrowRight size={10} />
@@ -165,7 +185,10 @@ const LeadCard: React.FC<{
           )}
           {lead.status === "second_contact" && (
             <button
-              onClick={() => onStatusChange(lead.id, "third_contact")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange(lead.id, "third_contact");
+              }}
               className="w-full py-1.5 px-2 bg-teal-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-teal-700 transition"
             >
               3er Contacto <ArrowRight size={10} />
@@ -173,7 +196,10 @@ const LeadCard: React.FC<{
           )}
           {lead.status === "third_contact" && (
             <button
-              onClick={() => onStatusChange(lead.id, "appointment_set")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange(lead.id, "appointment_set");
+              }}
               className="w-full py-1.5 px-2 bg-indigo-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-indigo-600 transition"
             >
               Agendar Cita <ArrowRight size={10} />
@@ -181,7 +207,10 @@ const LeadCard: React.FC<{
           )}
           {lead.status === "appointment_set" && (
             <button
-              onClick={() => onStatusChange(lead.id, "sold")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange(lead.id, "sold");
+              }}
               className="w-full py-1.5 px-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center justify-center gap-1 hover:bg-emerald-700 transition"
             >
               Vendido / Éxito <DollarSign size={10} />
@@ -189,7 +218,10 @@ const LeadCard: React.FC<{
           )}
           {(lead.status === "sold" || lead.status === "discarded") && (
              <button
-                onClick={() => onStatusChange(lead.id, "new")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStatusChange(lead.id, "new");
+                }}
                 className="w-full py-1.5 px-2 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition"
              >
                Reactivar
