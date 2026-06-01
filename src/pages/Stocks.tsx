@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../services/api";
 import { Product } from "../types";
 import {
@@ -10,6 +10,8 @@ import {
   TrendingDown,
   ArrowRightLeft,
   Pencil,
+  Download,
+  Upload,
 } from "lucide-react";
 
 const Stocks: React.FC = () => {
@@ -50,6 +52,179 @@ const Stocks: React.FC = () => {
   // precios en modal de movimiento (editables según tipo)
   const [moveSalesPrice, setMoveSalesPrice] = useState<string>("0");
   const [moveCostPrice, setMoveCostPrice] = useState<string>("0");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const exportToCSV = () => {
+    const headers = ["Nombre", "SKU", "Tipo", "Precio Venta", "Precio Costo", "Stock Actual", "Stock Minimo", "Stock Maximo"].join(",");
+    const rows = products.map((p) => {
+      const name = p.name || "";
+      const sku = p.sku || "";
+      const type = p.type === "service" ? "servicio" : "producto";
+      const salesPrice = p.sales_price || 0;
+      const costPrice = p.cost_price || 0;
+      const stock = p.type === "service" ? "" : (p.stock || 0);
+      const minStock = p.type === "service" ? "" : (p.min_stock || 0);
+      const maxStock = p.type === "service" ? "" : (p.max_stock ?? "");
+
+      return [
+        name,
+        sku,
+        type,
+        salesPrice,
+        costPrice,
+        stock,
+        minStock,
+        maxStock
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
+    });
+
+    const blob = new Blob([headers + "\n" + rows.join("\n")], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    a.download = `inventario_export_${todayStr}.csv`;
+    a.click();
+  };
+
+  const parseCSV = (text: string): string[][] => {
+    const lines: string[][] = [];
+    let row: string[] = [];
+    let inQuotes = false;
+    let currentVal = '';
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentVal += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentVal.trim());
+        currentVal = '';
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        row.push(currentVal.trim());
+        currentVal = '';
+        if (row.length > 1 || row[0] !== '') {
+          lines.push(row);
+        }
+        row = [];
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+      } else {
+        currentVal += char;
+      }
+    }
+    if (currentVal || row.length > 0) {
+      row.push(currentVal.trim());
+      if (row.length > 1 || row[0] !== '') {
+        lines.push(row);
+      }
+    }
+    return lines;
+  };
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      try {
+        const rows = parseCSV(text);
+        if (rows.length === 0) {
+          alert("El archivo CSV está vacío.");
+          return;
+        }
+
+        let startIdx = 0;
+        const firstRowStr = rows[0].join("").toLowerCase();
+        if (firstRowStr.includes("nombre") || firstRowStr.includes("sku") || firstRowStr.includes("tipo")) {
+          startIdx = 1;
+        }
+
+        const importItems = [];
+        for (let i = startIdx; i < rows.length; i++) {
+          const row = rows[i];
+          if (row.length < 1 || !row[0]) continue;
+
+          const name = row[0].trim();
+          const sku = row[1] ? row[1].trim() : null;
+          const rawType = row[2] ? row[2].trim().toLowerCase() : "";
+          const type = (rawType === "service" || rawType === "servicio") ? "service" : "product";
+          const sales_price = parseFloat(row[3] || "0") || 0;
+          const cost_price = parseFloat(row[4] || "0") || 0;
+          const stock = parseInt(row[5] || "0", 10) || 0;
+          const min_stock = parseInt(row[6] || "0", 10) || 0;
+          const rawMaxStock = row[7] ? row[7].trim() : "";
+          const max_stock = (rawMaxStock === "" || parseInt(rawMaxStock, 10) === 0) ? null : (parseInt(rawMaxStock, 10) || null);
+
+          importItems.push({
+            name,
+            sku: sku || null,
+            type,
+            sales_price,
+            cost_price,
+            stock: type === "product" ? stock : 0,
+            min_stock: type === "product" ? min_stock : 0,
+            max_stock: type === "product" ? max_stock : null,
+          });
+        }
+
+        if (importItems.length === 0) {
+          alert("No se encontraron productos válidos para importar.");
+          return;
+        }
+
+        const confirmImport = window.confirm(
+          `¿Deseas importar ${importItems.length} producto(s) al inventario?\n\nLos productos con SKU duplicado podrían fallar.`
+        );
+        if (!confirmImport) {
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+
+        let successCount = 0;
+        const failedItems: string[] = [];
+
+        for (const item of importItems) {
+          try {
+            await api.createProduct(item as any);
+            successCount++;
+          } catch (err: any) {
+            failedItems.push(`"${item.name}" (SKU: ${item.sku || "N/A"}): ${err?.message || "Error al crear"}`);
+          }
+        }
+
+        let msg = `Importación completada.\n\n- Productos importados: ${successCount}`;
+        if (failedItems.length > 0) {
+          msg += `\n- Productos fallidos: ${failedItems.length}\n\nDetalle de errores:\n` + failedItems.slice(0, 10).join("\n");
+          if (failedItems.length > 10) {
+            msg += `\n... y ${failedItems.length - 10} errores más.`;
+          }
+        }
+        alert(msg);
+        fetchData();
+      } catch (err: any) {
+        alert("Ocurrió un error al procesar el archivo CSV: " + (err?.message || err));
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const fetchData = useCallback(async () => {
     const data = await api.listProducts();
@@ -261,19 +436,43 @@ const Stocks: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold">Gestión de Inventario</h1>
           <p className="text-gray-500 text-sm">
             Control de productos para la venta.
           </p>
         </div>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg hover:bg-indigo-700"
-        >
-          <Plus size={18} /> Nuevo Producto
-        </button>
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportCSV}
+            accept=".csv"
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-bold hover:bg-gray-50 text-gray-700 cursor-pointer shadow-sm"
+          >
+            <Upload size={18} /> Importar CSV
+          </button>
+          <button
+            type="button"
+            onClick={exportToCSV}
+            className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-bold hover:bg-gray-50 text-gray-700 cursor-pointer shadow-sm"
+          >
+            <Download size={18} /> Exportar CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg hover:bg-indigo-700"
+          >
+            <Plus size={18} /> Nuevo Producto
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -362,7 +561,11 @@ const Stocks: React.FC = () => {
           <tbody className="divide-y">
             {filtered.map((product) => {
               return (
-                <tr key={product.id} className="hover:bg-gray-50">
+                <tr
+                  key={product.id}
+                  onClick={() => openEditModal(product)}
+                  className="hover:bg-gray-50 cursor-pointer"
+                >
                   <td className="px-6 py-4 font-bold text-gray-900">
                     {product.name}
                   </td>
@@ -421,7 +624,10 @@ const Stocks: React.FC = () => {
                     <div className="flex justify-end gap-3">
                       {/* ✅ EDITAR */}
                       <button
-                        onClick={() => openEditModal(product)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(product);
+                        }}
                         className="text-gray-700 hover:text-gray-900 flex items-center gap-1 font-bold"
                       >
                         <Pencil size={16} /> Editar
@@ -430,7 +636,8 @@ const Stocks: React.FC = () => {
                       {/* MOVIMIENTO */}
                       {product.type !== 'service' && (
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setSelectedProduct(product);
                             setIsModalOpen(true);
                           }}
@@ -443,7 +650,10 @@ const Stocks: React.FC = () => {
                       {/* ELIMINAR */}
                       {canDeleteProduct && (
                         <button
-                          onClick={() => handleDeleteProduct(product)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProduct(product);
+                          }}
                           className="text-red-600 hover:text-red-800 font-bold"
                           title="Eliminar producto"
                         >
