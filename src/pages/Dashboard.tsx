@@ -17,6 +17,7 @@ import {
   Filter,
   Building2,
   X,
+  Download,
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
@@ -152,6 +153,9 @@ const Dashboard: React.FC = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedDaySales, setSelectedDaySales] = useState<Sale[]>([]);
   const [selectedDayLabel, setSelectedDayLabel] = useState("");
+  const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
+  const [selectedSellerSales, setSelectedSellerSales] = useState<Sale[]>([]);
+  const [selectedSellerName, setSelectedSellerName] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -300,6 +304,57 @@ const Dashboard: React.FC = () => {
       setSelectedDayLabel(`${clickedDay} de ${mLabel}, ${selectedYear}`);
       setIsDetailModalOpen(true);
     }
+  };
+
+  const handleSellerBarClick = (data: any) => {
+    if (data && data.name) {
+      const sellerName = data.name;
+      const salesForSeller = periodSales.filter((s) => {
+        const name = s?.seller?.name || s?.seller_name || "Sin vendedora";
+        return name === sellerName;
+      });
+      setSelectedSellerSales(salesForSeller);
+      setSelectedSellerName(sellerName);
+      setIsSellerModalOpen(true);
+    }
+  };
+
+  const exportSellerSalesToCSV = () => {
+    if (!selectedSellerSales.length) return;
+
+    const headers = ["Fecha", "Vendedora", "Sucursal", "Cliente", "Servicio/Producto", "Monto", "Metodo Pago", "Notas"].join(",");
+
+    const rows = selectedSellerSales.map((s: any) => {
+      const dateVal = normalizeDate(s.date);
+      const sellerVal = s?.seller?.name || s?.seller_name || "Sin vendedora";
+      const branchVal = branches.find((b) => String(b.id) === String(s.branch_id))?.name || s.branch_id || "—";
+      const clientVal = s.client_name || "—";
+      const productVal = s?.product?.name || s?.product_name || productNameById.get(String(s?.product_id)) || s?.service_rendered || "—";
+      const amtVal = toNum(s.amount);
+      const payVal = s.payment_method || "—";
+      const notesVal = (s.notes || "").replace(/,/g, " ");
+
+      return [
+        dateVal,
+        sellerVal,
+        branchVal,
+        clientVal,
+        productVal,
+        amtVal.toFixed(2),
+        payVal,
+        notesVal
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
+    });
+
+    const blob = new Blob([headers + "\n" + rows.join("\n")], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dateLabel = selectedMonth === "all" ? `Year_${selectedYear}` : `Month_${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+    a.download = `ventas_vendedora_${selectedSellerName.replace(/\s+/g, "_")}_${dateLabel}.csv`;
+    a.click();
   };
 
   const salesByMonthChartData = useMemo(() => {
@@ -517,7 +572,14 @@ const Dashboard: React.FC = () => {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 10 }} interval={0} angle={-10} height={40} />
                       <Tooltip />
-                      <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
+                      <Bar
+                        dataKey="count"
+                        fill="#10b981"
+                        radius={[4, 4, 0, 0]}
+                        barSize={40}
+                        onClick={handleSellerBarClick}
+                        className="cursor-pointer"
+                      />
                     </ReBarChart>
                   </ResponsiveContainer>
                 ) : <div className="h-full flex items-center justify-center text-gray-400">Sin datos</div>}
@@ -743,6 +805,106 @@ const Dashboard: React.FC = () => {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SELLER DETAIL MODAL */}
+      {isSellerModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* HEADER */}
+            <div className="px-6 py-4 border-b flex justify-between items-center shrink-0 bg-emerald-50/50">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">Resumen de Ventas por Vendedora</h3>
+                <p className="text-xs text-emerald-800 font-bold">Vendedora: {selectedSellerName} · Período: {periodLabel}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSellerModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-emerald-100 transition-colors text-emerald-800 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* CONTENT */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {selectedSellerSales.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  No hay ventas registradas para esta vendedora en este período.
+                </p>
+              ) : (
+                <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                      <tr>
+                        <th className="px-4 py-3">Fecha</th>
+                        <th className="px-4 py-3">Sucursal</th>
+                        <th className="px-4 py-3">Cliente</th>
+                        <th className="px-4 py-3">Servicio/Producto</th>
+                        <th className="px-4 py-3 text-right">Precio Unit.</th>
+                        <th className="px-4 py-3 text-right">Cant.</th>
+                        <th className="px-4 py-3 text-right">Monto</th>
+                        <th className="px-4 py-3">Método</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-xs font-semibold">
+                      {selectedSellerSales.map((sale: any) => {
+                        const branchName = branches.find((b) => String(b.id) === String(sale.branch_id))?.name || "—";
+                        const productName = sale?.product?.name || sale?.product_name || productNameById.get(String(sale?.product_id)) || sale?.service_rendered || "—";
+                        const uPrice = toNum(sale?.unit_price);
+                        const qty = toNum(sale?.quantity || 1);
+                        const amt = toNum(sale?.amount || (uPrice * qty));
+
+                        return (
+                          <tr key={sale.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-600">{normalizeDate(sale.date)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
+                                {branchName}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">{sale.client_name || "—"}</td>
+                            <td className="px-4 py-3 text-gray-600">{productName}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">${uPrice.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">{qty}</td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">${amt.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">{sale.payment_method || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="px-6 py-4 border-t flex justify-between items-center bg-gray-50 shrink-0">
+              <div className="text-xs text-gray-500 font-bold">
+                Total: <span className="text-emerald-700">{selectedSellerSales.length}</span> venta(s) ·{" "}
+                <span className="text-emerald-700">
+                  ${selectedSellerSales.reduce((sum, s) => sum + toNum(s.amount), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={exportSellerSalesToCSV}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-md transition-colors cursor-pointer"
+                >
+                  <Download size={16} /> Exportar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSellerModalOpen(false)}
+                  className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
