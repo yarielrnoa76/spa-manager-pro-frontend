@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   Filter,
   Building2,
+  X,
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
@@ -148,6 +149,9 @@ const Dashboard: React.FC = () => {
   const [expenses, setExpenses] = useState<any[]>([]);
 
   const [user, setUser] = useState<any>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedDaySales, setSelectedDaySales] = useState<Sale[]>([]);
+  const [selectedDayLabel, setSelectedDayLabel] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -280,6 +284,23 @@ const Dashboard: React.FC = () => {
     });
     return base;
   }, [period, periodSales, selectedMonth]);
+
+  const handleBarClick = (data: any) => {
+    if (selectedMonth === "all") return;
+    if (data && data.day) {
+      const clickedDay = parseInt(data.day, 10);
+      const salesForDay = periodSales.filter((s) => {
+        const d = normalizeDate(s.date);
+        if (!d) return false;
+        const dd = new Date(d + "T00:00:00");
+        return dd.getDate() === clickedDay && dd.getMonth() + 1 === selectedMonth;
+      });
+      setSelectedDaySales(salesForDay);
+      const mLabel = MONTHS.find((x) => x.value === selectedMonth)?.label || "";
+      setSelectedDayLabel(`${clickedDay} de ${mLabel}, ${selectedYear}`);
+      setIsDetailModalOpen(true);
+    }
+  };
 
   const salesByMonthChartData = useMemo(() => {
     if (period.mode !== "year") return [];
@@ -475,7 +496,14 @@ const Dashboard: React.FC = () => {
                     <XAxis dataKey={selectedMonth === "all" ? "month" : "day"} axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 12 }} />
                     <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 12 }} />
                     <Tooltip contentStyle={{ borderRadius: "8px", border: "none" }} />
-                    <Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={18} />
+                    <Bar
+                      dataKey="count"
+                      fill="#4f46e5"
+                      radius={[4, 4, 0, 0]}
+                      barSize={18}
+                      onClick={selectedMonth !== "all" ? handleBarClick : undefined}
+                      className={selectedMonth !== "all" ? "cursor-pointer" : ""}
+                    />
                   </ReBarChart>
                 </ResponsiveContainer>
               </div>
@@ -619,6 +647,102 @@ const Dashboard: React.FC = () => {
                 <p className="text-[10px] uppercase font-black text-indigo-600">Sucursales Activas</p>
                 <h3 className="text-xl font-black">{branches.length}</h3>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DETAIL MODAL */}
+      {isDetailModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* HEADER */}
+            <div className="px-6 py-4 border-b flex justify-between items-center shrink-0 bg-gray-50">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">Desglose de Ventas</h3>
+                <p className="text-xs text-gray-500 font-semibold">{selectedDayLabel}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDetailModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-gray-200 transition-colors text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* CONTENT */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {selectedDaySales.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  No hay ventas registradas para este día.
+                </p>
+              ) : (
+                <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold border-b border-gray-100">
+                      <tr>
+                        <th className="px-4 py-3">Vendedor(a)</th>
+                        <th className="px-4 py-3">Sucursal</th>
+                        <th className="px-4 py-3">Cliente</th>
+                        <th className="px-4 py-3">Servicio/Producto</th>
+                        <th className="px-4 py-3 text-right">Precio Unit.</th>
+                        <th className="px-4 py-3 text-right">Cant.</th>
+                        <th className="px-4 py-3 text-right">Monto</th>
+                        <th className="px-4 py-3">Método</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-xs font-semibold">
+                      {selectedDaySales.map((sale: any) => {
+                        const sellerName = sale?.seller?.name || sale?.seller_name || "—";
+                        const branchName = branches.find((b) => String(b.id) === String(sale.branch_id))?.name || "—";
+                        const productName = sale?.product?.name || sale?.product_name || productNameById.get(String(sale?.product_id)) || sale?.service_rendered || "—";
+                        const uPrice = toNum(sale?.unit_price);
+                        const qty = toNum(sale?.quantity || 1);
+                        const amt = toNum(sale?.amount || (uPrice * qty));
+
+                        return (
+                          <tr key={sale.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold">
+                                {sellerName}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
+                                {branchName}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">{sale.client_name || "—"}</td>
+                            <td className="px-4 py-3 text-gray-600">{productName}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">${uPrice.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">{qty}</td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">${amt.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">{sale.payment_method || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div className="px-6 py-4 border-t flex justify-between items-center bg-gray-50 shrink-0">
+              <div className="text-xs text-gray-500 font-bold">
+                Total: <span className="text-indigo-600">{selectedDaySales.length}</span> venta(s) ·{" "}
+                <span className="text-indigo-600">
+                  ${selectedDaySales.reduce((sum, s) => sum + toNum(s.amount), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDetailModalOpen(false)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
