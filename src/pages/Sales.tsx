@@ -15,6 +15,7 @@ import {
   UserPlus,
   ChevronDown,
   ChevronRight,
+  Calendar,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -166,6 +167,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const today = localISODate();
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [filterByMonth, setFilterByMonth] = useState(false);
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -307,13 +310,22 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const dateBranchFilteredSales = useMemo(() => {
     return (sales as any[]).filter((s: any) => {
       const saleDate = normalizeDateOnly(s.date);
-      const matchesDate = saleDate === String(selectedDate);
+      
+      let matchesDate = false;
+      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
+        matchesDate = saleDate.slice(0, 7) === selectedDate.slice(0, 7);
+      } else if (selectedDate) {
+        matchesDate = saleDate === String(selectedDate);
+      } else {
+        matchesDate = true;
+      }
+
       const matchesBranch =
         selectedBranch === "all" ||
         String(s.branch_id) === String(selectedBranch);
       return matchesDate && matchesBranch;
     });
-  }, [sales, selectedDate, selectedBranch]);
+  }, [sales, selectedDate, selectedBranch, filterByMonth]);
 
   const visibleSales = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -573,7 +585,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ventas_${selectedDate}_${branchLabelForFile}.csv`;
+    a.download = `ventas_${filterByMonth ? "mes_" + selectedDate.slice(0, 7) : selectedDate}_${branchLabelForFile}.csv`;
     a.click();
   };
 
@@ -611,8 +623,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <span className="font-bold text-gray-600">
               {selectedBranchName}
             </span>{" "}
-            · Fecha:{" "}
-            <span className="font-bold text-gray-600">{selectedDate}</span>
+            · {filterByMonth ? "Mes: " : "Fecha: "}{" "}
+            <span className="font-bold text-gray-600">
+              {filterByMonth ? selectedDate.slice(0, 7) : selectedDate}
+            </span>
           </p>
         </div>
 
@@ -742,7 +756,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
           <div>
             <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
-              Ventas del Día
+              {filterByMonth ? "Ventas del Mes" : "Ventas del Día"}
             </p>
             <p className="text-xl font-black text-indigo-900">{stats.count}</p>
           </div>
@@ -827,15 +841,94 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             />
           </div>
 
-          {/* FILTRO FECHA */}
-          <input
-            type="date"
-            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            title="Filtrar por fecha"
-            max={localISODate()} // ✅ local
-          />
+          {/* FILTRO FECHA DROPDOWN */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
+              className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none ${
+                filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
+              }`}
+              title="Filtrar por fecha o mes"
+            >
+              <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600" : "text-gray-500"} />
+              <span className="font-bold">
+                {filterByMonth
+                  ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
+                  : selectedDate === ""
+                  ? "Todas las Fechas"
+                  : selectedDate}
+              </span>
+              <ChevronDown size={14} className="text-gray-400" />
+            </button>
+
+            {isDateDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 cursor-default"
+                  onClick={() => setIsDateDropdownOpen(false)}
+                />
+                <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-4 w-72 space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">
+                      Seleccionar Día
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700 font-bold"
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value);
+                        setFilterByMonth(false);
+                      }}
+                      max={localISODate()}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(localISODate());
+                        setFilterByMonth(false);
+                        setIsDateDropdownOpen(false);
+                      }}
+                      className="px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                      title="Seleccionar el día de hoy"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedDate) {
+                          setSelectedDate(localISODate());
+                        }
+                        setFilterByMonth(true);
+                        setIsDateDropdownOpen(false);
+                      }}
+                      className="px-2 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                      title="Ver todas las ventas de este mes"
+                    >
+                      ThisMonth
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate("");
+                        setFilterByMonth(false);
+                        setIsDateDropdownOpen(false);
+                      }}
+                      className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                      title="Limpiar filtro de fecha"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* FILTRO SUCURSAL */}
           <select
