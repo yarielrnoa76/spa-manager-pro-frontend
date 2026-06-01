@@ -430,6 +430,7 @@ export const api = {
       type: 'product' | 'service';
       sales_price: number;
       cost_price: number;
+      stock: number;
       min_stock: number;
       max_stock: number | null;
     }>,

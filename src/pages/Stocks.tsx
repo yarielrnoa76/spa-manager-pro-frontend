@@ -189,7 +189,7 @@ const Stocks: React.FC = () => {
         }
 
         const confirmImport = window.confirm(
-          `¿Deseas importar ${importItems.length} producto(s) al inventario?\n\nLos productos con SKU duplicado podrían fallar.`
+          `¿Deseas importar ${importItems.length} producto(s) al inventario?\n\nLos productos existentes con el mismo SKU serán actualizados con los nuevos valores del archivo.`
         );
         if (!confirmImport) {
           if (fileInputRef.current) fileInputRef.current.value = "";
@@ -197,18 +197,37 @@ const Stocks: React.FC = () => {
         }
 
         let successCount = 0;
+        let updateCount = 0;
         const failedItems: string[] = [];
 
         for (const item of importItems) {
           try {
-            await api.createProduct(item as any);
-            successCount++;
+            const existingProduct = item.sku
+              ? products.find(p => p.sku && p.sku.trim().toLowerCase() === item.sku.trim().toLowerCase())
+              : null;
+
+            if (existingProduct) {
+              await api.updateProduct(existingProduct.id, {
+                name: item.name,
+                sku: item.sku,
+                type: item.type as any,
+                sales_price: item.sales_price,
+                cost_price: item.cost_price,
+                stock: item.stock,
+                min_stock: item.min_stock,
+                max_stock: item.max_stock
+              });
+              updateCount++;
+            } else {
+              await api.createProduct(item as any);
+              successCount++;
+            }
           } catch (err: any) {
-            failedItems.push(`"${item.name}" (SKU: ${item.sku || "N/A"}): ${err?.message || "Error al crear"}`);
+            failedItems.push(`"${item.name}" (SKU: ${item.sku || "N/A"}): ${err?.message || "Error al procesar"}`);
           }
         }
 
-        let msg = `Importación completada.\n\n- Productos importados: ${successCount}`;
+        let msg = `Importación completada.\n\n- Productos nuevos creados: ${successCount}\n- Productos existentes actualizados: ${updateCount}`;
         if (failedItems.length > 0) {
           msg += `\n- Productos fallidos: ${failedItems.length}\n\nDetalle de errores:\n` + failedItems.slice(0, 10).join("\n");
           if (failedItems.length > 10) {
