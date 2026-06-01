@@ -112,6 +112,21 @@ export interface RefundLog {
   amount: number;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
+  sale_id?: string | number | null;
+  product_id?: string | number | null;
+  sale?: {
+    id: number | string;
+    client_name: string;
+    service_rendered: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+  } | null;
+  product?: {
+    id: number;
+    name: string;
+    sku?: string | null;
+  } | null;
 }
 
 export interface MonthlyExpense {

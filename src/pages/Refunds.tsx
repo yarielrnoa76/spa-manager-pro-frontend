@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { RefundLog, Branch } from '../types';
@@ -27,6 +26,12 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Sales loading states
+  const [sales, setSales] = useState<any[]>([]);
+  const [loadingSales, setLoadingSales] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState<string>("");
+  const [selectedSale, setSelectedSale] = useState<any | null>(null);
+
   const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
 
   // Filters
@@ -41,7 +46,9 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
     quantity: "1",
     amount: "",
     reason: "",
-    status: "pending"
+    status: "approved", // Default to approved as it processes adjustments immediately
+    sale_id: "",
+    product_id: ""
   });
 
   const fetchData = async () => {
@@ -61,6 +68,94 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleOpenModal = async () => {
+    setIsModalOpen(true);
+    setLoadingSales(true);
+    try {
+      // List sales to let user select one for the refund
+      const data = await api.listSales();
+      // Only keep sales with quantity > 0
+      setSales(Array.isArray(data) ? data.filter((s: any) => s.quantity > 0) : []);
+    } catch (err) {
+      console.error("Error fetching sales:", err);
+    } finally {
+      setLoadingSales(false);
+    }
+  };
+
+  const handleSaleChange = (saleId: string) => {
+    setSelectedSaleId(saleId);
+    if (!saleId) {
+      setSelectedSale(null);
+      setNewRefund(prev => ({
+        ...prev,
+        branch_id: "",
+        quantity: "1",
+        amount: "",
+        sale_id: "",
+        product_id: ""
+      }));
+      return;
+    }
+    const sale = sales.find(s => String(s.id) === saleId);
+    if (sale) {
+      setSelectedSale(sale);
+      setNewRefund(prev => ({
+        ...prev,
+        branch_id: String(sale.branch_id),
+        quantity: String(sale.quantity),
+        amount: String(sale.amount),
+        sale_id: String(sale.id),
+        product_id: sale.product_id ? String(sale.product_id) : ""
+      }));
+    }
+  };
+
+  const handleQuantityChange = (qtyStr: string) => {
+    const qty = parseInt(qtyStr) || 0;
+    setNewRefund(prev => {
+      let nextAmount = prev.amount;
+      if (selectedSale) {
+        // Validate quantity doesn't exceed sale quantity
+        const maxQty = selectedSale.quantity;
+        const validQty = Math.max(1, Math.min(qty, maxQty));
+        
+        // Calculate proportional amount
+        const unitPrice = selectedSale.unit_price || (selectedSale.amount / selectedSale.quantity);
+        const calcAmount = (validQty * unitPrice).toFixed(2);
+        nextAmount = String(calcAmount);
+        
+        return {
+          ...prev,
+          quantity: String(validQty),
+          amount: nextAmount
+        };
+      }
+      return {
+        ...prev,
+        quantity: qtyStr
+      };
+    });
+  };
+
+  const handleAmountChange = (amtStr: string) => {
+    setNewRefund(prev => {
+      if (selectedSale) {
+        const amt = parseFloat(amtStr) || 0;
+        const maxAmt = selectedSale.amount;
+        const validAmt = Math.min(amt, maxAmt);
+        return {
+          ...prev,
+          amount: String(validAmt)
+        };
+      }
+      return {
+        ...prev,
+        amount: amtStr
+      };
+    });
+  };
 
   const months = [
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -105,19 +200,27 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
 
     try {
       await api.post('/refunds', {
-        ...newRefund,
+        date: newRefund.date,
         branch_id: Number(newRefund.branch_id),
         quantity: Number(newRefund.quantity),
-        amount: Number(newRefund.amount)
+        amount: Number(newRefund.amount),
+        reason: newRefund.reason,
+        status: newRefund.status,
+        sale_id: selectedSaleId ? Number(selectedSaleId) : null,
+        product_id: newRefund.product_id ? Number(newRefund.product_id) : null
       });
       setIsModalOpen(false);
+      setSelectedSaleId("");
+      setSelectedSale(null);
       setNewRefund({
         date: now.toISOString().split('T')[0],
         branch_id: "",
         quantity: "1",
         amount: "",
         reason: "",
-        status: "pending"
+        status: "approved",
+        sale_id: "",
+        product_id: ""
       });
       fetchData();
     } catch (err) {
@@ -143,7 +246,7 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
           <p className="text-gray-500 text-sm">Registro y seguimiento de reembolsos a clientes.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleOpenModal}
           className="flex items-center gap-2 px-6 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition shadow-lg shadow-rose-100"
         >
           <Undo2 size={18} />
@@ -223,6 +326,11 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex flex-col gap-1">
+                      {r.sale && (
+                        <span className="text-xs font-bold text-indigo-600">
+                          {r.sale.client_name} — {r.sale.service_rendered}
+                        </span>
+                      )}
                       <span className="text-gray-600 font-medium">{r.reason}</span>
                       <div className="flex items-center gap-1.5">
                         {r.status === 'approved' && <CheckCircle2 size={12} className="text-emerald-500" />}
@@ -273,6 +381,31 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
               <p className="text-rose-100/80 text-xs mt-1 uppercase font-bold tracking-widest">Ajuste de Saldo / Reembolso</p>
             </div>
             <form onSubmit={handleCreate} className="p-8 space-y-5">
+              
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Seleccionar Venta</label>
+                {loadingSales ? (
+                  <p className="text-xs text-gray-400 font-medium">Cargando ventas...</p>
+                ) : (
+                  <select 
+                    required
+                    value={selectedSaleId}
+                    onChange={e => handleSaleChange(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all"
+                  >
+                    <option value="">-- Seleccionar una venta --</option>
+                    {sales.map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        {s.date} - {s.client_name} - {s.service_rendered} (${s.amount} / {s.quantity} uds.)
+                      </option>
+                    ))}
+                    {!loadingSales && sales.length === 0 && (
+                      <option value="" disabled>No hay ventas disponibles para devolver</option>
+                    )}
+                  </select>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Fecha</label>
@@ -280,7 +413,13 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Sucursal</label>
-                  <select required value={newRefund.branch_id} onChange={e => setNewRefund({...newRefund, branch_id: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all">
+                  <select 
+                    required 
+                    disabled={!!selectedSaleId}
+                    value={newRefund.branch_id} 
+                    onChange={e => setNewRefund({...newRefund, branch_id: e.target.value})} 
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all disabled:opacity-60"
+                  >
                     <option value="">Seleccionar...</option>
                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
@@ -297,21 +436,43 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Cantidad</label>
-                  <input type="number" required min="1" value={newRefund.quantity} onChange={e => setNewRefund({...newRefund, quantity: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all" />
+                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                    Cantidad {selectedSale && `(Max: ${selectedSale.quantity})`}
+                  </label>
+                  <input 
+                    type="number" 
+                    required 
+                    min="1" 
+                    max={selectedSale ? selectedSale.quantity : undefined}
+                    value={newRefund.quantity} 
+                    onChange={e => handleQuantityChange(e.target.value)} 
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all" 
+                  />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Motivo de la Devolución</label>
-                <textarea required placeholder="E.j. Cliente insatisfecho con el servicio..." value={newRefund.reason} onChange={e => setNewRefund({...newRefund, reason: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all h-20 resize-none" />
+                <textarea required placeholder="E.j. Cliente insatisfecho con el producto/servicio..." value={newRefund.reason} onChange={e => setNewRefund({...newRefund, reason: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all h-20 resize-none" />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Monto a Devolver ($)</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                  Monto a Devolver {selectedSale && `(Max: $${selectedSale.amount})`}
+                </label>
                 <div className="relative">
                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none font-black text-rose-300 text-2xl">$</div>
-                   <input type="number" required step="0.01" min="0" placeholder="0.00" value={newRefund.amount} onChange={e => setNewRefund({...newRefund, amount: e.target.value})} className="w-full pl-10 pr-4 py-4 bg-rose-50/30 border-2 border-rose-100 rounded-2xl text-2xl font-black text-rose-700 focus:bg-white focus:border-rose-500 outline-none transition-all placeholder:text-rose-200" />
+                   <input 
+                     type="number" 
+                     required 
+                     step="0.01" 
+                     min="0" 
+                     max={selectedSale ? selectedSale.amount : undefined}
+                     placeholder="0.00" 
+                     value={newRefund.amount} 
+                     onChange={e => handleAmountChange(e.target.value)} 
+                     className="w-full pl-10 pr-4 py-4 bg-rose-50/30 border-2 border-rose-100 rounded-2xl text-2xl font-black text-rose-700 focus:bg-white focus:border-rose-500 outline-none transition-all placeholder:text-rose-200" 
+                   />
                 </div>
               </div>
 
