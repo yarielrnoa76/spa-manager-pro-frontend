@@ -38,6 +38,13 @@ const Tickets: React.FC = () => {
         page: 1
     });
 
+    // Ticket Categories & Priorities Creation
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState("");
+    const [isCreatingPriority, setIsCreatingPriority] = useState(false);
+    const [newPriorityName, setNewPriorityName] = useState("");
+    const [newPrioritySla, setNewPrioritySla] = useState("");
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -61,6 +68,36 @@ const Tickets: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const handleCreateCategory = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCategoryName.trim()) return;
+        try {
+            await api.createTicketCategory({ name: newCategoryName });
+            setNewCategoryName("");
+            setIsCreatingCategory(false);
+            fetchData();
+        } catch (error: any) {
+            alert(error?.message || "Error al crear la categoría");
+        }
+    };
+
+    const handleCreatePriority = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newPriorityName.trim() || !newPrioritySla) return;
+        try {
+            await api.createTicketPriority({
+                name: newPriorityName,
+                sla_minutes: Number(newPrioritySla)
+            });
+            setNewPriorityName("");
+            setNewPrioritySla("");
+            setIsCreatingPriority(false);
+            fetchData();
+        } catch (error: any) {
+            alert(error?.message || "Error al crear la prioridad");
+        }
+    };
 
     const handleStatusChange = async (ticketId: number, status: string) => {
         try {
@@ -425,11 +462,41 @@ const Tickets: React.FC = () => {
                 <div className="bg-white rounded-xl shadow-sm border p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-gray-800">Categorías de Ticket</h3>
-                        <button className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100">
+                        <button
+                            onClick={() => setIsCreatingCategory(true)}
+                            className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100"
+                        >
                             <Plus size={18} />
                         </button>
                     </div>
                     <div className="space-y-2">
+                        {isCreatingCategory && (
+                            <form onSubmit={handleCreateCategory} className="p-3 border border-indigo-100 bg-indigo-50/20 rounded-lg space-y-2 mb-3 animate-in fade-in duration-200">
+                                <input
+                                    type="text"
+                                    placeholder="Nombre de la categoría..."
+                                    required
+                                    value={newCategoryName}
+                                    onChange={e => setNewCategoryName(e.target.value)}
+                                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                                <div className="flex gap-2 justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreatingCategory(false)}
+                                        className="text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg hover:bg-indigo-700 transition"
+                                    >
+                                        Crear
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                         {categories.map(cat => (
                             <div key={cat.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                                 <span className="text-sm font-medium">{cat.name}</span>
@@ -443,11 +510,52 @@ const Tickets: React.FC = () => {
                 <div className="bg-white rounded-xl shadow-sm border p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-gray-800">Prioridades y Niveles de Servicio (SLA)</h3>
-                        <button className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100">
+                        <button
+                            onClick={() => setIsCreatingPriority(true)}
+                            className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100"
+                        >
                             <Plus size={18} />
                         </button>
                     </div>
                     <div className="space-y-2">
+                        {isCreatingPriority && (
+                            <form onSubmit={handleCreatePriority} className="p-3 border border-indigo-100 bg-indigo-50/20 rounded-lg space-y-2 mb-3 animate-in fade-in duration-200">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Nombre (ej. Urgente)..."
+                                        required
+                                        value={newPriorityName}
+                                        onChange={e => setNewPriorityName(e.target.value)}
+                                        className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="SLA (minutos)..."
+                                        required
+                                        min="0"
+                                        value={newPrioritySla}
+                                        onChange={e => setNewPrioritySla(e.target.value)}
+                                        className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreatingPriority(false)}
+                                        className="text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-lg hover:bg-indigo-700 transition"
+                                    >
+                                        Crear
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                         {priorities.map(pri => (
                             <div key={pri.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                                 <div>

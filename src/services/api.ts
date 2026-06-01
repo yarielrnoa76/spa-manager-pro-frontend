@@ -554,8 +554,16 @@ export const api = {
     return request<any[]>(`/api/ticket-categories`, { method: "GET", auth: true });
   },
 
+  async createTicketCategory(payload: any) {
+    return request<any>(`/api/ticket-categories`, { method: "POST", body: payload, auth: true });
+  },
+
   async listTicketPriorities() {
     return request<any[]>(`/api/ticket-priorities`, { method: "GET", auth: true });
+  },
+
+  async createTicketPriority(payload: any) {
+    return request<any>(`/api/ticket-priorities`, { method: "POST", body: payload, auth: true });
   },
 
   // --- Notifications ---
