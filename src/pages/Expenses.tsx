@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { MonthlyExpense, Branch } from '../types';
-import { ReceiptText, Plus, Filter, Building2, Wallet, PieChart, Trash2, Calendar } from 'lucide-react';
+import { ReceiptText, Plus, Filter, Building2, Wallet, PieChart, Trash2, Calendar, Copy } from 'lucide-react';
 import StatCard from '../components/StatCard';
 
 const CATEGORIES = ["Alquiler", "Servicios (Luz/Agua)", "Sueldos", "Insumos", "Marketing", "Mantenimiento", "Otros"];
@@ -16,6 +16,8 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | number | null>(null);
 
   const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
 
@@ -90,6 +92,57 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
     return { total, fixed, variable, totalCompany };
   }, [filteredExpenses, expenses, selectedMonth, selectedYear]);
 
+  const handleOpenCreateModal = () => {
+    setNewExpense({
+      date: now.toISOString().split('T')[0],
+      branch_id: "",
+      category: CATEGORIES[0],
+      type: "Fijo",
+      description: "",
+      amount: ""
+    });
+    setIsEditing(false);
+    setEditingExpenseId(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (expense: MonthlyExpense) => {
+    const isFixed = expense.description.includes("[Fijo]");
+    const type = isFixed ? "Fijo" : "Variable";
+    const cleanDesc = expense.description.replace("[Fijo] ", "").replace("[Variable] ", "");
+
+    setNewExpense({
+      date: expense.date,
+      branch_id: String(expense.branch_id),
+      category: expense.category,
+      type: type,
+      description: cleanDesc,
+      amount: String(expense.amount)
+    });
+    setEditingExpenseId(expense.id);
+    setIsEditing(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDuplicate = (expense: MonthlyExpense, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isFixed = expense.description.includes("[Fijo]");
+    const type = isFixed ? "Fijo" : "Variable";
+    const cleanDesc = expense.description.replace("[Fijo] ", "").replace("[Variable] ", "");
+
+    setNewExpense({
+      date: expense.date,
+      branch_id: String(expense.branch_id),
+      category: expense.category,
+      type: type,
+      description: cleanDesc,
+      amount: String(expense.amount)
+    });
+    setIsEditing(false);
+    setEditingExpenseId(null);
+    setIsModalOpen(true);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpense.branch_id || !newExpense.amount) return;
@@ -100,11 +153,17 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
         date: newExpense.date,
         branch_id: Number(newExpense.branch_id),
         category: newExpense.category,
+        type: newExpense.type,
         description: `[${newExpense.type}] ${newExpense.description}`,
         amount: Number(newExpense.amount)
       };
 
-      await api.post('/expenses', payload);
+      if (isEditing && editingExpenseId) {
+        await api.put(`/expenses/${editingExpenseId}`, payload);
+      } else {
+        await api.post('/expenses', payload);
+      }
+
       setIsModalOpen(false);
       setNewExpense({
         date: now.toISOString().split('T')[0],
@@ -114,9 +173,11 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
         description: "",
         amount: ""
       });
+      setIsEditing(false);
+      setEditingExpenseId(null);
       fetchData();
     } catch (err) {
-      alert("Error al crear gasto");
+      alert(isEditing ? "Error al actualizar gasto" : "Error al crear gasto");
     }
   };
 
@@ -139,7 +200,7 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
         </div>
         <div className="flex items-center gap-2">
            <button 
-             onClick={() => setIsModalOpen(true)}
+             onClick={handleOpenCreateModal}
              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
            >
             <Plus size={18} />
@@ -216,7 +277,11 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
                 const isFixed = expense.description.includes("[Fijo]");
                 const cleanDesc = expense.description.replace("[Fijo] ", "").replace("[Variable] ", "");
                 return (
-                  <tr key={expense.id} className="hover:bg-indigo-50/20 transition group">
+                  <tr
+                    key={expense.id}
+                    onClick={() => isAdmin && handleEditClick(expense)}
+                    className={`hover:bg-indigo-50/20 transition group ${isAdmin ? 'cursor-pointer' : ''}`}
+                  >
                     <td className="px-6 py-5 whitespace-nowrap text-gray-400 font-medium">{expense.date}</td>
                     <td className="px-6 py-5 font-bold text-gray-700">
                       {branches.find(b => String(b.id) === String(expense.branch_id))?.name || "—"}
@@ -231,9 +296,25 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
                     <td className="px-6 py-5 text-right font-black text-gray-900 text-base">${expense.amount.toLocaleString()}</td>
                     <td className="px-6 py-5 text-center">
                       {isAdmin && (
-                        <button onClick={() => handleDelete(expense.id)} className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={(e) => handleDuplicate(expense, e)}
+                            className="p-2 text-gray-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all duration-300"
+                            title="Duplicar gasto"
+                          >
+                            <Copy size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(expense.id);
+                            }}
+                            className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300"
+                            title="Eliminar gasto"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -260,7 +341,7 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-300">
             <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-8 text-white relative">
               <div className="absolute top-0 right-0 p-8 opacity-10"><ReceiptText size={120} /></div>
-              <h3 className="text-2xl font-black">Registrar Gasto</h3>
+              <h3 className="text-2xl font-black">{isEditing ? "Editar Gasto" : "Registrar Gasto"}</h3>
               <p className="text-indigo-100/80 text-xs mt-1 uppercase font-bold tracking-widest">Módulo de Salidas de Caja</p>
             </div>
             <form onSubmit={handleCreate} className="p-8 space-y-5">
@@ -309,7 +390,9 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
 
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-sm font-black text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-2xl transition-all uppercase tracking-widest">Cerrar</button>
-                <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white text-sm font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 uppercase tracking-widest">Guardar Registro</button>
+                <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white text-sm font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 uppercase tracking-widest">
+                  {isEditing ? "Guardar Cambios" : "Guardar Registro"}
+                </button>
               </div>
             </form>
           </div>
