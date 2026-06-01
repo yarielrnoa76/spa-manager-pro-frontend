@@ -82,6 +82,15 @@ const LeadModal: React.FC<LeadModalProps> = ({
             loadBranches();
             loadResponsibles();
             loadUserData();
+            loadTicketConfigs();
+            setTicketData({
+                subject: "",
+                category_id: "",
+                priority_id: "",
+                description: "",
+                due_date: "",
+                responsable_id: "",
+            });
             setActiveTab('details');
             setIsCreatingTicket(false);
             setSelectedTicket(null);
@@ -378,10 +387,12 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 api.listTicketCategories(),
                 api.listTicketPriorities()
             ]);
-            setCategories(cats);
-            setPriorities(prios);
-            if (cats.length > 0) setTicketData(prev => ({ ...prev, category_id: String(cats[0].id) }));
-            if (prios.length > 0) setTicketData(prev => ({ ...prev, priority_id: String(prios[0].id) }));
+            const safeCats = Array.isArray(cats) ? cats : [];
+            const safePrios = Array.isArray(prios) ? prios : [];
+            setCategories(safeCats);
+            setPriorities(safePrios);
+            if (safeCats.length > 0) setTicketData(prev => ({ ...prev, category_id: String(safeCats[0].id) }));
+            if (safePrios.length > 0) setTicketData(prev => ({ ...prev, priority_id: String(safePrios[0].id) }));
         } catch (err) {
             console.error("Error loading ticket configs", err);
         }
@@ -885,7 +896,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                     className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                                 >
                                                     <option value="">-- Sin asignar --</option>
-                                                    {responsibles.map(r => (
+                                                    {filteredResponsibles.map(r => (
                                                         <option key={r.id} value={r.id}>{r.name} ({r.role?.name})</option>
                                                     ))}
                                                 </select>
@@ -1071,7 +1082,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                         className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                                     >
                                                         <option value="">-- Sin asignar --</option>
-                                                        {responsibles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                                        {filteredResponsibles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                                                     </select>
                                                 </div>
                                                 <div>
