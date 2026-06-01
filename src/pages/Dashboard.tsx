@@ -291,8 +291,9 @@ const Dashboard: React.FC = () => {
 
   const handleBarClick = (data: any) => {
     if (selectedMonth === "all") return;
-    if (data && data.day) {
-      const clickedDay = parseInt(data.day, 10);
+    const dayVal = data?.payload?.day || data?.day;
+    if (dayVal) {
+      const clickedDay = parseInt(dayVal, 10);
       const salesForDay = periodSales.filter((s) => {
         const d = normalizeDate(s.date);
         if (!d) return false;
@@ -307,8 +308,8 @@ const Dashboard: React.FC = () => {
   };
 
   const handleSellerBarClick = (data: any) => {
-    if (data && data.name) {
-      const sellerName = data.name;
+    const sellerName = data?.payload?.name || data?.name;
+    if (sellerName) {
       const salesForSeller = periodSales.filter((s) => {
         const name = s?.seller?.name || s?.seller_name || "Sin vendedora";
         return name === sellerName;
