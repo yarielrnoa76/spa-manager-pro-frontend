@@ -53,6 +53,10 @@ export default function RolesPermissionsSettings() {
         ticket: "tickets",
         refund: "refunds",
         conversation: "conversations",
+        increase_price: "sales",
+        decrease_price: "sales",
+        expense: "expenses",
+        expenses: "expenses",
       };
 
       const groupName = groupMap[rawGroup] || rawGroup;
