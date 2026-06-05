@@ -179,10 +179,13 @@ const App: React.FC = () => {
     perms.includes(p) || user?.role?.name === "admin" || isSuperAdmin;
 
   const canSeeDashboard = hasPerm("view_dashboard");
-  const canSeeSettings = hasPerm("manage_settings");
+  const canSeeSettings = hasPerm("manage_settings") || hasPerm("view_branch") || hasPerm("create_branch") || hasPerm("edit_branch") || hasPerm("delete_branch") || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user") || hasPerm("view_roles") || hasPerm("view_professionals");
+  const canSeeExpenses = hasPerm("view_expenses") || hasPerm("delete_expense");
+  const canSeeRefunds = hasPerm("view_refunds") || hasPerm("delete_refund");
+  const canSeeLogs = hasPerm("view_logs") || hasPerm("manage_logs");
 
   const navItems = [
-    ...(hasPerm("view_dashboard")
+    ...(canSeeDashboard
       ? [{ to: "/", icon: LayoutDashboard, label: "Dashboard" }]
       : []),
     ...(hasPerm("view_sales")
@@ -200,23 +203,23 @@ const App: React.FC = () => {
     ...(hasPerm("view_conversations")
       ? [{ to: "/communications", icon: MessageSquare, label: "Live Chat" }]
       : []),
-    ...(isSuperAdmin || hasPerm("ConversationAdmin")
+    ...(hasPerm("restore_conversations")
       ? [{ to: "/chat-admin", icon: Shield, label: "Chat Admin" }]
       : []),
     ...(hasPerm("view_ticket")
       ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
       : []),
-    ...(hasPerm("view_expenses")
+    ...(canSeeExpenses
       ? [{ to: "/expenses", icon: DollarSign, label: "Gastos" }]
       : []),
-    ...(hasPerm("view_refunds")
+    ...(canSeeRefunds
       ? [{ to: "/refunds", icon: History, label: "Devoluciones" }]
       : []),
     { to: "/help", icon: HelpCircle, label: "Ayuda" },
     ...(canSeeSettings
       ? [{ to: "/settings", icon: Settings, label: "Configuración" }]
       : []),
-    ...(isSuperAdmin || hasPerm("view_logs")
+    ...(canSeeLogs
       ? [{ to: "/logs", icon: History, label: "Auditoría (Logs)" }]
       : []),
   ];
@@ -311,7 +314,7 @@ const App: React.FC = () => {
       >
         <div className="h-full flex flex-col p-4">
           <h1 className="text-xl font-bold text-indigo-600 mb-8 px-4 flex items-center gap-2">
-            <Store /> SPA Pro
+            <Store /> ManPro
           </h1>
 
           <nav className="flex-1 space-y-1">
@@ -412,6 +415,7 @@ const App: React.FC = () => {
                       <SettingsPage
                         isSuperAdmin={isSuperAdmin}
                         currentTenantName={currentTenantName}
+                        user={user}
                       />
                     ) : (
                       <Navigate to="/" replace />

@@ -4,6 +4,7 @@ import UsersSettings from "../settings/UsersSettings";
 import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import Tenants from "./Tenants";
+import { UserData } from "../App";
 
 type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants";
 
@@ -30,8 +31,26 @@ const TabButton = ({
 const SettingsPage: React.FC<{
   isSuperAdmin?: boolean;
   currentTenantName?: string;
-}> = ({ isSuperAdmin, currentTenantName }) => {
-  const [tab, setTab] = useState<TabKey>("branches");
+  user?: UserData | null;
+}> = ({ isSuperAdmin, currentTenantName, user }) => {
+  const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
+  const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
+  const hasPerm = (p: string) => perms.includes(p) || isAdmin;
+
+  const canManageSettings = hasPerm("manage_settings");
+  const canSeeBranches = canManageSettings || hasPerm("view_branch") || hasPerm("create_branch") || hasPerm("edit_branch") || hasPerm("delete_branch");
+  const canSeeUsers = canManageSettings || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user");
+  const canSeeRbac = canManageSettings || hasPerm("view_roles") || hasPerm("manage_roles");
+  const canSeeProfessionals = canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional");
+
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (isSuperAdmin) return "tenants";
+    if (canSeeBranches) return "branches";
+    if (canSeeUsers) return "users";
+    if (canSeeRbac) return "rbac";
+    if (canSeeProfessionals) return "professionals";
+    return "branches";
+  });
 
   const title = useMemo(() => {
     if (tab === "branches") return "Sucursales";
@@ -69,18 +88,26 @@ const SettingsPage: React.FC<{
             Tenants
           </TabButton>
         )}
-        <TabButton active={tab === "branches"} onClick={() => setTab("branches")}>
-          Sucursales
-        </TabButton>
-        <TabButton active={tab === "rbac"} onClick={() => setTab("rbac")}>
-          Roles y permisos
-        </TabButton>
-        <TabButton active={tab === "users"} onClick={() => setTab("users")}>
-          Usuarios
-        </TabButton>
-        <TabButton active={tab === "professionals"} onClick={() => setTab("professionals")}>
-          Profesionales
-        </TabButton>
+        {canSeeBranches && (
+          <TabButton active={tab === "branches"} onClick={() => setTab("branches")}>
+            Sucursales
+          </TabButton>
+        )}
+        {canSeeRbac && (
+          <TabButton active={tab === "rbac"} onClick={() => setTab("rbac")}>
+            Roles y permisos
+          </TabButton>
+        )}
+        {canSeeUsers && (
+          <TabButton active={tab === "users"} onClick={() => setTab("users")}>
+            Usuarios
+          </TabButton>
+        )}
+        {canSeeProfessionals && (
+          <TabButton active={tab === "professionals"} onClick={() => setTab("professionals")}>
+            Profesionales
+          </TabButton>
+        )}
       </div>
 
       <div className="bg-white border rounded-2xl p-4">
@@ -88,11 +115,17 @@ const SettingsPage: React.FC<{
           <h3 className="text-lg font-bold text-gray-900">{title}</h3>
         </div>
 
-        {tab === "branches" && <BranchesSettings />}
-        {tab === "users" && <UsersSettings />}
-        {tab === "rbac" && <RolesPermissionsSettings />}
-        {tab === "professionals" && <ProfessionalsSettings />}
-        {tab === "tenants" && <Tenants />}
+        {tab === "branches" && canSeeBranches && <BranchesSettings />}
+        {tab === "users" && canSeeUsers && <UsersSettings />}
+        {tab === "rbac" && canSeeRbac && <RolesPermissionsSettings canManage={hasPerm("manage_roles")} />}
+        {tab === "professionals" && canSeeProfessionals && (
+          <ProfessionalsSettings 
+            canCreate={hasPerm("manage_settings") || hasPerm("create_professional")}
+            canEdit={hasPerm("manage_settings") || hasPerm("edit_professional")}
+            canDelete={hasPerm("manage_settings") || hasPerm("delete_professional")}
+          />
+        )}
+        {tab === "tenants" && isSuperAdmin && <Tenants />}
       </div>
     </div>
   );

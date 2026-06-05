@@ -3,7 +3,11 @@ import { api } from "../services/api";
 import { ProfessionalPerson, Branch } from "../types";
 import { Plus, Search, Pencil, Trash2, X, User } from "lucide-react";
 
-const ProfessionalsSettings: React.FC = () => {
+const ProfessionalsSettings: React.FC<{
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+}> = ({ canCreate = true, canEdit = true, canDelete = true }) => {
   const [professionals, setProfessionals] = useState<ProfessionalPerson[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -256,15 +260,17 @@ const ProfessionalsSettings: React.FC = () => {
         <p className="text-sm text-gray-500">
           Gestiona los profesionales que realizan servicios (esteticistas, doctores, etc.)
         </p>
-        <button
-          onClick={() => {
-            setForm(emptyForm);
-            setIsCreateOpen(true);
-          }}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg hover:bg-indigo-700"
-        >
-          <Plus size={16} /> Nuevo Profesional
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => {
+              setForm(emptyForm);
+              setIsCreateOpen(true);
+            }}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg hover:bg-indigo-700"
+          >
+            <Plus size={16} /> Nuevo Profesional
+          </button>
+        )}
       </div>
 
       <div className="relative">
@@ -331,20 +337,24 @@ const ProfessionalsSettings: React.FC = () => {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-center gap-2">
-                    <button
-                      onClick={() => openEdit(p)}
-                      className="text-gray-600 hover:text-gray-900 p-1"
-                      title="Editar"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p)}
-                      className="text-red-500 hover:text-red-700 p-1"
-                      title="Eliminar"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => openEdit(p)}
+                        className="text-gray-600 hover:text-gray-900 p-1"
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(p)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

@@ -11,7 +11,7 @@ type Role = {
   permissions?: Permission[] 
 };
 
-export default function RolesPermissionsSettings() {
+export default function RolesPermissionsSettings({ canManage = true }: { canManage?: boolean }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [perms, setPerms] = useState<Permission[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
@@ -57,6 +57,8 @@ export default function RolesPermissionsSettings() {
         decrease_price: "sales",
         expense: "expenses",
         expenses: "expenses",
+        all_conversations: "conversations",
+        professional: "professionals",
       };
 
       const groupName = groupMap[rawGroup] || rawGroup;
@@ -88,7 +90,7 @@ export default function RolesPermissionsSettings() {
   }, []);
 
   const togglePermission = async (permId: number) => {
-    if (!selectedRole) return;
+    if (!selectedRole || !canManage) return;
 
     // endpoint sugerido: PUT /roles/:id/permissions con array permission_ids
     const next = new Set<number>(selectedPermIds);
@@ -121,8 +123,9 @@ export default function RolesPermissionsSettings() {
     await load();
   };
 
-  const createRole = async () => {
-    if (!newRoleName.trim()) return;
+  const createRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoleName.trim() || !canManage) return;
     setLoading(true);
     setError(null);
     try {
@@ -143,7 +146,7 @@ export default function RolesPermissionsSettings() {
   };
 
   const updateResourceScope = async (resource: string, scope: string) => {
-    if (!selectedRole) return;
+    if (!selectedRole || !canManage) return;
     try {
       const nextScopes = { ...(selectedRole.resource_scopes || {}), [resource]: scope };
       await api.put(`/roles/${selectedRole.id}`, {
@@ -182,22 +185,27 @@ export default function RolesPermissionsSettings() {
         </div>
 
         <div className="flex-1 min-w-[250px] flex items-end gap-2">
-          <div className="flex-1">
-            <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Crear Nuevo Rol</label>
-            <input
-              className="border rounded-lg px-3 py-2 w-full"
-              placeholder="Nombre del rol"
-              value={newRoleName}
-              onChange={(e) => setNewRoleName(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={createRole}
-            disabled={!newRoleName.trim() || loading}
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
-          >
-            Crear
-          </button>
+          <form onSubmit={createRole} className="flex-1 flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Crear Nuevo Rol</label>
+              <input
+                className="border rounded-lg px-3 py-2 w-full"
+                placeholder="Nombre del rol"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                disabled={!canManage}
+              />
+            </div>
+            {canManage && (
+              <button
+                type="submit"
+                disabled={!newRoleName.trim() || loading}
+                className="px-4 py-2 mt-5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Crear
+              </button>
+            )}
+          </form>
         </div>
 
         <div className="flex items-end">
@@ -277,6 +285,7 @@ export default function RolesPermissionsSettings() {
                           <span className="text-[10px] font-bold text-indigo-400 uppercase">Alcance:</span>
                           <select
                             className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none"
+                            disabled={!canManage}
                             value={selectedRole.resource_scopes?.[groupName] || selectedRole.view_scope || 'all'}
                             onChange={(e) => updateResourceScope(groupName, e.target.value)}
                            >
@@ -290,17 +299,19 @@ export default function RolesPermissionsSettings() {
                       <span className="hidden sm:inline-block text-xs font-semibold text-gray-500 tracking-wide uppercase">
                         {assignedCount}/{groupPerms.length} asignados
                       </span>
-                      <button
-                        onClick={() => toggleGroupPermissions(groupPerms)}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${isAllSelected
-                          ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                          : isSomeSelected
+                      {canManage && (
+                        <button
+                          onClick={() => toggleGroupPermissions(groupPerms)}
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition ${isAllSelected
                             ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                            : "bg-white text-gray-600 hover:bg-gray-50"
-                          }`}
-                      >
-                        {isAllSelected ? "Desmarcar Todos" : "Seleccionar Todos"}
-                      </button>
+                            : isSomeSelected
+                              ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                              : "bg-white text-gray-600 hover:bg-gray-50"
+                            }`}
+                        >
+                          {isAllSelected ? "Desmarcar Todos" : "Seleccionar Todos"}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -313,13 +324,13 @@ export default function RolesPermissionsSettings() {
                           return (
                             <label
                               key={p.id}
-                              className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer transition ${checked ? "bg-indigo-50/50 border-indigo-200" : "hover:bg-gray-50"
-                                }`}
+                              className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer transition ${checked ? "bg-indigo-50/50 border-indigo-200" : "hover:bg-gray-50"} ${!canManage ? "opacity-70 cursor-not-allowed" : ""}`}
                             >
                               <div className="relative flex items-center">
                                 <input
                                   type="checkbox"
                                   className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600"
+                                  disabled={!canManage}
                                   checked={checked}
                                   onChange={() => togglePermission(p.id)}
                                 />
