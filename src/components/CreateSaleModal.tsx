@@ -42,6 +42,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
     const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
     const canViewLeads = isAdmin || perms.includes("view_leads");
+    const canIncreasePrice = isAdmin || perms.includes("sale_increase_price");
+    const canDecreasePrice = isAdmin || perms.includes("sale_decrease_price");
+    const canEditPrice = canIncreasePrice || canDecreasePrice;
     
     // Un usuario está restringido a su sucursal si no es admin ni superadmin y tiene una sucursal asignada
     const userBranchId = user?.branch_id || user?.branch?.id;
@@ -170,10 +173,16 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
     const recalcTotals = (next: any) => {
         const qRaw = String(next.quantity ?? form.quantity ?? "").trim();
-        if (!qRaw) return { ...next, quantity: "", amount: "" };
         const qty = Math.max(1, parseInt(qRaw, 10) || 1);
-        const unitPrice = toNumber(String(next.unit_price ?? form.unit_price));
-        return { ...next, quantity: String(qty), amount: unitPrice ? money(unitPrice * qty) : "" };
+        
+        let unitPriceStr = String(next.unit_price ?? form.unit_price).trim();
+        // Allow typing dots
+        if (unitPriceStr === "" || isNaN(Number(unitPriceStr))) {
+            return { ...next, quantity: String(qty), amount: "" };
+        }
+
+        const unitPrice = toNumber(unitPriceStr);
+        return { ...next, quantity: String(qty), amount: money(unitPrice * qty) };
     };
 
     const handleProductSelect = (productId: string) => {
@@ -202,6 +211,23 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 
     const handleAddToCart = () => {
         if (!form.product_id || !form.quantity) return;
+
+        if (selectedProduct && !isAdmin) {
+            const basePrice = toNumber(String((selectedProduct as any).sales_price ?? 0));
+            const requestPrice = toNumber(form.unit_price);
+
+            if (requestPrice > basePrice && !canIncreasePrice) {
+                setError(`No tienes permiso para subir el precio. (Precio base: $${money(basePrice)})`);
+                return;
+            }
+            if (requestPrice < basePrice && !canDecreasePrice) {
+                setError(`No tienes permiso para bajar el precio. (Precio base: $${money(basePrice)})`);
+                return;
+            }
+        }
+
+        setError(null);
+
         setCart(prev => [...prev, {
             id: Date.now().toString(),
             product_id: form.product_id,
@@ -467,7 +493,22 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Precio Unitario ($)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        className={`w-full border rounded-lg p-2 text-sm font-bold ${!canEditPrice ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                        value={form.unit_price}
+                                        disabled={!form.product_id || !canEditPrice}
+                                        onChange={(e) => {
+                                            setForm(prev => ({ ...prev, ...recalcTotals({ unit_price: e.target.value }) }));
+                                        }}
+                                        title={!canEditPrice ? "No tienes permiso para modificar el precio" : ""}
+                                    />
+                                </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cantidad</label>
                                     <input
@@ -481,7 +522,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total Producto ($)</label>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Total ($)</label>
                                     <div className="flex gap-2">
                                         <input
                                             type="text"

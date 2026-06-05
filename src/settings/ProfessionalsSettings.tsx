@@ -286,7 +286,8 @@ const ProfessionalsSettings: React.FC = () => {
           <p className="text-sm mt-1">Crea tu primer profesional para empezar.</p>
         </div>
       ) : (
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <table className="w-full text-left text-sm min-w-[800px]">
           <thead className="bg-gray-50 font-bold text-gray-500 uppercase text-xs">
             <tr>
               <th className="px-4 py-3">Nombre Completo</th>
@@ -350,6 +351,7 @@ const ProfessionalsSettings: React.FC = () => {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {renderFormModal(
