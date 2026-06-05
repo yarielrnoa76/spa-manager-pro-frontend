@@ -475,6 +475,7 @@ export const api = {
     email?: string | null;
     title: string;
     description?: string | null;
+    branch_id: number;
   }) {
     return request<ProfessionalPerson>(`/api/professionals`, {
       method: "POST",
@@ -490,6 +491,7 @@ export const api = {
     email: string | null;
     title: string;
     description: string | null;
+    branch_id: number;
   }>) {
     return request<ProfessionalPerson>(`/api/professionals/${id}`, {
       method: "PUT",

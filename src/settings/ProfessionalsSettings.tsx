@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../services/api";
-import { ProfessionalPerson } from "../types";
+import { ProfessionalPerson, Branch } from "../types";
 import { Plus, Search, Pencil, Trash2, X, User } from "lucide-react";
 
 const ProfessionalsSettings: React.FC = () => {
@@ -18,17 +18,24 @@ const ProfessionalsSettings: React.FC = () => {
     email: "",
     title: "",
     description: "",
+    branch_id: "",
   };
 
   const [form, setForm] = useState(emptyForm);
 
+  const [branches, setBranches] = useState<Branch[]>([]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listProfessionals();
+      const [data, branchesData] = await Promise.all([
+        api.listProfessionals(),
+        api.listBranches()
+      ]);
       setProfessionals(data);
+      setBranches(branchesData);
     } catch (err: any) {
-      console.error("Error fetching professionals:", err);
+      console.error("Error fetching data:", err);
     } finally {
       setLoading(false);
     }
@@ -59,6 +66,7 @@ const ProfessionalsSettings: React.FC = () => {
         email: form.email.trim() || null,
         title: form.title.trim(),
         description: form.description.trim() || null,
+        branch_id: Number(form.branch_id),
       });
       setIsCreateOpen(false);
       setForm(emptyForm);
@@ -79,6 +87,7 @@ const ProfessionalsSettings: React.FC = () => {
         email: form.email.trim() || null,
         title: form.title.trim(),
         description: form.description.trim() || null,
+        branch_id: Number(form.branch_id),
       });
       setIsEditOpen(false);
       setEditTarget(null);
@@ -111,6 +120,7 @@ const ProfessionalsSettings: React.FC = () => {
       email: p.email || "",
       title: p.title,
       description: p.description || "",
+      branch_id: String(p.branch_id || ""),
     });
     setIsEditOpen(true);
   };
@@ -168,6 +178,21 @@ const ProfessionalsSettings: React.FC = () => {
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="Esteticista, Dr., Enfermera..."
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sucursal *</label>
+              <select
+                required
+                className="w-full border rounded-lg p-2 text-sm"
+                value={form.branch_id}
+                onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
+              >
+                <option value="">Selecciona una sucursal</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -266,6 +291,7 @@ const ProfessionalsSettings: React.FC = () => {
             <tr>
               <th className="px-4 py-3">Nombre Completo</th>
               <th className="px-4 py-3">Título</th>
+              <th className="px-4 py-3">Sucursal</th>
               <th className="px-4 py-3">Teléfono</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Servicios</th>
@@ -283,6 +309,7 @@ const ProfessionalsSettings: React.FC = () => {
                     {p.title}
                   </span>
                 </td>
+                <td className="px-4 py-3">{p.branch?.name || "—"}</td>
                 <td className="px-4 py-3 text-gray-500">{p.phone || "—"}</td>
                 <td className="px-4 py-3 text-gray-500">{p.email || "—"}</td>
                 <td className="px-4 py-3">

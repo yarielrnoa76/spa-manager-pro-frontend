@@ -454,8 +454,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                             required={(selectedProduct as any).type === 'service'}
                                         >
                                             <option value="">-- Seleccionar Profesional --</option>
-                                            {/* Si es un servicio, filtramos por los profesionales asignados al servicio. Si es producto, mostramos todos o ninguno (aquí mostramos los habilitados o todos si prefieres, pero lo lógico es mostrar los asociados al servicio) */}
-                                            {((selectedProduct as any).type === 'service' ? (selectedProduct as any).professionals || [] : professionals).map((p: any) => (
+                                            {((selectedProduct as any).type === 'service' ? (selectedProduct as any).professionals || [] : professionals)
+                                                .filter((p: any) => !form.branch_id || p.branch_id === Number(form.branch_id))
+                                                .map((p: any) => (
                                                 <option key={p.id} value={String(p.id)}>{p.fname} {p.lname} - {p.title}</option>
                                             ))}
                                         </select>

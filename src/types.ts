@@ -102,6 +102,8 @@ export interface ProfessionalPerson {
   title: string;
   description?: string | null;
   tenant_id?: number;
+  branch_id: number;
+  branch?: { id: number; name: string } | null;
   products?: Pick<Product, 'id' | 'name'>[];
 }
 
