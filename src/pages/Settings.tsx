@@ -2,9 +2,10 @@ import React, { useMemo, useState } from "react";
 import BranchesSettings from "../settings/BranchesSettings";
 import UsersSettings from "../settings/UsersSettings";
 import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
+import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import Tenants from "./Tenants";
 
-type TabKey = "branches" | "users" | "rbac" | "tenants";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants";
 
 const TabButton = ({
   active,
@@ -35,6 +36,7 @@ const SettingsPage: React.FC<{
   const title = useMemo(() => {
     if (tab === "branches") return "Sucursales";
     if (tab === "users") return "Usuarios";
+    if (tab === "professionals") return "Profesionales";
     if (tab === "tenants") return "Tenants";
     return "Roles y permisos";
   }, [tab]);
@@ -76,6 +78,9 @@ const SettingsPage: React.FC<{
         <TabButton active={tab === "users"} onClick={() => setTab("users")}>
           Usuarios
         </TabButton>
+        <TabButton active={tab === "professionals"} onClick={() => setTab("professionals")}>
+          Profesionales
+        </TabButton>
       </div>
 
       <div className="bg-white border rounded-2xl p-4">
@@ -86,6 +91,7 @@ const SettingsPage: React.FC<{
         {tab === "branches" && <BranchesSettings />}
         {tab === "users" && <UsersSettings />}
         {tab === "rbac" && <RolesPermissionsSettings />}
+        {tab === "professionals" && <ProfessionalsSettings />}
         {tab === "tenants" && <Tenants />}
       </div>
     </div>

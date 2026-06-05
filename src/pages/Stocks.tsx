@@ -16,6 +16,7 @@ import {
 
 const Stocks: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [professionals, setProfessionals] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -246,8 +247,12 @@ const Stocks: React.FC = () => {
   };
 
   const fetchData = useCallback(async () => {
-    const data = await api.listProducts();
+    const [data, profs] = await Promise.all([
+      api.listProducts(),
+      api.listProfessionals().catch(() => [])
+    ]);
     setProducts(data);
+    setProfessionals(profs);
   }, []);
 
   useEffect(() => {
@@ -321,6 +326,7 @@ const Stocks: React.FC = () => {
         type: newProduct.type,
         sales_price: Number(newProduct.sales_price),
         cost_price: Number(newProduct.cost_price),
+        professional_ids: (newProduct as any).professional_ids || [],
       };
 
       if (!isService) {
@@ -351,7 +357,8 @@ const Stocks: React.FC = () => {
         stock: "0",
         min_stock: "0",
         max_stock: "0",
-      });
+        professional_ids: [],
+      } as any);
 
       fetchData();
     } catch (err: any) {
@@ -373,7 +380,8 @@ const Stocks: React.FC = () => {
         p.max_stock === null || p.max_stock === undefined
           ? ""
           : String(p.max_stock),
-    });
+      professional_ids: p.professionals?.map(prof => prof.id) || [],
+    } as any);
     setIsEditModalOpen(true);
   };
 
@@ -394,6 +402,7 @@ const Stocks: React.FC = () => {
         sales_price: toNum(editForm.sales_price),
         cost_price: toNum(editForm.cost_price),
         min_stock: Math.max(0, Math.trunc(toNum(editForm.min_stock))),
+        professional_ids: (editForm as any).professional_ids || [],
       };
 
       // ✅ max_stock: si está vacío o "0" => null
@@ -593,9 +602,20 @@ const Stocks: React.FC = () => {
                   </td>
 
                   <td className="px-6 py-4">
-                    <span className={`text-[10px] uppercase font-black px-2 py-1 rounded-full ${product.type === 'service' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {product.type === 'service' ? 'Servicio' : 'Producto'}
-                    </span>
+                    <div className="flex flex-col gap-1 items-start">
+                      <span className={`text-[10px] uppercase font-black px-2 py-1 rounded-full ${product.type === 'service' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {product.type === 'service' ? 'Servicio' : 'Producto'}
+                      </span>
+                      {product.type === 'service' && product.professionals && product.professionals.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1 max-w-[150px]">
+                           {product.professionals.map(p => (
+                               <span key={p.id} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-100 text-gray-600 border border-gray-200" title={p.title}>
+                                   {p.fname} {p.lname}
+                               </span>
+                           ))}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   <td className="px-6 py-4 font-medium">
@@ -950,6 +970,39 @@ const Stocks: React.FC = () => {
                 </div>
               )}
 
+              {editForm.type === 'service' && professionals.length > 0 && (
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                          Profesionales Habilitados
+                      </label>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto bg-gray-50">
+                          {professionals.map(prof => {
+                              const isSelected = ((editForm as any).professional_ids || []).includes(prof.id);
+                              return (
+                                  <label key={prof.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={isSelected}
+                                          onChange={(e) => {
+                                              const current = (editForm as any).professional_ids || [];
+                                              if (e.target.checked) {
+                                                  setEditForm({ ...editForm, professional_ids: [...current, prof.id] } as any);
+                                              } else {
+                                                  setEditForm({ ...editForm, professional_ids: current.filter((id: number) => id !== prof.id) } as any);
+                                              }
+                                          }}
+                                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="font-medium text-gray-700">{prof.fname} {prof.lname}</span>
+                                      <span className="text-xs text-gray-400">({prof.title})</span>
+                                  </label>
+                              );
+                          })}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1">Selecciona qué profesionales pueden realizar este servicio.</p>
+                  </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -998,7 +1051,7 @@ const Stocks: React.FC = () => {
                   className="w-full border rounded-lg p-2 text-sm"
                   value={newProduct.name}
                   onChange={(e) =>
-                    setNewProduct({ ...newProduct, name: e.target.value })
+                    setNewProduct({ ...newProduct, name: e.target.value } as any)
                   }
                 />
                 </div>
@@ -1137,6 +1190,39 @@ const Stocks: React.FC = () => {
                     </div>
                   </div>
                 </>
+              )}
+
+              {newProduct.type === 'service' && professionals.length > 0 && (
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                          Profesionales Habilitados
+                      </label>
+                      <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto bg-gray-50">
+                          {professionals.map(prof => {
+                              const isSelected = ((newProduct as any).professional_ids || []).includes(prof.id);
+                              return (
+                                  <label key={prof.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-100 p-1 rounded">
+                                      <input 
+                                          type="checkbox" 
+                                          checked={isSelected}
+                                          onChange={(e) => {
+                                              const current = (newProduct as any).professional_ids || [];
+                                              if (e.target.checked) {
+                                                  setNewProduct({ ...newProduct, professional_ids: [...current, prof.id] } as any);
+                                              } else {
+                                                  setNewProduct({ ...newProduct, professional_ids: current.filter((id: number) => id !== prof.id) } as any);
+                                              }
+                                          }}
+                                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="font-medium text-gray-700">{prof.fname} {prof.lname}</span>
+                                      <span className="text-xs text-gray-400">({prof.title})</span>
+                                  </label>
+                              );
+                          })}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1">Selecciona qué profesionales pueden realizar este servicio.</p>
+                  </div>
               )}
 
               <div className="flex gap-3 pt-2">

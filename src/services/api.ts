@@ -8,6 +8,7 @@ import {
   Lead,
   Appointment,
   Tenant,
+  ProfessionalPerson,
 } from "../types";
 
 export interface ActivityLog {
@@ -400,6 +401,7 @@ export const api = {
     stock: number;
     min_stock: number;
     max_stock: number;
+    professional_ids?: number[];
   }) {
     return request(`/api/products`, {
       method: "POST",
@@ -433,6 +435,7 @@ export const api = {
       stock: number;
       min_stock: number;
       max_stock: number | null;
+      professional_ids: number[];
     }>,
   ) {
     return request(`/api/products/${encodeURIComponent(String(productId))}`, {
@@ -452,6 +455,59 @@ export const api = {
     return request(`/api/inventory/move-stock`, {
       method: "POST",
       body: payload,
+      auth: true,
+    });
+  },
+
+  // --- Professionals ---
+  async listProfessionals() {
+    const res = await request<ProfessionalPerson[]>(`/api/professionals`, {
+      method: "GET",
+      auth: true,
+    });
+    return Array.isArray(res) ? res : [];
+  },
+
+  async createProfessional(payload: {
+    fname: string;
+    lname: string;
+    phone?: string | null;
+    email?: string | null;
+    title: string;
+    description?: string | null;
+  }) {
+    return request<ProfessionalPerson>(`/api/professionals`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  async updateProfessional(id: number, payload: Partial<{
+    fname: string;
+    lname: string;
+    phone: string | null;
+    email: string | null;
+    title: string;
+    description: string | null;
+  }>) {
+    return request<ProfessionalPerson>(`/api/professionals/${id}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  async deleteProfessional(id: number) {
+    return request(`/api/professionals/${id}`, {
+      method: "DELETE",
+      auth: true,
+    });
+  },
+
+  async getProfessional(id: number) {
+    return request<{ professional: ProfessionalPerson; stats: { total_services: number; total_revenue: number } }>(`/api/professionals/${id}`, {
+      method: "GET",
       auth: true,
     });
   },

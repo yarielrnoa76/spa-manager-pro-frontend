@@ -59,6 +59,7 @@ export interface Product {
   is_low_stock: boolean;
   tenant_id?: number;
   transactions?: InventoryTransaction[];
+  professionals?: Pick<ProfessionalPerson, 'id' | 'fname' | 'lname' | 'title'>[];
 }
 
 export interface InventoryTransaction {
@@ -78,6 +79,7 @@ export interface DailyLog {
   seller_id: string;
   branch_id: string;
   product_id?: string;
+  professional_id?: number | null;
   client_name: string;
   service_rendered: string;
   amount: number;
@@ -85,6 +87,22 @@ export interface DailyLog {
   notes?: string;
   created_at: string;
   tenant_id?: number;
+  seller_name?: string;
+  professional_name?: string | null;
+  professional?: ProfessionalPerson | null;
+}
+
+export interface ProfessionalPerson {
+  id: number;
+  fname: string;
+  lname: string;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  title: string;
+  description?: string | null;
+  tenant_id?: number;
+  products?: Pick<Product, 'id' | 'name'>[];
 }
 
 export interface Lead {

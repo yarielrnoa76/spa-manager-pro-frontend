@@ -62,6 +62,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         amount: "",
         payment_method: "Zelle",
         seller_id: "",
+        professional_id: "",
         notes: "",
     });
 
@@ -70,6 +71,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const [products, setProducts] = useState<any[]>([]);
     const [leads, setLeads] = useState<any[]>([]);
     const [users, setUsers] = useState<any[]>([]);
+    const [professionals, setProfessionals] = useState<any[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -91,6 +93,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             amount: "",
             payment_method: "Zelle",
             seller_id: user?.id ? String(user.id) : "",
+            professional_id: "",
             notes: "",
         });
         setCart([]);
@@ -102,11 +105,13 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             canViewLeads ? api.listLeads() : Promise.resolve([]),
             api.listPaymentMethods(),
             canSelectBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
-        ]).then(([b, p, l, pm, u]) => {
+            api.listProfessionals().catch(() => []),
+        ]).then(([b, p, l, pm, u, prof]) => {
             setBranches(Array.isArray(b) ? b : []);
             setProducts(Array.isArray(p) ? p : []);
             setLeads(Array.isArray(l) ? l : []);
             setUsers(Array.isArray(u) ? u : []);
+            setProfessionals(Array.isArray(prof) ? prof : []);
 
             const pms = Array.isArray(pm) ? pm : [];
             setPaymentMethods(pms);
@@ -178,7 +183,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             return;
         }
         const salesPrice = toNumber(String((p as any).sales_price ?? 0));
-        setForm(prev => ({ ...prev, ...recalcTotals({ product_id: String(p.id), service_rendered: p.name, unit_price: salesPrice ? money(salesPrice) : "" }) }));
+        setForm(prev => ({ ...prev, ...recalcTotals({ product_id: String(p.id), service_rendered: p.name, unit_price: salesPrice ? money(salesPrice) : "" }), professional_id: "" }));
     };
 
     const handleQuantityChange = (qtyStr: string) => {
@@ -204,8 +209,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             quantity: parseInt(form.quantity, 10),
             unit_price: toNumber(form.unit_price),
             amount: toNumber(form.amount),
+            professional_id: form.professional_id || null,
         }]);
-        setForm(prev => ({ ...prev, product_id: "", service_rendered: "", quantity: "1", unit_price: "", amount: "" }));
+        setForm(prev => ({ ...prev, product_id: "", service_rendered: "", quantity: "1", unit_price: "", amount: "", professional_id: "" }));
     };
 
     const handleRemoveFromCart = (id: string) => {
@@ -246,6 +252,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                     amount: item.amount,
                     product_id: item.product_id || null,
                     service_rendered: item.service_rendered,
+                    professional_id: item.professional_id || null,
                 });
             }
 
@@ -434,6 +441,30 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Mostrar dropdown de Profesional solo si hay un producto seleccionado */}
+                            {selectedProduct && (
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Profesional (Opcional para productos físicos)</label>
+                                        <select
+                                            className="w-full border rounded-lg p-2 text-sm"
+                                            value={form.professional_id}
+                                            onChange={(e) => setForm(prev => ({ ...prev, professional_id: e.target.value }))}
+                                            required={(selectedProduct as any).type === 'service'}
+                                        >
+                                            <option value="">-- Seleccionar Profesional --</option>
+                                            {/* Si es un servicio, filtramos por los profesionales asignados al servicio. Si es producto, mostramos todos o ninguno (aquí mostramos los habilitados o todos si prefieres, pero lo lógico es mostrar los asociados al servicio) */}
+                                            {((selectedProduct as any).type === 'service' ? (selectedProduct as any).professionals || [] : professionals).map((p: any) => (
+                                                <option key={p.id} value={String(p.id)}>{p.fname} {p.lname} - {p.title}</option>
+                                            ))}
+                                        </select>
+                                        {(selectedProduct as any).type === 'service' && (
+                                            <p className="text-[10px] text-gray-400 mt-1">Requerido para servicios.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>

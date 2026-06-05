@@ -187,6 +187,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       amount: "",
       payment_method: "Zelle",
       notes: "",
+      professional_name: "",
     }),
     [today, user?.branch?.id],
   );
@@ -565,22 +566,21 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   };
 
   const exportToCSV = () => {
-    const headers = Object.values(EXCEL_FIELDS.DAILY_LOG).join(",");
+    const headerFields = ["Fecha", "Cliente", "Servicio/Producto", "Profesional", "Valor ($)", "Método Pago", "Vendedor", "Sucursal"];
     const rows = visibleSales.map((s: any) =>
       [
         normalizeDateOnly(s.date),
-        "",
-        branches.find((b) => String(b.id) === String(s.branch_id))?.name ||
-        s.branch_id,
         s.client_name,
         s.service_rendered,
-        money(saleAmount(s)),
+        s.professional_name || s.professional?.full_name || "",
+        saleAmount(s).toFixed(2),
         s.payment_method,
-        s.notes,
-      ].join(","),
+        s.seller_name || "",
+        branches.find((b) => String(b.id) === String(s.branch_id))?.name || s.branch_id,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","),
     );
-    const blob = new Blob([headers + "\n" + rows.join("\n")], {
-      type: "text/csv",
+    const blob = new Blob(["\ufeff" + headerFields.join(",") + "\n" + rows.join("\n")], {
+      type: "text/csv;charset=utf-8",
     });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -967,6 +967,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                 <th className="px-6 py-4">Sucursal</th>
                 <th className="px-6 py-4">Cliente</th>
                 <th className="px-6 py-4">Servicio/Producto</th>
+                <th className="px-6 py-4">Profesional</th>
                 <th className="px-6 py-4 text-right">Precio</th>
                 <th className="px-6 py-4 text-right">Cantidad</th>
                 <th className="px-6 py-4 text-right">Monto</th>
@@ -979,7 +980,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     Cargando datos...
@@ -988,7 +989,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               ) : visibleSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-6 py-4 text-center text-gray-400"
                   >
                     No hay ventas para los filtros seleccionados.
@@ -1035,6 +1036,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                         <Package size={14} className="text-gray-400" />
                       )}
                       {sale.service_rendered}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {sale.professional_name || sale.professional?.full_name || <span className="text-gray-400 font-normal italic">—</span>}
                     </td>
 
                     <td className="px-6 py-4 text-right text-gray-700">
