@@ -1,99 +1,155 @@
-import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, AlertCircle } from 'lucide-react';
-import { api } from '../services/api';
+import React, { useState, useRef, useMemo } from "react";
+import { X, Upload, FileText, AlertCircle, ChevronRight, ArrowLeft } from "lucide-react";
+import { api } from "../services/api";
 
 interface ImportSalesModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
 
+// Destination fields the system expects
+const DEST_FIELDS = [
+  { key: "date", label: "Fecha", required: true },
+  { key: "client", label: "Cliente", required: true },
+  { key: "product", label: "Servicio / Producto", required: true },
+  { key: "branch", label: "Sucursal", required: true },
+  { key: "amount", label: "Valor ($)", required: false },
+  { key: "payment_method", label: "Método de Pago", required: false },
+  { key: "seller", label: "Vendedora", required: false },
+  { key: "professional", label: "Esteticista", required: false },
+  { key: "description", label: "Descripción / Nota", required: false },
+];
+
+// Smart auto-mapping: try to guess which CSV header maps to which field
+function autoMap(headers: string[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  const lowerHeaders = headers.map((h) => h.toLowerCase().trim());
+
+  const rules: { key: string; patterns: string[] }[] = [
+    { key: "date", patterns: ["fecha", "date", "dia"] },
+    { key: "client", patterns: ["cliente", "client", "nombre", "contacto"] },
+    { key: "product", patterns: ["servicio", "producto", "product", "service"] },
+    { key: "branch", patterns: ["sucursal", "branch", "sede", "local"] },
+    { key: "amount", patterns: ["valor", "precio", "amount", "monto", "total"] },
+    { key: "payment_method", patterns: ["pago", "metodo", "method", "payment"] },
+    { key: "seller", patterns: ["vendedora", "vendedor", "seller", "sales"] },
+    { key: "professional", patterns: ["esteticista", "profesional", "professional", "specialist"] },
+    { key: "description", patterns: ["descripci", "nota", "description", "notes", "observ"] },
+  ];
+
+  for (const rule of rules) {
+    const matchIdx = lowerHeaders.findIndex((h) =>
+      rule.patterns.some((p) => h.includes(p))
+    );
+    if (matchIdx !== -1) {
+      map[rule.key] = headers[matchIdx];
+    }
+  }
+
+  return map;
+}
+
+function parseCSVText(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length < 1) return { headers: [], rows: [] };
+
+  const parseLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result.map((s) => s.replace(/^"|"$/g, ""));
+  };
+
+  const headers = parseLine(lines[0]);
+  const rows = lines.slice(1).map(parseLine);
+
+  return { headers, rows };
+}
+
 export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModalProps) {
+  const [step, setStep] = useState<"select" | "map">("select");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Parsed CSV data
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvRows, setCsvRows] = useState<string[][]>([]);
+
+  // Field mapping: destKey -> csvHeader
+  const [fieldMap, setFieldMap] = useState<Record<string, string>>({});
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const f = e.target.files[0];
+      setFile(f);
       setError(null);
+
+      try {
+        const text = await f.text();
+        const { headers, rows } = parseCSVText(text);
+
+        if (headers.length === 0) {
+          setError("El archivo no contiene datos válidos.");
+          return;
+        }
+
+        setCsvHeaders(headers);
+        setCsvRows(rows);
+        setFieldMap(autoMap(headers));
+        setStep("map");
+      } catch {
+        setError("Error al leer el archivo.");
+      }
     }
   };
 
-  const parseCSV = async (file: File) => {
-    const text = await file.text();
-    // basic CSV parse (handles basic commas, not quotes with commas inside perfectly but enough for simple files)
-    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-    if (lines.length < 2) throw new Error("El archivo no tiene suficientes datos.");
+  const handleMapChange = (destKey: string, csvHeader: string) => {
+    setFieldMap((prev) => {
+      const next = { ...prev };
+      if (csvHeader === "") {
+        delete next[destKey];
+      } else {
+        next[destKey] = csvHeader;
+      }
+      return next;
+    });
+  };
 
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    
-    // find indexes
-    const idx = {
-      date: headers.findIndex(h => h.includes('fecha') || h.includes('date')),
-      client: headers.findIndex(h => h.includes('cliente') || h.includes('client')),
-      product: headers.findIndex(h => h.includes('servicio') || h.includes('producto') || h.includes('product')),
-      amount: headers.findIndex(h => h.includes('valor') || h.includes('precio') || h.includes('amount')),
-      payment_method: headers.findIndex(h => h.includes('pago') || h.includes('metodo') || h.includes('method')),
-      seller: headers.findIndex(h => h.includes('vendedora') || h.includes('seller')),
-      professional: headers.findIndex(h => h.includes('esteticista') || h.includes('professional')),
-      description: headers.findIndex(h => h.includes('descripci') || h.includes('nota')),
-      branch: headers.findIndex(h => h.includes('sucursal') || h.includes('branch')),
-    };
+  // Validate that required fields are mapped
+  const missingRequired = useMemo(() => {
+    return DEST_FIELDS.filter((f) => f.required && !fieldMap[f.key]);
+  }, [fieldMap]);
 
-    // validate required columns
-    if (idx.date === -1 || idx.client === -1 || idx.product === -1 || idx.branch === -1) {
-      throw new Error("El archivo debe contener las columnas obligatorias: Fecha, Cliente, Servicio/Producto y Sucursal.");
-    }
+  // Preview rows (max 5)
+  const previewRows = useMemo(() => csvRows.slice(0, 5), [csvRows]);
 
-    const parseLine = (line: string) => {
-        // A simple regex to split CSV line considering double quotes
-        const result = [];
-        let current = '';
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"' && (i === 0 || line[i-1] !== '\\')) {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                result.push(current);
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        result.push(current);
-        return result.map(s => s.trim().replace(/^"|"$/g, ''));
-    };
-
-    const sales = [];
-    for (let i = 1; i < lines.length; i++) {
-      const row = parseLine(lines[i]);
-      // Skip empty rows
-      if (row.length < 2) continue;
-
-      const getVal = (index: number) => index !== -1 ? (row[index] || "") : "";
-
-      sales.push({
-        date: getVal(idx.date),
-        client: getVal(idx.client),
-        product: getVal(idx.product),
-        amount: getVal(idx.amount).replace(/[\$,]/g, ''),
-        payment_method: getVal(idx.payment_method),
-        seller: getVal(idx.seller),
-        professional: getVal(idx.professional),
-        description: getVal(idx.description),
-        branch: getVal(idx.branch),
-      });
-    }
-
-    return sales;
+  // Build the mapped preview for a single row
+  const getMappedValue = (row: string[], destKey: string): string => {
+    const csvHeader = fieldMap[destKey];
+    if (!csvHeader) return "—";
+    const idx = csvHeaders.indexOf(csvHeader);
+    if (idx === -1) return "—";
+    return row[idx] || "—";
   };
 
   const handleImport = async () => {
-    if (!file) {
-      setError("Por favor selecciona un archivo CSV.");
+    if (missingRequired.length > 0) {
+      setError(`Faltan campos obligatorios: ${missingRequired.map((f) => f.label).join(", ")}`);
       return;
     }
 
@@ -102,15 +158,36 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
     setSuccessMsg(null);
 
     try {
-      const sales = await parseCSV(file);
-      
-      const res: any = await api.post('/sales/batch-import', { sales });
+      const sales = csvRows
+        .filter((row) => row.length >= 2)
+        .map((row) => {
+          const get = (key: string) => getMappedValue(row, key).replace("—", "");
+          return {
+            date: get("date"),
+            client: get("client"),
+            product: get("product"),
+            amount: get("amount").replace(/[\$,]/g, ""),
+            payment_method: get("payment_method"),
+            seller: get("seller"),
+            professional: get("professional"),
+            description: get("description"),
+            branch: get("branch"),
+          };
+        })
+        .filter((s) => s.date && s.client && s.product && s.branch);
+
+      if (sales.length === 0) {
+        setError("No se encontraron registros válidos para importar.");
+        setLoading(false);
+        return;
+      }
+
+      const res: any = await api.post("/sales/batch-import", { sales });
       setSuccessMsg(res?.message || `Se importaron ${sales.length} ventas con éxito.`);
-      
+
       setTimeout(() => {
         onSuccess();
       }, 2000);
-
     } catch (error) {
       const err = error as any;
       setError(err?.message || "Ocurrió un error al procesar el archivo.");
@@ -121,11 +198,17 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
           <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
             <Upload className="text-indigo-600" size={20} />
             Importar Ventas (CSV)
+            {step === "map" && (
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                — Paso 2: Mapeo de columnas
+              </span>
+            )}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
             <X size={20} />
@@ -133,45 +216,149 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 text-sm text-indigo-800 flex gap-3">
-            <AlertCircle className="shrink-0 mt-0.5" size={16} />
-            <div>
-              <p className="font-semibold mb-1">Formato requerido</p>
-              <p>El archivo debe ser un <strong>CSV</strong> con las siguientes columnas (el orden no importa):</p>
-              <ul className="list-disc pl-4 mt-1 opacity-90 space-y-0.5">
-                <li><strong>Fecha</strong> (Obligatorio)</li>
-                <li><strong>Cliente</strong> (Obligatorio)</li>
-                <li><strong>Servicio/Producto</strong> (Obligatorio)</li>
-                <li><strong>Sucursal</strong> (Obligatorio)</li>
-                <li>Valor, Metodos de Pago, Vendedora, Esteticista, Descripción (Opcionales)</li>
-              </ul>
-            </div>
-          </div>
+          {/* ── STEP 1: Select file ── */}
+          {step === "select" && (
+            <>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 text-sm text-indigo-800 flex gap-3">
+                <AlertCircle className="shrink-0 mt-0.5" size={16} />
+                <div>
+                  <p className="font-semibold mb-1">Formato requerido</p>
+                  <p>
+                    El archivo debe ser un <strong>CSV</strong> con columnas como: Fecha, Cliente,
+                    Servicio/Producto, Sucursal, Valor, etc. El sistema intentará detectar las
+                    columnas automáticamente, y podrás ajustar el mapeo manualmente.
+                  </p>
+                </div>
+              </div>
 
-          <div 
-            className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-indigo-500 transition-colors cursor-pointer bg-gray-50 hover:bg-indigo-50/30"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input 
-              type="file" 
-              accept=".csv" 
-              className="hidden" 
-              ref={fileInputRef}
-              onChange={handleFileChange}
-            />
-            <FileText size={40} className={file ? "text-indigo-600" : "text-gray-400"} />
-            <p className="mt-3 font-medium text-gray-700">
-              {file ? file.name : "Haz clic para seleccionar archivo CSV"}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">Solo archivos .csv</p>
-          </div>
+              <div
+                className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-indigo-500 transition-colors cursor-pointer bg-gray-50 hover:bg-indigo-50/30"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                />
+                <FileText size={40} className={file ? "text-indigo-600" : "text-gray-400"} />
+                <p className="mt-3 font-medium text-gray-700">
+                  {file ? file.name : "Haz clic para seleccionar archivo CSV"}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Solo archivos .csv</p>
+              </div>
+            </>
+          )}
 
+          {/* ── STEP 2: Column mapping + preview ── */}
+          {step === "map" && (
+            <>
+              {/* Back button */}
+              <button
+                onClick={() => {
+                  setStep("select");
+                  setFile(null);
+                  setCsvHeaders([]);
+                  setCsvRows([]);
+                  setFieldMap({});
+                  setError(null);
+                }}
+                className="flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600 mb-4 transition"
+              >
+                <ArrowLeft size={14} /> Seleccionar otro archivo
+              </button>
+
+              <div className="flex items-center gap-2 mb-3">
+                <FileText size={16} className="text-indigo-600" />
+                <span className="text-sm font-semibold text-gray-700">{file?.name}</span>
+                <span className="text-xs text-gray-400">
+                  ({csvRows.length} registros encontrados)
+                </span>
+              </div>
+
+              {/* Column Mapping */}
+              <div className="bg-gray-50 border rounded-xl p-4 mb-5">
+                <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <ChevronRight size={14} />
+                  Asociar columnas del archivo a campos del sistema
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {DEST_FIELDS.map((field) => (
+                    <div key={field.key} className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-600">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                      </label>
+                      <select
+                        value={fieldMap[field.key] || ""}
+                        onChange={(e) => handleMapChange(field.key, e.target.value)}
+                        className={`text-sm border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-300 focus:outline-none ${
+                          field.required && !fieldMap[field.key]
+                            ? "border-red-300 bg-red-50/30"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <option value="">— No asignado —</option>
+                        {csvHeaders.map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview Table */}
+              <div className="border rounded-xl overflow-hidden">
+                <div className="bg-indigo-50/60 px-4 py-2 border-b">
+                  <h3 className="text-sm font-bold text-indigo-800">
+                    Vista previa ({Math.min(5, csvRows.length)} de {csvRows.length} registros)
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-[10px] uppercase text-gray-500 font-bold">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-gray-400">#</th>
+                        {DEST_FIELDS.filter((f) => fieldMap[f.key]).map((f) => (
+                          <th key={f.key} className="px-3 py-2 text-left whitespace-nowrap">
+                            {f.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {previewRows.map((row, i) => (
+                        <tr key={i} className={i % 2 === 1 ? "bg-gray-50/50" : ""}>
+                          <td className="px-3 py-2 text-gray-400 font-mono">{i + 1}</td>
+                          {DEST_FIELDS.filter((f) => fieldMap[f.key]).map((f) => (
+                            <td key={f.key} className="px-3 py-2 whitespace-nowrap max-w-[160px] truncate">
+                              {getMappedValue(row, f.key)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {csvRows.length > 5 && (
+                  <div className="bg-gray-50 text-center py-2 text-[10px] text-gray-400 border-t">
+                    ... y {csvRows.length - 5} registros más
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Error / Success messages */}
           {error && (
             <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-medium border border-red-200">
               {error}
             </div>
           )}
-
           {successMsg && (
             <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200">
               {successMsg}
@@ -179,21 +366,33 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
           )}
         </div>
 
-        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800"
-            disabled={loading}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleImport}
-            disabled={!file || loading}
-            className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow hover:bg-indigo-700 disabled:opacity-50 transition"
-          >
-            {loading ? "Importando..." : "Importar Datos"}
-          </button>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center shrink-0">
+          <div className="text-xs text-gray-400">
+            {step === "map" && missingRequired.length > 0 && (
+              <span className="text-red-500">
+                Campos sin asignar: {missingRequired.map((f) => f.label).join(", ")}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            {step === "map" && (
+              <button
+                onClick={handleImport}
+                disabled={missingRequired.length > 0 || loading}
+                className="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
+              >
+                {loading ? "Importando..." : `Importar ${csvRows.length} registros`}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
