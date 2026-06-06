@@ -3,6 +3,7 @@ import { api } from "../services/api";
 import LeadModal from "../components/LeadModal";
 import CreateSaleModal from "../components/CreateSaleModal";
 import SaleModal from "../components/SaleModal";
+import ImportSalesModal from "../components/ImportSalesModal";
 import { DailyLog, Branch, Product } from "../types";
 import {
   Plus,
@@ -151,6 +152,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
   const canViewLeads = isAdmin || perms.includes("view_leads");
   const canViewBranch = isAdmin || perms.includes("view_branch");
+  const canImport = isAdmin || perms.includes("import_sales");
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -160,6 +162,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false); // Para crear lead desde ventas
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<number | string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -608,6 +611,15 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         initialBranchId={newSale.branch_id}
         initialName={newSale.client_name}
       />
+      {isImportModalOpen && (
+        <ImportSalesModal
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchData();
+          }}
+        />
+      )}
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -631,6 +643,15 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         </div>
 
         <div className="flex items-center gap-3">
+          {canImport && (
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-indigo-200 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100"
+            >
+              <Download size={18} className="rotate-180" /> Importar
+            </button>
+          )}
+
           <button
             onClick={exportToCSV}
             className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
