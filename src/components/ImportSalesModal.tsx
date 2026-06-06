@@ -111,7 +111,8 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
         onSuccess();
       }, 2000);
 
-    } catch (err: any) {
+    } catch (error) {
+      const err = error as any;
       setError(err?.message || "Ocurrió un error al procesar el archivo.");
     } finally {
       setLoading(false);

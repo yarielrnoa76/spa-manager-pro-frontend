@@ -141,7 +141,7 @@ const TenantSelector: React.FC<{
 };
 
 /* ───────── MAIN APP ───────── */
-interface UserData {
+export interface UserData {
   id: string;
   name: string;
   email: string;
