@@ -104,8 +104,8 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
     try {
       const sales = await parseCSV(file);
       
-      const res = await api.post('/sales/batch-import', { sales });
-      setSuccessMsg(res.message || `Se importaron ${sales.length} ventas con éxito.`);
+      const res: any = await api.post('/sales/batch-import', { sales });
+      setSuccessMsg(res?.message || `Se importaron ${sales.length} ventas con éxito.`);
       
       setTimeout(() => {
         onSuccess();
