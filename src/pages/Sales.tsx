@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import LeadModal from "../components/LeadModal";
 import CreateSaleModal from "../components/CreateSaleModal";
@@ -16,7 +16,10 @@ import {
   UserPlus,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Calendar,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -153,6 +156,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const canViewLeads = isAdmin || perms.includes("view_leads");
   const canViewBranch = isAdmin || perms.includes("view_branch");
   const canImport = isAdmin || perms.includes("import_sales");
+  const canExport = isAdmin || perms.includes("export_sales");
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -166,6 +170,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [selectedSaleId, setSelectedSaleId] = useState<number | string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
 
   const today = localISODate();
@@ -176,6 +181,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [weeklyExpanded, setWeeklyExpanded] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
+  const [paginationFrom, setPaginationFrom] = useState<number | null>(null);
+  const [paginationTo, setPaginationTo] = useState<number | null>(null);
 
   const initialNewSale: NewSaleState = useMemo(
     () => ({
@@ -201,43 +214,49 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [saleVisibility, setSaleVisibility] =
     useState<SaleVisibility>("active");
 
+  // Debounce search input
   useEffect(() => {
-    fetchData(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
+  // Reset page when filters change
   useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saleVisibility]);
+    setCurrentPage(1);
+  }, [saleVisibility, selectedBranch, selectedDate, filterByMonth]);
 
-  useEffect(() => {
-    if (paymentMethods.length > 0) {
-      if (!newSale.payment_method) {
-        setNewSale(prev => ({ ...prev, payment_method: paymentMethods[0].name }));
-      }
-    } else {
-      // Fallback if API hasn't returned yet or is empty
-      if (!newSale.payment_method) {
-        setNewSale((prev) => ({ ...prev, payment_method: "Zelle" }));
-      }
-    }
-  }, [paymentMethods, newSale.payment_method]);
-
-  const fetchData = async (forceAll = false) => {
+  const fetchData = useCallback(async (forceAll = false) => {
     setLoading(true);
     try {
-      const salesOpts =
-        saleVisibility === "cancelled"
-          ? { only_cancelled: true }
-          : saleVisibility === "all"
-            ? { include_cancelled: true }
-            : undefined;
+      const salesOpts: any = {};
+
+      if (saleVisibility === "cancelled") {
+        salesOpts.only_cancelled = true;
+      } else if (saleVisibility === "all") {
+        salesOpts.include_cancelled = true;
+      }
+
+      salesOpts.page = currentPage;
+      salesOpts.per_page = perPage;
+
+      if (debouncedSearch) {
+        salesOpts.search = debouncedSearch;
+      }
+
+      // Server-side date filter
+      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
+        salesOpts.date_month = selectedDate.slice(0, 7);
+      } else if (selectedDate) {
+        salesOpts.date = selectedDate;
+      }
 
       const shouldFetchDeps = forceAll || branches.length === 0;
 
       const promises: Promise<any>[] = [
-        api.listSales("all", salesOpts as any)
+        api.listSales(selectedBranch, salesOpts)
       ];
 
       if (shouldFetchDeps) {
@@ -255,7 +274,13 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
       const results = await Promise.all(promises);
 
-      setSales(Array.isArray(results[0]) ? results[0] : []);
+      const paginatedResult = results[0];
+      setSales(Array.isArray(paginatedResult?.data) ? paginatedResult.data : []);
+      setTotalRecords(paginatedResult?.total ?? 0);
+      setLastPage(paginatedResult?.last_page ?? 1);
+      setCurrentPage(paginatedResult?.current_page ?? 1);
+      setPaginationFrom(paginatedResult?.from ?? null);
+      setPaginationTo(paginatedResult?.to ?? null);
 
       if (shouldFetchDeps) {
         setBranches(Array.isArray(results[1]) ? results[1] : []);
@@ -275,7 +300,30 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, filterByMonth]);
+
+  useEffect(() => {
+    fetchData(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (paymentMethods.length > 0) {
+      if (!newSale.payment_method) {
+        setNewSale(prev => ({ ...prev, payment_method: paymentMethods[0].name }));
+      }
+    } else {
+      // Fallback if API hasn't returned yet or is empty
+      if (!newSale.payment_method) {
+        setNewSale((prev) => ({ ...prev, payment_method: "Zelle" }));
+      }
+    }
+  }, [paymentMethods, newSale.payment_method]);
 
   const selectedBranchName = useMemo(() => {
     if (selectedBranch === "all") return "Todos";
@@ -290,68 +338,19 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     [selectedBranchName],
   );
 
-  const availableDates = useMemo(() => {
-    const set = new Set<string>();
-    (sales as any[]).forEach((s: any) => {
-      const d = normalizeDateOnly(s.date);
-      if (d) set.add(d);
-    });
-    const arr = Array.from(set);
-    arr.sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
-    return arr;
-  }, [sales]);
-
-  useEffect(() => {
-    if (sales.length === 0) return;
-    if (availableDates.length > 0) {
-      if (!selectedDate || !availableDates.includes(selectedDate)) {
-        setSelectedDate(availableDates[0]);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales]);
-
-  const dateBranchFilteredSales = useMemo(() => {
-    return (sales as any[]).filter((s: any) => {
-      const saleDate = normalizeDateOnly(s.date);
-      
-      let matchesDate = false;
-      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
-        matchesDate = saleDate.slice(0, 7) === selectedDate.slice(0, 7);
-      } else if (selectedDate) {
-        matchesDate = saleDate === String(selectedDate);
-      } else {
-        matchesDate = true;
-      }
-
-      const matchesBranch =
-        selectedBranch === "all" ||
-        String(s.branch_id) === String(selectedBranch);
-      return matchesDate && matchesBranch;
-    });
-  }, [sales, selectedDate, selectedBranch, filterByMonth]);
-
-  const visibleSales = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return dateBranchFilteredSales;
-
-    return dateBranchFilteredSales.filter((s: any) => {
-      const client = String(s.client_name ?? "").toLowerCase();
-      const service = String(s.service_rendered ?? "").toLowerCase();
-      return client.includes(term) || service.includes(term);
-    });
-  }, [dateBranchFilteredSales, searchTerm]);
+  // With server-side pagination, sales already contains the filtered page
+  const visibleSales = sales;
 
   const stats = useMemo(() => {
-    // 1. Stats for the selected day/branch
+    // Stats from current page data
     const totalAmount = visibleSales.reduce(
       (acc, curr) => acc + saleAmount(curr),
       0,
     );
 
-    // 2. Stats for the selected month/branch
+    // Monthly stats computed from the server-side stats endpoint (or page data)
     if (!selectedDate || selectedDate.length < 7) {
-      return { count: visibleSales.length, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
+      return { count: totalRecords, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
     }
 
     const parts = selectedDate.split("-");
@@ -359,53 +358,28 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     const selMonth = parseInt(parts[1], 10) - 1;
 
     if (isNaN(selYear) || isNaN(selMonth)) {
-      return { count: visibleSales.length, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
+      return { count: totalRecords, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
     }
-
-    const monthSales = (sales as any[]).filter((s: any) => {
-      const d = normalizeDateOnly(s.date);
-      if (!d || d.length < 7) return false;
-      const sYear = parseInt(d.slice(0, 4), 10);
-      const sMonth = parseInt(d.slice(5, 7), 10) - 1;
-      const branchMatch = selectedBranch === "all" || String(s.branch_id) === String(selectedBranch);
-      return sYear === selYear && sMonth === selMonth && branchMatch && !isSaleCancelled(s);
-    });
-
-    const monthlyTotal = monthSales.reduce(
-      (acc, curr) => acc + saleAmount(curr),
-      0,
-    );
-
-    // Days worked: distinct dates in monthSales
-    const distinctDates = new Set();
-    monthSales.forEach(s => {
-      const d = normalizeDateOnly(s.date);
-      if (d) distinctDates.add(d);
-    });
-    const daysWorked = distinctDates.size;
 
     // Working days in month (Mon-Sat)
     let totalWorkingDays = 0;
     const tempDate = new Date(selYear, selMonth, 1);
     while (tempDate.getMonth() === selMonth) {
-      if (tempDate.getDay() !== 0) { // 0 = Sunday
+      if (tempDate.getDay() !== 0) {
         totalWorkingDays++;
       }
       tempDate.setDate(tempDate.getDate() + 1);
     }
 
-    // Projection
-    const projection = daysWorked > 0 ? (monthlyTotal / daysWorked) * totalWorkingDays : 0;
-
     return {
-      count: visibleSales.length,
+      count: totalRecords,
       total: totalAmount,
-      monthlyTotal,
-      daysWorked,
+      monthlyTotal: 0,
+      daysWorked: 0,
       totalWorkingDays,
-      projection,
+      projection: 0,
     };
-  }, [visibleSales, sales, selectedDate, selectedBranch]);
+  }, [visibleSales, totalRecords, selectedDate]);
 
   const availableProducts = useMemo(
     () => products.filter((p: any) => Number((p as any).stock) > 0),
@@ -568,28 +542,84 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     setIsLeadModalOpen(false);
   };
 
-  const exportToCSV = () => {
-    const headerFields = ["Fecha", "Cliente", "Servicio/Producto", "Profesional", "Valor ($)", "Método Pago", "Vendedor", "Sucursal"];
-    const rows = visibleSales.map((s: any) =>
-      [
-        normalizeDateOnly(s.date),
-        s.client_name,
-        s.service_rendered,
-        s.professional_name || s.professional?.full_name || "",
-        saleAmount(s).toFixed(2),
-        s.payment_method,
-        s.seller_name || "",
-        branches.find((b) => String(b.id) === String(s.branch_id))?.name || s.branch_id,
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","),
-    );
-    const blob = new Blob(["\ufeff" + headerFields.join(",") + "\n" + rows.join("\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ventas_${filterByMonth ? "mes_" + selectedDate.slice(0, 7) : selectedDate}_${branchLabelForFile}.csv`;
-    a.click();
+  const exportToCSV = async () => {
+    try {
+      const exportOpts: any = {};
+      if (saleVisibility === "cancelled") {
+        exportOpts.only_cancelled = true;
+      } else if (saleVisibility === "all") {
+        exportOpts.include_cancelled = true;
+      }
+      if (debouncedSearch) {
+        exportOpts.search = debouncedSearch;
+      }
+      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
+        exportOpts.date_month = selectedDate.slice(0, 7);
+      } else if (selectedDate) {
+        exportOpts.date = selectedDate;
+      }
+
+      setLoading(true);
+      const allSales = await api.exportSales(selectedBranch, exportOpts);
+      setLoading(false);
+
+      if (!allSales || allSales.length === 0) {
+        alert("No hay ventas para exportar con los filtros actuales.");
+        return;
+      }
+
+      const headerFields = ["Fecha", "Cliente", "Servicio/Producto", "Profesional", "Valor ($)", "Método Pago", "Vendedor", "Sucursal"];
+      const rows = allSales.map((s: any) =>
+        [
+          normalizeDateOnly(s.date),
+          s.client_name,
+          s.service_rendered,
+          s.professional_name || s.professional?.full_name || "",
+          saleAmount(s).toFixed(2),
+          s.payment_method,
+          s.seller_name || "",
+          branches.find((b) => String(b.id) === String(s.branch_id))?.name || s.branch_id,
+        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","),
+      );
+      const blob = new Blob(["\ufeff" + headerFields.join(",") + "\n" + rows.join("\n")], {
+        type: "text/csv;charset=utf-8",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ventas_${filterByMonth ? "mes_" + selectedDate.slice(0, 7) : selectedDate}_${branchLabelForFile}.csv`;
+      a.click();
+    } catch (err: any) {
+      alert("Error exportando ventas: " + (err.message || ""));
+      setLoading(false);
+    }
+  };
+
+  // Pagination helpers
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= lastPage) {
+      setCurrentPage(page);
+    }
+  };
+
+  const getPageNumbers = (): (number | "...")[] => {
+    const pages: (number | "...")[] = [];
+    const maxVisible = 7;
+
+    if (lastPage <= maxVisible) {
+      for (let i = 1; i <= lastPage; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(lastPage - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+
+      if (currentPage < lastPage - 2) pages.push("...");
+      pages.push(lastPage);
+    }
+    return pages;
   };
 
   const canSubmit =
@@ -652,12 +682,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             </button>
           )}
 
-          <button
-            onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
-          >
-            <Download size={18} /> Exportar
-          </button>
+          {canExport && (
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
+            >
+              <Download size={18} /> Exportar
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -1104,6 +1136,114 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             </tbody>
           </table>
         </div>
+
+        {/* PAGINATION BAR */}
+        {totalRecords > 0 && (
+          <div className="px-4 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            {/* Info: Mostrando X-Y de Z registros */}
+            <div className="text-sm text-gray-500">
+              Mostrando{" "}
+              <span className="font-bold text-gray-700">
+                {paginationFrom ?? 0}
+              </span>
+              {" "}a{" "}
+              <span className="font-bold text-gray-700">
+                {paginationTo ?? 0}
+              </span>
+              {" "}de{" "}
+              <span className="font-bold text-gray-700">
+                {totalRecords.toLocaleString()}
+              </span>
+              {" "}registros
+            </div>
+
+            {/* Page navigation */}
+            <div className="flex items-center gap-1">
+              {/* First page */}
+              <button
+                type="button"
+                onClick={() => goToPage(1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Primera página"
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              {/* Previous page */}
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Página anterior"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Page numbers */}
+              {getPageNumbers().map((pageNum, idx) =>
+                pageNum === "..." ? (
+                  <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400 text-sm">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => goToPage(pageNum)}
+                    className={`min-w-[36px] h-9 rounded-lg text-sm font-bold transition-colors ${
+                      currentPage === pageNum
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ),
+              )}
+
+              {/* Next page */}
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === lastPage}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Página siguiente"
+              >
+                <ChevronRight size={16} />
+              </button>
+              {/* Last page */}
+              <button
+                type="button"
+                onClick={() => goToPage(lastPage)}
+                disabled={currentPage === lastPage}
+                className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Última página"
+              >
+                <ChevronsRight size={16} />
+              </button>
+            </div>
+
+            {/* Per page selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Mostrar</span>
+              <select
+                value={perPage}
+                onChange={(e) => {
+                  setPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-gray-50 border border-gray-200 rounded-lg text-sm py-1.5 px-2 font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+              <span className="text-sm text-gray-500">por página</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <CreateSaleModal

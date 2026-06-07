@@ -338,7 +338,15 @@ export const api = {
   // --- Sales ---
   async listSales(
     branch_id: string | number = "all",
-    opts?: { include_cancelled?: boolean; only_cancelled?: boolean },
+    opts?: {
+      include_cancelled?: boolean;
+      only_cancelled?: boolean;
+      page?: number;
+      per_page?: number;
+      search?: string;
+      date?: string;
+      date_month?: string;
+    },
   ) {
     const params = new URLSearchParams();
 
@@ -351,13 +359,61 @@ export const api = {
       params.set("include_cancelled", "1");
     }
 
+    if (opts?.page) params.set("page", String(opts.page));
+    if (opts?.per_page) params.set("per_page", String(opts.per_page));
+    if (opts?.search) params.set("search", opts.search);
+    if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_month) params.set("date_month", opts.date_month);
+
+    const q = params.toString() ? `?${params.toString()}` : "";
+
+    return request<{
+      data: DailyLog[];
+      current_page: number;
+      last_page: number;
+      per_page: number;
+      total: number;
+      from: number | null;
+      to: number | null;
+    }>(`/api/sales${q}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
+  async exportSales(
+    branch_id: string | number = "all",
+    opts?: {
+      include_cancelled?: boolean;
+      only_cancelled?: boolean;
+      search?: string;
+      date?: string;
+      date_month?: string;
+    },
+  ) {
+    const params = new URLSearchParams();
+
+    if (branch_id && branch_id !== "all")
+      params.set("branch_id", String(branch_id));
+
+    if (opts?.only_cancelled) {
+      params.set("only_cancelled", "1");
+    } else if (opts?.include_cancelled) {
+      params.set("include_cancelled", "1");
+    }
+
+    if (opts?.search) params.set("search", opts.search);
+    if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_month) params.set("date_month", opts.date_month);
+
+    params.set("export_all", "1");
+
     const q = params.toString() ? `?${params.toString()}` : "";
 
     const res = await request<DailyLog[]>(`/api/sales${q}`, {
       method: "GET",
       auth: true,
     });
-
     return Array.isArray(res) ? res : [];
   },
 
