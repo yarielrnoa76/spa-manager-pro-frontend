@@ -13,7 +13,10 @@ import {
   ArrowLeft,
   Search,
   Trash2,
+  Upload,
 } from "lucide-react";
+import ImportLeadsModal from "../components/ImportLeadsModal";
+import { UserData } from "../App";
 
 type LeadStatus = Lead["status"];
 
@@ -233,13 +236,22 @@ const LeadCard: React.FC<{
   );
 };
 
-const Leads: React.FC = () => {
+interface LeadsProps {
+  user?: UserData | null;
+}
+
+const Leads: React.FC<LeadsProps> = ({ user }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  const perms = user?.permissions || [];
+  const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
+  const canImportLeads = isAdmin || perms.includes("import_leads");
 
   const fetchData = useCallback(async () => {
     try {
@@ -319,15 +331,25 @@ const Leads: React.FC = () => {
               Gestiona el ciclo de vida de tus clientes potenciales.
             </p>
           </div>
-          <button
-            onClick={() => {
-              setEditingLead(null);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
-          >
-            <Plus size={18} /> Nuevo Lead
-          </button>
+          <div className="flex gap-2">
+            {canImportLeads && (
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 rounded-lg text-sm font-bold shadow-sm hover:bg-indigo-50"
+              >
+                <Upload size={18} /> Importar
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setEditingLead(null);
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
+            >
+              <Plus size={18} /> Nuevo Lead
+            </button>
+          </div>
         </div>
 
         <div className="relative">
@@ -425,6 +447,16 @@ const Leads: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {isImportModalOpen && (
+        <ImportLeadsModal
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchData();
+          }}
+        />
       )}
     </div>
   );

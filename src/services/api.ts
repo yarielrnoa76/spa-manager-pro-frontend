@@ -304,6 +304,10 @@ export const api = {
     return request<Lead[]>(`/api/leads`, { method: "GET", auth: true });
   },
 
+  async batchImportLeads(payload: unknown) {
+    return request(`/api/leads/batch-import`, { method: "POST", body: payload, auth: true });
+  },
+
   async getLead(leadId: string | number) {
     return request<any>(`/api/leads/${encodeURIComponent(String(leadId))}`, { method: "GET", auth: true });
   },

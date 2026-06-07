@@ -400,7 +400,7 @@ const App: React.FC = () => {
                 <Route path="/" element={hasPerm("view_dashboard") ? <Dashboard /> : <Navigate to="/sales" replace />} />
                 <Route path="/sales" element={<Sales user={user} />} />
                 <Route path="/stocks" element={<Stocks />} />
-                <Route path="/leads" element={<Leads />} />
+                <Route path="/leads" element={<Leads user={user} />} />
                 <Route path="/appointments" element={<Appointments />} />
                 <Route path="/communications" element={<CommunicationCenter user={user} />} />
                 <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />
