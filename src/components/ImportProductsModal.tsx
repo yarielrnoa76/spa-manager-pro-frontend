@@ -161,6 +161,30 @@ export default function ImportProductsModal({ onClose, onSuccess }: ImportProduc
     setSuccessMsg(null);
 
     try {
+      const cleanNumber = (val: string): string => {
+        if (!val || val === "—") return "0";
+        const cleaned = val.replace(/[^\d.,-]/g, "");
+        if (!cleaned) return "0";
+
+        if (cleaned.includes(",") && cleaned.includes(".")) {
+          const lastComma = cleaned.lastIndexOf(",");
+          const lastDot = cleaned.lastIndexOf(".");
+          if (lastComma > lastDot) {
+            return cleaned.replace(/\./g, "").replace(/,/g, ".");
+          } else {
+            return cleaned.replace(/,/g, "");
+          }
+        } else if (cleaned.includes(",")) {
+          const parts = cleaned.split(",");
+          if (parts[parts.length - 1].length === 3) {
+            return cleaned.replace(/,/g, "");
+          } else {
+            return cleaned.replace(/,/g, ".");
+          }
+        }
+        return cleaned;
+      };
+
       const products = csvRows
         .filter((row) => row.length >= 1)
         .map((row) => {
@@ -169,11 +193,11 @@ export default function ImportProductsModal({ onClose, onSuccess }: ImportProduc
             name: get("name"),
             sku: get("sku"),
             type: get("type") || "product",
-            sales_price: get("sales_price") || "0",
-            cost_price: get("cost_price") || "0",
-            stock: get("stock") || "0",
-            min_stock: get("min_stock") || "0",
-            max_stock: get("max_stock") || "",
+            sales_price: cleanNumber(get("sales_price")),
+            cost_price: cleanNumber(get("cost_price")),
+            stock: cleanNumber(get("stock")),
+            min_stock: cleanNumber(get("min_stock")),
+            max_stock: get("max_stock") ? cleanNumber(get("max_stock")) : "",
           };
         })
         .filter((s) => s.name);

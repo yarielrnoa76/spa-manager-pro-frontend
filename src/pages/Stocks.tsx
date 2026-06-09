@@ -418,6 +418,7 @@ const Stocks: React.FC = () => {
               <th className="px-6 py-4">SKU</th>
               <th className="px-6 py-4">Tipo</th>
               <th className="px-6 py-4">Sales Price</th>
+              <th className="px-6 py-4">Cost Price</th>
               <th className="px-6 py-4 text-center">Stock Actual</th>
               <th className="px-6 py-4 text-center">Stock Mínimo</th>
               <th className="px-6 py-4 text-center">Stock Máximo</th>
@@ -459,6 +460,10 @@ const Stocks: React.FC = () => {
 
                   <td className="px-6 py-4 font-medium">
                     ${product.sales_price}
+                  </td>
+
+                  <td className="px-6 py-4 text-gray-500">
+                    ${product.cost_price}
                   </td>
 
                   <td className="px-6 py-4 text-center">
