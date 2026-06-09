@@ -194,6 +194,21 @@ export const api = {
     return data;
   },
 
+  async loginWithGoogle(credential: string) {
+    const data = await request<{ token: string; user: unknown; tenant?: { id: number; name: string } }>(`/api/auth/google`, {
+      method: "POST",
+      body: { credential },
+      auth: false,
+    });
+    if (data?.token) this.setToken(data.token);
+
+    if (data?.tenant?.id) {
+      this.setCurrentTenantId(data.tenant.id);
+    }
+
+    return data;
+  },
+
   async me() {
     return request<{
       id: string;

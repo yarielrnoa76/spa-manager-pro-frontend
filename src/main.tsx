@@ -10,10 +10,14 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+import { GoogleOAuthProvider } from "@react-oauth/google";
+
 createRoot(rootElement).render(
   <StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ""}>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </GoogleOAuthProvider>
   </StrictMode>
 );

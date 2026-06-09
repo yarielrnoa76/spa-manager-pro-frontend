@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
+import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 
 type LoginProps = {
   onLoginSuccess?: () => void | Promise<void>;
@@ -43,6 +44,33 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) return;
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      await api.loginWithGoogle(credentialResponse.credential);
+      const me = await api.me();
+      if (!me) {
+        api.clearToken();
+        throw new Error("Login OK, but user data could not be retrieved.");
+      }
+      await onLoginSuccess?.();
+      navigate("/", { replace: true });
+    } catch (err: unknown) {
+      const e = err as Error & { code?: string; message?: string };
+      setError(e?.message || "Invalid Google login. Please try again.");
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError("Google Login Failed");
   };
 
   return (
@@ -94,8 +122,29 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               disabled={isLoading}
               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 transition disabled:bg-indigo-400"
             >
-              {isLoading ? "Signing In..." : "Sign In"}
+              {isLoading ? "Signing In..." : "Sign In with User & Password"}
             </button>
+            
+            <div className="relative flex items-center justify-center mt-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative px-4 bg-white text-sm text-gray-500">
+                Or continue with
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                theme="outline"
+                size="large"
+                shape="rectangular"
+                width="100%"
+                text="signin_with"
+              />
+            </div>
           </form>
         </div>
 
