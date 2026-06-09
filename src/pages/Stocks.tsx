@@ -13,6 +13,7 @@ import {
   Download,
   Upload,
 } from "lucide-react";
+import ImportProductsModal from "../components/ImportProductsModal";
 
 const Stocks: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -54,7 +55,7 @@ const Stocks: React.FC = () => {
   const [moveSalesPrice, setMoveSalesPrice] = useState<string>("0");
   const [moveCostPrice, setMoveCostPrice] = useState<string>("0");
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const exportToCSV = () => {
     const headers = ["Nombre", "SKU", "Tipo", "Precio Venta", "Precio Costo", "Stock Actual", "Stock Minimo", "Stock Maximo"].join(",");
@@ -89,161 +90,6 @@ const Stocks: React.FC = () => {
     const todayStr = new Date().toISOString().slice(0, 10);
     a.download = `inventario_export_${todayStr}.csv`;
     a.click();
-  };
-
-  const parseCSV = (text: string): string[][] => {
-    const lines: string[][] = [];
-    let row: string[] = [];
-    let inQuotes = false;
-    let currentVal = '';
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const nextChar = text[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          currentVal += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        row.push(currentVal.trim());
-        currentVal = '';
-      } else if ((char === '\r' || char === '\n') && !inQuotes) {
-        row.push(currentVal.trim());
-        currentVal = '';
-        if (row.length > 1 || row[0] !== '') {
-          lines.push(row);
-        }
-        row = [];
-        if (char === '\r' && nextChar === '\n') {
-          i++;
-        }
-      } else {
-        currentVal += char;
-      }
-    }
-    if (currentVal || row.length > 0) {
-      row.push(currentVal.trim());
-      if (row.length > 1 || row[0] !== '') {
-        lines.push(row);
-      }
-    }
-    return lines;
-  };
-
-  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      if (!text) return;
-
-      try {
-        const rows = parseCSV(text);
-        if (rows.length === 0) {
-          alert("El archivo CSV está vacío.");
-          return;
-        }
-
-        let startIdx = 0;
-        const firstRowStr = rows[0].join("").toLowerCase();
-        if (firstRowStr.includes("nombre") || firstRowStr.includes("sku") || firstRowStr.includes("tipo")) {
-          startIdx = 1;
-        }
-
-        const importItems = [];
-        for (let i = startIdx; i < rows.length; i++) {
-          const row = rows[i];
-          if (row.length < 1 || !row[0]) continue;
-
-          const name = row[0].trim();
-          const sku = row[1] ? row[1].trim() : null;
-          const rawType = row[2] ? row[2].trim().toLowerCase() : "";
-          const type = (rawType === "service" || rawType === "servicio") ? "service" : "product";
-          const sales_price = parseFloat(row[3] || "0") || 0;
-          const cost_price = parseFloat(row[4] || "0") || 0;
-          const stock = parseInt(row[5] || "0", 10) || 0;
-          const min_stock = parseInt(row[6] || "0", 10) || 0;
-          const rawMaxStock = row[7] ? row[7].trim() : "";
-          const max_stock = (rawMaxStock === "" || parseInt(rawMaxStock, 10) === 0) ? null : (parseInt(rawMaxStock, 10) || null);
-
-          importItems.push({
-            name,
-            sku: sku || null,
-            type,
-            sales_price,
-            cost_price,
-            stock: type === "product" ? stock : 0,
-            min_stock: type === "product" ? min_stock : 0,
-            max_stock: type === "product" ? max_stock : null,
-          });
-        }
-
-        if (importItems.length === 0) {
-          alert("No se encontraron productos válidos para importar.");
-          return;
-        }
-
-        const confirmImport = window.confirm(
-          `¿Deseas importar ${importItems.length} producto(s) al inventario?\n\nLos productos existentes con el mismo SKU serán actualizados con los nuevos valores del archivo.`
-        );
-        if (!confirmImport) {
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          return;
-        }
-
-        let successCount = 0;
-        let updateCount = 0;
-        const failedItems: string[] = [];
-
-        for (const item of importItems) {
-          try {
-            const existingProduct = item.sku
-              ? products.find(p => p.sku && p.sku.trim().toLowerCase() === item.sku.trim().toLowerCase())
-              : null;
-
-            if (existingProduct) {
-              await api.updateProduct(existingProduct.id, {
-                name: item.name,
-                sku: item.sku,
-                type: item.type as any,
-                sales_price: item.sales_price,
-                cost_price: item.cost_price,
-                stock: item.stock,
-                min_stock: item.min_stock,
-                max_stock: item.max_stock
-              });
-              updateCount++;
-            } else {
-              await api.createProduct(item as any);
-              successCount++;
-            }
-          } catch (err: any) {
-            failedItems.push(`"${item.name}" (SKU: ${item.sku || "N/A"}): ${err?.message || "Error al procesar"}`);
-          }
-        }
-
-        let msg = `Importación completada.\n\n- Productos nuevos creados: ${successCount}\n- Productos existentes actualizados: ${updateCount}`;
-        if (failedItems.length > 0) {
-          msg += `\n- Productos fallidos: ${failedItems.length}\n\nDetalle de errores:\n` + failedItems.slice(0, 10).join("\n");
-          if (failedItems.length > 10) {
-            msg += `\n... y ${failedItems.length - 10} errores más.`;
-          }
-        }
-        alert(msg);
-        fetchData();
-      } catch (err: any) {
-        alert("Ocurrió un error al procesar el archivo CSV: " + (err?.message || err));
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsText(file);
   };
 
   const fetchData = useCallback(async () => {
@@ -472,16 +318,9 @@ const Stocks: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImportCSV}
-            accept=".csv"
-            className="hidden"
-          />
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-bold hover:bg-gray-50 text-gray-700 cursor-pointer shadow-sm"
           >
             <Upload size={18} /> Importar CSV
@@ -1243,6 +1082,16 @@ const Stocks: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {isImportModalOpen && (
+        <ImportProductsModal
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchData();
+          }}
+        />
       )}
     </div>
   );

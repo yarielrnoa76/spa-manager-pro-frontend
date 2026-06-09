@@ -484,6 +484,10 @@ export const api = {
     });
     return Array.isArray(res) ? res : [];
   },
+  async batchImportProducts(payload: unknown) {
+    return request(`/api/products/batch-import`, { method: "POST", body: payload, auth: true });
+  },
+
   async updateProduct(
     productId: number,
     payload: Partial<{
