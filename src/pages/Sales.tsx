@@ -157,11 +157,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const canViewBranch = isAdmin || perms.includes("view_branch");
   const canImport = isAdmin || perms.includes("import_sales");
   const canExport = isAdmin || perms.includes("export_sales");
+  const canViewAllSales = isAdmin || perms.includes("view_all_sales");
+  const canViewMySalesOnly = perms.includes("view_my_sales_only") && !canViewAllSales;
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false); // Para crear lead desde ventas
@@ -172,6 +175,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedSeller, setSelectedSeller] = useState<string>(canViewMySalesOnly ? String(user?.id) : "all");
 
   const today = localISODate();
   const [selectedDate, setSelectedDate] = useState<string>(today);
@@ -184,11 +188,20 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(400);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [totalFilteredAmount, setTotalFilteredAmount] = useState(0);
   const [lastPage, setLastPage] = useState(1);
   const [paginationFrom, setPaginationFrom] = useState<number | null>(null);
   const [paginationTo, setPaginationTo] = useState<number | null>(null);
+
+  const [statsData, setStatsData] = useState<{
+    total_day: number;
+    total_month: number;
+    days_worked: number;
+    total_working_days: number;
+    projection: number;
+  }>({ total_day: 0, total_month: 0, days_worked: 0, total_working_days: 0, projection: 0 });
 
   const initialNewSale: NewSaleState = useMemo(
     () => ({
@@ -226,7 +239,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [saleVisibility, selectedBranch, selectedDate, filterByMonth]);
+  }, [saleVisibility, selectedBranch, selectedDate, filterByMonth, selectedSeller]);
 
   const fetchData = useCallback(async (forceAll = false) => {
     setLoading(true);
@@ -253,10 +266,18 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         salesOpts.date = selectedDate;
       }
 
+      if (selectedSeller !== "all") {
+        salesOpts.seller_id = selectedSeller;
+      }
+
       const shouldFetchDeps = forceAll || branches.length === 0;
 
       const promises: Promise<any>[] = [
-        api.listSales(selectedBranch, salesOpts)
+        api.listSales(selectedBranch, salesOpts),
+        api.getSalesStats(selectedBranch, {
+          date: filterByMonth && selectedDate && selectedDate.length >= 7 ? selectedDate.slice(0, 7) : selectedDate,
+          seller_id: selectedSeller,
+        }),
       ];
 
       if (shouldFetchDeps) {
@@ -268,25 +289,32 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               : Promise.resolve([]),
           api.listProducts(),
           canViewLeads ? api.listLeads() : Promise.resolve([]),
-          api.listPaymentMethods()
+          api.listPaymentMethods(),
+          api.listUsers()
         );
       }
 
       const results = await Promise.all(promises);
 
       const paginatedResult = results[0];
+      const statsResult = results[1];
       setSales(Array.isArray(paginatedResult?.data) ? paginatedResult.data : []);
       setTotalRecords(paginatedResult?.total ?? 0);
+      setTotalFilteredAmount(paginatedResult?.total_amount ?? 0);
       setLastPage(paginatedResult?.last_page ?? 1);
       setCurrentPage(paginatedResult?.current_page ?? 1);
       setPaginationFrom(paginatedResult?.from ?? null);
       setPaginationTo(paginatedResult?.to ?? null);
+      if (statsResult) {
+        setStatsData(statsResult);
+      }
 
       if (shouldFetchDeps) {
-        setBranches(Array.isArray(results[1]) ? results[1] : []);
-        setProducts(Array.isArray(results[2]) ? results[2] : []);
-        setLeads(Array.isArray(results[3]) ? results[3] : []);
-        setPaymentMethods(Array.isArray(results[4]) ? results[4] : []);
+        setBranches(Array.isArray(results[2]) ? results[2] : []);
+        setProducts(Array.isArray(results[3]) ? results[3] : []);
+        setLeads(Array.isArray(results[4]) ? results[4] : []);
+        setPaymentMethods(Array.isArray(results[5]) ? results[5] : []);
+        setUsersList(Array.isArray(results[6]) ? results[6] : []);
       }
     } catch (err) {
       console.error("Sales fetchData error:", err);
@@ -296,12 +324,13 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         setProducts([]);
         setLeads([]);
         setPaymentMethods([]);
+        setUsersList([]);
       }
     } finally {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, filterByMonth]);
+  }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, filterByMonth, selectedSeller]);
 
   useEffect(() => {
     fetchData(true);
@@ -342,44 +371,15 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const visibleSales = sales;
 
   const stats = useMemo(() => {
-    // Stats from current page data
-    const totalAmount = visibleSales.reduce(
-      (acc, curr) => acc + saleAmount(curr),
-      0,
-    );
-
-    // Monthly stats computed from the server-side stats endpoint (or page data)
-    if (!selectedDate || selectedDate.length < 7) {
-      return { count: totalRecords, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
-    }
-
-    const parts = selectedDate.split("-");
-    const selYear = parseInt(parts[0], 10);
-    const selMonth = parseInt(parts[1], 10) - 1;
-
-    if (isNaN(selYear) || isNaN(selMonth)) {
-      return { count: totalRecords, total: totalAmount, monthlyTotal: 0, daysWorked: 0, totalWorkingDays: 0, projection: 0 };
-    }
-
-    // Working days in month (Mon-Sat)
-    let totalWorkingDays = 0;
-    const tempDate = new Date(selYear, selMonth, 1);
-    while (tempDate.getMonth() === selMonth) {
-      if (tempDate.getDay() !== 0) {
-        totalWorkingDays++;
-      }
-      tempDate.setDate(tempDate.getDate() + 1);
-    }
-
     return {
       count: totalRecords,
-      total: totalAmount,
-      monthlyTotal: 0,
-      daysWorked: 0,
-      totalWorkingDays,
-      projection: 0,
+      total: statsData.total_day || totalFilteredAmount, // Use backend's filtered amount
+      monthlyTotal: statsData.total_month || 0,
+      daysWorked: statsData.days_worked || 0,
+      totalWorkingDays: statsData.total_working_days || 0,
+      projection: statsData.projection || 0,
     };
-  }, [visibleSales, totalRecords, selectedDate]);
+  }, [totalFilteredAmount, totalRecords, statsData]);
 
   const availableProducts = useMemo(
     () => products.filter((p: any) => Number((p as any).stock) > 0),
@@ -557,6 +557,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         exportOpts.date_month = selectedDate.slice(0, 7);
       } else if (selectedDate) {
         exportOpts.date = selectedDate;
+      }
+
+      if (selectedSeller !== "all") {
+        exportOpts.seller_id = selectedSeller;
       }
 
       setLoading(true);
@@ -994,6 +998,22 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             {branches.map((b) => (
               <option key={b.id} value={String(b.id)}>
                 {b.name}
+              </option>
+            ))}
+          </select>
+
+          {/* FILTRO VENDEDORA */}
+          <select
+            className={`bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none ${canViewMySalesOnly ? "opacity-60 cursor-not-allowed" : ""}`}
+            value={selectedSeller}
+            onChange={(e) => setSelectedSeller(e.target.value)}
+            title={canViewMySalesOnly ? "Solo puedes ver tus propias ventas" : "Filtrar por vendedora"}
+            disabled={canViewMySalesOnly}
+          >
+            <option value="all">Todas las Vendedoras</option>
+            {usersList.map((u) => (
+              <option key={u.id} value={String(u.id)}>
+                {u.name}
               </option>
             ))}
           </select>

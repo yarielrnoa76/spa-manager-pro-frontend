@@ -188,7 +188,7 @@ const App: React.FC = () => {
     ...(canSeeDashboard
       ? [{ to: "/", icon: LayoutDashboard, label: "Dashboard" }]
       : []),
-    ...(hasPerm("view_sales")
+    ...(hasPerm("view_all_sales") || hasPerm("view_my_sales_only")
       ? [{ to: "/sales", icon: DollarSign, label: "Ventas Diarias" }]
       : []),
     ...(hasPerm("view_products")

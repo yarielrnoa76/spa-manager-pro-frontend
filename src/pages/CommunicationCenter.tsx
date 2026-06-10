@@ -4,6 +4,8 @@ import { api } from "../services/api";
 import { Conversation } from "../types";
 import { ConversationChat } from "../components/ConversationChat";
 import { Link } from "react-router-dom";
+import LeadModal from "../components/LeadModal";
+import CreateSaleModal from "../components/CreateSaleModal";
 
 export default function CommunicationCenter({ user }: { user: any }) {
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -21,6 +23,10 @@ export default function CommunicationCenter({ user }: { user: any }) {
     const [showNewChatModal, setShowNewChatModal] = useState(false);
     const [newChatPhone, setNewChatPhone] = useState("");
     const [newChatLoading, setNewChatLoading] = useState(false);
+
+    const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+    const [leadToView, setLeadToView] = useState<any>(null);
+    const [isCreateSaleOpen, setIsCreateSaleOpen] = useState(false);
 
     const loadConversations = async (page = 1) => {
         setLoading(true);
@@ -279,11 +285,30 @@ export default function CommunicationCenter({ user }: { user: any }) {
                         </div>
 
                         {activeConv.lead_id ? (
-                            <div className="pt-4 border-t mt-4">
+                            <div className="pt-4 border-t mt-4 space-y-2">
                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Lead Relacionado</span>
-                                <Link to={`/leads?id=${activeConv.lead_id}`} className="block w-full text-center text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2 rounded-lg transition-colors border border-indigo-100">
+                                <button
+                                    onClick={async () => {
+                                        if (!activeConv.lead_id) return;
+                                        try {
+                                            const l = await api.getLead(activeConv.lead_id);
+                                            setLeadToView(l);
+                                            setIsLeadModalOpen(true);
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert("Error al cargar lead");
+                                        }
+                                    }}
+                                    className="block w-full text-center text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2 rounded-lg transition-colors border border-indigo-100"
+                                >
                                     Ver Lead Completo
-                                </Link>
+                                </button>
+                                <button
+                                    onClick={() => setIsCreateSaleOpen(true)}
+                                    className="block w-full text-center text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-2 rounded-lg transition-colors border border-emerald-100"
+                                >
+                                    Agendar
+                                </button>
                             </div>
                         ) : (
                             <div className="pt-4 border-t mt-4 text-center">
@@ -329,6 +354,28 @@ export default function CommunicationCenter({ user }: { user: any }) {
                     </div>
                 </div>
             )}
+
+            <LeadModal
+                isOpen={isLeadModalOpen}
+                onClose={() => setIsLeadModalOpen(false)}
+                onSuccess={() => {}}
+                leadToEdit={leadToView}
+                zIndexClass="z-[150]"
+            />
+
+            <CreateSaleModal
+                isOpen={isCreateSaleOpen}
+                onClose={() => setIsCreateSaleOpen(false)}
+                onSuccess={() => {
+                    alert("Venta guardada exitosamente.");
+                }}
+                user={user}
+                initialData={{
+                    lead_id: activeConv?.lead_id,
+                    client_name: activeConv?.contact_name,
+                    branch_id: activeConv?.branch?.id || activeConv?.branch_id
+                }}
+            />
         </div>
     );
 }

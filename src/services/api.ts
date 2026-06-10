@@ -365,6 +365,7 @@ export const api = {
       search?: string;
       date?: string;
       date_month?: string;
+      seller_id?: string | number;
     },
   ) {
     const params = new URLSearchParams();
@@ -383,6 +384,7 @@ export const api = {
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
     if (opts?.date_month) params.set("date_month", opts.date_month);
+    if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
     const q = params.toString() ? `?${params.toString()}` : "";
 
@@ -394,6 +396,7 @@ export const api = {
       total: number;
       from: number | null;
       to: number | null;
+      total_amount: number;
     }>(`/api/sales${q}`, {
       method: "GET",
       auth: true,
@@ -408,6 +411,7 @@ export const api = {
       search?: string;
       date?: string;
       date_month?: string;
+      seller_id?: string | number;
     },
   ) {
     const params = new URLSearchParams();
@@ -424,6 +428,7 @@ export const api = {
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
     if (opts?.date_month) params.set("date_month", opts.date_month);
+    if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
     params.set("export_all", "1");
 
@@ -434,6 +439,32 @@ export const api = {
       auth: true,
     });
     return Array.isArray(res) ? res : [];
+  },
+
+  async getSalesStats(
+    branch_id: string | number = "all",
+    opts?: {
+      date?: string;
+      seller_id?: string | number;
+    },
+  ) {
+    const params = new URLSearchParams();
+    if (branch_id && branch_id !== "all") params.set("branch_id", String(branch_id));
+    if (opts?.date) params.set("date", opts.date);
+    if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
+
+    const q = params.toString() ? `?${params.toString()}` : "";
+
+    return request<{
+      total_day: number;
+      total_month: number;
+      days_worked: number;
+      total_working_days: number;
+      projection: number;
+    }>(`/api/sales/stats${q}`, {
+      method: "GET",
+      auth: true,
+    });
   },
 
   async createSale(payload: unknown) {
