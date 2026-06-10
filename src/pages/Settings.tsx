@@ -116,7 +116,7 @@ const SettingsPage: React.FC<{
         </div>
 
         {tab === "branches" && canSeeBranches && <BranchesSettings />}
-        {tab === "users" && canSeeUsers && <UsersSettings />}
+        {tab === "users" && canSeeUsers && <UsersSettings isSuperAdmin={isSuperAdmin} />}
         {tab === "rbac" && canSeeRbac && <RolesPermissionsSettings canManage={hasPerm("manage_roles")} />}
         {tab === "professionals" && canSeeProfessionals && (
           <ProfessionalsSettings 

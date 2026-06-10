@@ -265,8 +265,9 @@ export const api = {
     return data;
   },
 
-  async listUsers() {
-    return request<any[]>(`/api/users`, { method: "GET", auth: true });
+  async listUsers(opts?: { include_global?: boolean }) {
+    const q = opts?.include_global ? `?include_global=1` : "";
+    return request<any[]>(`/api/users${q}`, { method: "GET", auth: true });
   },
 
   // --- Dashboard ---

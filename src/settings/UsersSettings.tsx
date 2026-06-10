@@ -29,12 +29,13 @@ function getErrorMessage(e: any): string {
   return e?.message ?? "Ocurrió un error.";
 }
 
-export default function UsersSettings() {
+export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean }) {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [viewGlobalUsers, setViewGlobalUsers] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -66,7 +67,7 @@ export default function UsersSettings() {
 
     try {
       const [usersRes, rolesRes, branchesRes] = await Promise.all([
-        api.get("/users"),
+        api.listUsers({ include_global: viewGlobalUsers }),
         api.get("/roles"),
         api.get("/branches"),
       ]);
@@ -90,7 +91,8 @@ export default function UsersSettings() {
 
   useEffect(() => {
     load();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewGlobalUsers]);
 
   const save = async () => {
     setError(null);
@@ -284,7 +286,22 @@ export default function UsersSettings() {
         </div>
       </div>
 
-      <div className="overflow-x-auto border rounded-xl">
+      {isSuperAdmin && (
+        <div className="flex items-center gap-2 mt-4 mb-2">
+          <input
+            type="checkbox"
+            id="view-global-users"
+            checked={viewGlobalUsers}
+            onChange={(e) => setViewGlobalUsers(e.target.checked)}
+            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+          />
+          <label htmlFor="view-global-users" className="text-sm font-semibold text-gray-700">
+            Ver Usuarios Globales (Sin Tenant)
+          </label>
+        </div>
+      )}
+
+      <div className="overflow-x-auto border rounded-xl mt-4">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
