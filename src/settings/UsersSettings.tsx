@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../services/api";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 type Role = { id: number; name: string };
 type Branch = { id: number; name: string };
@@ -36,6 +37,7 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [viewGlobalUsers, setViewGlobalUsers] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -183,6 +185,59 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
   };
   */
 
+  const sortedRows = useMemo(() => {
+    if (!sortConfig) return rows;
+    const { key, direction } = sortConfig;
+    return [...rows].sort((a, b) => {
+      let aValue: any = a[key as keyof UserRow];
+      let bValue: any = b[key as keyof UserRow];
+
+      if (key === "role") {
+        aValue = a.role?.name || "";
+        bValue = b.role?.name || "";
+      } else if (key === "branch") {
+        aValue = a.branch?.name || "";
+        bValue = b.branch?.name || "";
+      } else if (key === "status") {
+        aValue = a.deleted_at ? "Eliminado" : "Activo";
+        bValue = b.deleted_at ? "Eliminado" : "Activo";
+      }
+
+      // Fallback a strings vacíos si null
+      aValue = aValue ?? "";
+      bValue = bValue ?? "";
+
+      // Comparación ignorando mayúsculas/minúsculas para strings
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+
+      if (aValue < bValue) return direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [rows, sortConfig]);
+
+  const requestSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown size={14} className="inline ml-1 text-gray-400" />;
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp size={14} className="inline ml-1 text-indigo-600" />
+    ) : (
+      <ArrowDown size={14} className="inline ml-1 text-indigo-600" />
+    );
+  };
+
   return (
     <div className="space-y-4">
       {error && (
@@ -305,11 +360,21 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="text-left p-3">Nombre</th>
-              <th className="text-left p-3">Email</th>
-              <th className="text-left p-3">Rol</th>
-              <th className="text-left p-3">Sucursal</th>
-              <th className="text-left p-3">Estado</th>
+              <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("name")}>
+                Nombre {renderSortIcon("name")}
+              </th>
+              <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("email")}>
+                Email {renderSortIcon("email")}
+              </th>
+              <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("role")}>
+                Rol {renderSortIcon("role")}
+              </th>
+              <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("branch")}>
+                Sucursal {renderSortIcon("branch")}
+              </th>
+              <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("status")}>
+                Estado {renderSortIcon("status")}
+              </th>
               <th className="text-right p-3">Acciones</th>
             </tr>
           </thead>
@@ -321,14 +386,14 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
                   Cargando...
                 </td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : sortedRows.length === 0 ? (
               <tr>
                 <td className="p-3 text-gray-500" colSpan={6}>
                   No hay usuarios.
                 </td>
               </tr>
             ) : (
-              rows.map((u) => {
+              sortedRows.map((u) => {
                 const deleted = !!u.deleted_at;
 
                 return (
