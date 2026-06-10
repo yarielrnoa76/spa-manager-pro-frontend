@@ -201,6 +201,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     days_worked: number;
     total_working_days: number;
     projection: number;
+    weekly_breakdown?: {
+      start: string;
+      end: string;
+      startDay: number;
+      endDay: number;
+      count: number;
+      total: number;
+    }[];
   }>({ total_day: 0, total_month: 0, days_worked: 0, total_working_days: 0, projection: 0 });
 
   const initialNewSale: NewSaleState = useMemo(
@@ -719,43 +727,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
         const monthLabel = `${monthNames[selMonth]} ${selYear}`;
 
-        // Build week ranges for this month (fixed 7-day blocks: 1-7, 8-14, 15-21, 22-end)
-        const lastDayNum = new Date(selYear, selMonth + 1, 0).getDate();
-        const weeks: { start: string; end: string; startDay: number; endDay: number }[] = [];
-        const fmt = (day: number) => `${selYear}-${String(selMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-        for (let startDay = 1; startDay <= lastDayNum; startDay += 7) {
-          const endDay = Math.min(startDay + 6, lastDayNum);
-          weeks.push({
-            start: fmt(startDay),
-            end: fmt(endDay),
-            startDay,
-            endDay,
-          });
-        }
-
-        // Group sales by week for this month (all branches or filtered)
-        const monthSales = (sales as any[]).filter((s: any) => {
-          const d = normalizeDateOnly(s.date);
-          if (!d || d.length < 7) return false;
-          const sYear = parseInt(d.slice(0,4),10);
-          const sMonth = parseInt(d.slice(5,7),10) - 1;
-          const branchMatch = selectedBranch === "all" || String(s.branch_id) === String(selectedBranch);
-          return sYear === selYear && sMonth === selMonth && branchMatch && !isSaleCancelled(s);
-        });
-
-        const weeklyData = weeks.map(w => {
-          const weekSales = monthSales.filter((s: any) => {
-            const d = normalizeDateOnly(s.date);
-            return d >= w.start && d <= w.end;
-          });
-          return {
-            ...w,
-            count: weekSales.length,
-            total: weekSales.reduce((acc: number, s: any) => acc + saleAmount(s), 0),
-          };
-        });
-
+        const weeklyData = statsData.weekly_breakdown || [];
         if (weeklyData.length === 0) return null;
 
         const totalCount = weeklyData.reduce((a, w) => a + w.count, 0);
