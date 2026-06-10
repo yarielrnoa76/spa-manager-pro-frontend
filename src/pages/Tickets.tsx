@@ -3,7 +3,7 @@ import {
     Plus, Search, Filter, MoreVertical, Ticket as TicketIcon,
     Clock, CheckCircle, XCircle, AlertCircle, ChevronRight,
     User, Calendar, MessageSquare, History, Settings,
-    ArrowRight
+    ArrowRight, Send
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Ticket, TicketCategory, TicketPriority, User as UserType } from '../types';
@@ -22,6 +22,8 @@ const Tickets: React.FC = () => {
     // Selection / Detail
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newComment, setNewComment] = useState("");
+
 
     // Cancellation Modal
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -432,20 +434,41 @@ const Tickets: React.FC = () => {
                                     ))}
                                 </div>
 
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
+                                <div className="flex flex-col gap-2">
+                                    <textarea
                                         placeholder="Añadir comentario..."
-                                        className="flex-1 bg-white border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        className="w-full bg-white border rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none min-h-[60px] resize-y custom-scrollbar"
+                                        value={newComment}
+                                        onChange={(e) => setNewComment(e.target.value)}
                                         onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && e.currentTarget.value) {
-                                                api.addTicketComment(selectedTicket.id, e.currentTarget.value).then(() => {
-                                                    api.getTicket(selectedTicket.id).then(t => setSelectedTicket(t));
-                                                    e.currentTarget.value = '';
-                                                });
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                if (newComment.trim()) {
+                                                    api.addTicketComment(selectedTicket.id, newComment.trim()).then(() => {
+                                                        api.getTicket(selectedTicket.id).then(t => setSelectedTicket(t));
+                                                        setNewComment("");
+                                                    });
+                                                }
                                             }
                                         }}
                                     />
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={() => {
+                                                if (newComment.trim()) {
+                                                    api.addTicketComment(selectedTicket.id, newComment.trim()).then(() => {
+                                                        api.getTicket(selectedTicket.id).then(t => setSelectedTicket(t));
+                                                        setNewComment("");
+                                                    });
+                                                }
+                                            }}
+                                            disabled={!newComment.trim()}
+                                            className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1.5 hover:bg-indigo-700 disabled:opacity-50 transition"
+                                        >
+                                            <Send size={14} />
+                                            Enviar
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

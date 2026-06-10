@@ -75,6 +75,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         description: "",
         responsable_id: "",
     });
+    const [newTicketComment, setNewTicketComment] = useState("");
 
     // Cargar sucursales al montar o abrir
     useEffect(() => {
@@ -95,6 +96,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setIsCreatingTicket(false);
             setSelectedTicket(null);
             setIsEditingSelectedTicket(false);
+            setNewTicketComment("");
             if (leadToEdit) {
                 setFormData({
                     name: leadToEdit.name,
@@ -487,7 +489,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 {/* Nombre */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Nombre <span className="text-gray-400 font-normal normal-case">(Obligatorio si no hay tel)</span>
+                                        Nombre <span className="text-gray-400 font-normal normal-case">(Requerido)</span>
                                     </label>
                                     <input
                                         type="text"
@@ -980,32 +982,36 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="flex gap-2 pt-1">
-                                            <input
-                                                id="new-comment-input"
-                                                type="text"
+                                        <div className="flex flex-col gap-2 pt-1">
+                                            <textarea
                                                 placeholder="Añadir comentario..."
-                                                className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none min-h-[60px] resize-y custom-scrollbar"
+                                                value={newTicketComment}
+                                                onChange={(e) => setNewTicketComment(e.target.value)}
                                                 onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && e.currentTarget.value) {
-                                                        handleAddComment(selectedTicket.id, e.currentTarget.value);
-                                                        e.currentTarget.value = '';
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        if (newTicketComment.trim()) {
+                                                            handleAddComment(selectedTicket.id, newTicketComment.trim());
+                                                            setNewTicketComment("");
+                                                        }
                                                     }
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => {
-                                                    const input = document.getElementById('new-comment-input') as HTMLInputElement;
-                                                    if (input && input.value) {
-                                                        handleAddComment(selectedTicket.id, input.value);
-                                                        input.value = '';
-                                                    }
-                                                }}
-                                                disabled={loading}
-                                                className="bg-indigo-600 text-white px-3 py-1 rounded-xl text-[10px] font-bold hover:bg-indigo-700 disabled:opacity-50"
-                                            >
-                                                {loading ? '...' : 'Enviar'}
-                                            </button>
+                                            <div className="flex justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        if (newTicketComment.trim()) {
+                                                            handleAddComment(selectedTicket.id, newTicketComment.trim());
+                                                            setNewTicketComment("");
+                                                        }
+                                                    }}
+                                                    disabled={loading || !newTicketComment.trim()}
+                                                    className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center gap-1.5 hover:bg-indigo-700 disabled:opacity-50 transition"
+                                                >
+                                                    {loading ? '...' : 'Enviar'}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
