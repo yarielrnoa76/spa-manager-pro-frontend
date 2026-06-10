@@ -395,46 +395,77 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-6">
-          <Routes>
-              <>
-                <Route path="/" element={hasPerm("view_dashboard") ? <Dashboard /> : <Navigate to="/sales" replace />} />
-                <Route path="/sales" element={<Sales user={user} />} />
-                <Route path="/stocks" element={<Stocks />} />
-                <Route path="/leads" element={<Leads user={user} />} />
-                <Route path="/appointments" element={<Appointments />} />
-                <Route path="/communications" element={<CommunicationCenter user={user} />} />
-                <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />
-                <Route path="/tickets" element={<Tickets />} />
-                <Route path="/expenses" element={<Expenses user={user} />} />
-                <Route path="/refunds" element={<Refunds user={user} />} />
-                <Route path="/help" element={<Help />} />
-                <Route
-                  path="/settings"
-                  element={
-                    canSeeSettings ? (
-                      <SettingsPage
-                        isSuperAdmin={isSuperAdmin}
-                        currentTenantName={currentTenantName}
-                        user={user}
-                      />
-                    ) : (
-                      <Navigate to="/" replace />
-                    )
-                  }
-                />
-                <Route
-                  path="/logs"
-                  element={
-                    isSuperAdmin || hasPerm("view_logs") ? (
-                      <LogManagement />
-                    ) : (
-                      <Navigate to="/" replace />
-                    )
-                  }
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </>
-          </Routes>
+          {isSuperAdmin && !currentTenantId ? (
+            <Routes>
+              <Route
+                path="/settings"
+                element={
+                  canSeeSettings ? (
+                    <SettingsPage
+                      isSuperAdmin={isSuperAdmin}
+                      currentTenantName={currentTenantName}
+                      user={user}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="*"
+                element={
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500 mt-20">
+                    <Store size={64} className="mb-4 text-indigo-300" />
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                      Seleccione un Tenant
+                    </h2>
+                    <p className="text-sm max-w-md text-center">
+                      Al ingresar como Superadmin, debes seleccionar un Tenant (empresa/sucursal principal) en el menú superior derecho para poder visualizar datos y trabajar en el sistema.
+                    </p>
+                  </div>
+                }
+              />
+            </Routes>
+          ) : (
+            <Routes>
+              <Route path="/" element={hasPerm("view_dashboard") ? <Dashboard /> : <Navigate to="/sales" replace />} />
+              <Route path="/sales" element={<Sales user={user} />} />
+              <Route path="/stocks" element={<Stocks />} />
+              <Route path="/leads" element={<Leads user={user} />} />
+              <Route path="/appointments" element={<Appointments />} />
+              <Route path="/communications" element={<CommunicationCenter user={user} />} />
+              <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />
+              <Route path="/tickets" element={<Tickets />} />
+              <Route path="/expenses" element={<Expenses user={user} />} />
+              <Route path="/refunds" element={<Refunds user={user} />} />
+              <Route path="/help" element={<Help />} />
+              <Route
+                path="/settings"
+                element={
+                  canSeeSettings ? (
+                    <SettingsPage
+                      isSuperAdmin={isSuperAdmin}
+                      currentTenantName={currentTenantName}
+                      user={user}
+                    />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route
+                path="/logs"
+                element={
+                  isSuperAdmin || hasPerm("view_logs") ? (
+                    <LogManagement />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          )}
         </div>
       </main>
     </div>
