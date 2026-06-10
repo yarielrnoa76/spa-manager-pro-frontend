@@ -140,7 +140,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 const fetchedBranchId = u.branch_id || u.branch?.id || null;
                 setUserBranchId(fetchedBranchId);
                 setIsSuperAdmin(u.is_super_admin === true);
-                
+
                 if (fetchedBranchId && u.role?.name !== 'admin' && u.is_super_admin !== true && !leadToEdit && !initialBranchId) {
                     setFormData(prev => ({ ...prev, branch_id: String(fetchedBranchId) }));
                 }
@@ -406,7 +406,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div 
+        <div
             className={`fixed inset-0 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity ${zIndexClass}`}
         >
             <div className="bg-white rounded-xl shadow-2xl w-[95vw] max-w-[1400px] h-[85vh] flex flex-col overflow-hidden transform transition-all scale-100">
@@ -484,39 +484,39 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     {activeTab === 'details' ? (
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 {/* Nombre */}
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                         Nombre <span className="text-gray-400 font-normal normal-case">(Obligatorio si no hay tel)</span>
-                                     </label>
-                                     <input
-                                         type="text"
-                                         autoFocus
-                                         value={formData.name}
-                                         onChange={(e) => handleChange("name", e.target.value)}
-                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                         placeholder="Ej. María"
-                                     />
-                                 </div>
+                                {/* Nombre */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Nombre <span className="text-gray-400 font-normal normal-case">(Obligatorio si no hay tel)</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        value={formData.name}
+                                        onChange={(e) => handleChange("name", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Ej. María"
+                                    />
+                                </div>
 
-                                 {/* Apellidos */}
-                                 <div>
-                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                         Apellidos
-                                     </label>
-                                     <input
-                                         type="text"
-                                         value={formData.last_name}
-                                         onChange={(e) => handleChange("last_name", e.target.value)}
-                                         className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                         placeholder="Ej. López Pérez"
-                                     />
-                                 </div>
+                                {/* Apellidos */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                        Apellidos
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.last_name}
+                                        onChange={(e) => handleChange("last_name", e.target.value)}
+                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Ej. López Pérez"
+                                    />
+                                </div>
 
                                 {/* Teléfono */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Teléfono <span className="text-gray-400 font-normal normal-case">(Opcional si hay nombre/email)</span>
+                                        Teléfono <span className="text-gray-400 font-normal normal-case">(Campo Requerido)</span>
                                     </label>
                                     <input
                                         type="tel"
@@ -532,7 +532,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             {/* Email */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Email (Opcional)
+                                    Email (Requerido)
                                 </label>
                                 <input
                                     type="email"
