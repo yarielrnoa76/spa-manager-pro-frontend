@@ -7,7 +7,8 @@ const ProfessionalsSettings: React.FC<{
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
-}> = ({ canCreate = true, canEdit = true, canDelete = true }) => {
+  isSuperAdmin?: boolean;
+}> = ({ canCreate = true, canEdit = true, canDelete = true, isSuperAdmin }) => {
   const [professionals, setProfessionals] = useState<ProfessionalPerson[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -299,6 +300,7 @@ const ProfessionalsSettings: React.FC<{
               <th className="px-4 py-3">Nombre Completo</th>
               <th className="px-4 py-3">Título</th>
               <th className="px-4 py-3">Sucursal</th>
+              {isSuperAdmin && <th className="px-4 py-3">Tenant</th>}
               <th className="px-4 py-3">Teléfono</th>
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Servicios</th>
@@ -317,6 +319,17 @@ const ProfessionalsSettings: React.FC<{
                   </span>
                 </td>
                 <td className="px-4 py-3">{p.branch?.name || "—"}</td>
+                {isSuperAdmin && (
+                  <td className="px-4 py-3">
+                    {p.tenant ? (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-md text-xs font-medium">
+                        {p.tenant.name}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic text-xs">Global</span>
+                    )}
+                  </td>
+                )}
                 <td className="px-4 py-3 text-gray-500">{p.phone || "—"}</td>
                 <td className="px-4 py-3 text-gray-500">{p.email || "—"}</td>
                 <td className="px-4 py-3">

@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
 
+type Tenant = { id: number; name: string };
+
 type Branch = {
   id: number;
   name: string;
   code: string;
   address: string;
+  tenant?: Tenant | null;
   deleted_at?: string | null;
 };
 
@@ -22,7 +25,7 @@ function getErrorMessage(e: any): string {
   return e?.message ?? "Ocurrió un error.";
 }
 
-export default function BranchesSettings() {
+export default function BranchesSettings({ isSuperAdmin }: { isSuperAdmin?: boolean }) {
   const [rows, setRows] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +153,7 @@ export default function BranchesSettings() {
           <thead className="bg-gray-50">
             <tr>
               <th className="text-left p-3">Nombre</th>
+              {isSuperAdmin && <th className="text-left p-3">Tenant</th>}
               <th className="text-left p-3">Estado</th>
               <th className="text-right p-3">Acciones</th>
             </tr>
@@ -157,13 +161,13 @@ export default function BranchesSettings() {
           <tbody>
             {loading ? (
               <tr>
-                <td className="p-3 text-gray-500" colSpan={3}>
+                <td className="p-3 text-gray-500" colSpan={isSuperAdmin ? 4 : 3}>
                   Cargando...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td className="p-3 text-gray-500" colSpan={3}>
+                <td className="p-3 text-gray-500" colSpan={isSuperAdmin ? 4 : 3}>
                   No hay sucursales.
                 </td>
               </tr>
@@ -173,6 +177,17 @@ export default function BranchesSettings() {
                 return (
                   <tr key={b.id} className="border-t">
                     <td className="p-3">{b.name}</td>
+                    {isSuperAdmin && (
+                      <td className="p-3">
+                        {b.tenant ? (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-md text-xs font-medium">
+                            {b.tenant.name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic text-xs">Global</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3">
                       {deleted ? (
                         <span className="text-red-600 font-semibold">
