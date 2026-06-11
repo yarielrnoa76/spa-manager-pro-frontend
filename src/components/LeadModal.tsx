@@ -310,17 +310,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
     }, [formData.branch_id, responsibles, formData.assigned_to]);
 
     const isFormValid = React.useMemo(() => {
-        // Phone must contain at least 7 digits to be considered "valid", if it has any text
+        const hasName = Boolean(formData.name.trim());
+        const hasLastName = Boolean(formData.last_name.trim());
         const phoneDigitsLength = formData.phone.replace(/\D/g, "").length;
-        const validPhone = formData.phone.trim() === "" || phoneDigitsLength >= 7;
-
-        const hasContactInfo = Boolean(
-            formData.name.trim() || formData.last_name.trim() || formData.phone.trim() || formData.email.trim()
-        );
+        const validPhone = phoneDigitsLength >= 10;
+        const hasEmail = Boolean(formData.email.trim());
         const hasBranch = Boolean(formData.branch_id);
-        const hasSource = Boolean(formData.source);
 
-        return hasContactInfo && hasBranch && hasSource && validPhone;
+        return hasName && hasLastName && validPhone && hasEmail && hasBranch;
     }, [formData]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -489,7 +486,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 {/* Nombre */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Nombre <span className="text-gray-400 font-normal normal-case">(Requerido)</span>
+                                        Nombre <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -504,7 +501,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 {/* Apellidos */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Apellidos
+                                        Apellidos <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -518,7 +515,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 {/* Teléfono */}
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                        Teléfono <span className="text-gray-400 font-normal normal-case">(Campo Requerido)</span>
+                                        Teléfono <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="tel"
@@ -534,7 +531,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             {/* Email */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                                    Email (Requerido)
+                                    Email <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                     type="email"
