@@ -5,12 +5,15 @@ import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 type Role = { id: number; name: string };
 type Branch = { id: number; name: string };
 
+type Tenant = { id: number; name: string };
+
 type UserRow = {
   id: number;
   name: string;
   email: string;
   role?: Role | null;
   branch?: Branch | null;
+  tenant?: Tenant | null;
   deleted_at?: string | null;
 };
 
@@ -198,6 +201,9 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
       } else if (key === "branch") {
         aValue = a.branch?.name || "";
         bValue = b.branch?.name || "";
+      } else if (key === "tenant") {
+        aValue = a.tenant?.name || "";
+        bValue = b.tenant?.name || "";
       } else if (key === "status") {
         aValue = a.deleted_at ? "Eliminado" : "Activo";
         bValue = b.deleted_at ? "Eliminado" : "Activo";
@@ -372,6 +378,11 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
               <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("branch")}>
                 Sucursal {renderSortIcon("branch")}
               </th>
+              {isSuperAdmin && (
+                <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("tenant")}>
+                  Tenant {renderSortIcon("tenant")}
+                </th>
+              )}
               <th className="text-left p-3 cursor-pointer hover:bg-gray-200 transition select-none" onClick={() => requestSort("status")}>
                 Estado {renderSortIcon("status")}
               </th>
@@ -382,13 +393,13 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
           <tbody>
             {loading ? (
               <tr>
-                <td className="p-3 text-gray-500" colSpan={6}>
+                <td className="p-3 text-gray-500" colSpan={isSuperAdmin ? 7 : 6}>
                   Cargando...
                 </td>
               </tr>
             ) : sortedRows.length === 0 ? (
               <tr>
-                <td className="p-3 text-gray-500" colSpan={6}>
+                <td className="p-3 text-gray-500" colSpan={isSuperAdmin ? 7 : 6}>
                   No hay usuarios.
                 </td>
               </tr>
@@ -402,6 +413,17 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
                     <td className="p-3">{u.email}</td>
                     <td className="p-3">{u.role?.name ?? "-"}</td>
                     <td className="p-3">{u.branch?.name ?? "-"}</td>
+                    {isSuperAdmin && (
+                      <td className="p-3">
+                        {u.tenant ? (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-md text-xs font-medium">
+                            {u.tenant.name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic text-xs">Global</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3">
                       {deleted ? (
                         <span className="text-red-600 font-semibold">
