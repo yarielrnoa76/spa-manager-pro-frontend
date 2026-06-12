@@ -176,7 +176,7 @@ const App: React.FC = () => {
     ? user.permissions
     : [];
   const hasPerm = (p: string) =>
-    perms.includes(p) || user?.role?.name === "admin" || isSuperAdmin;
+    perms.includes(p) || isSuperAdmin;
 
   const canSeeDashboard = hasPerm("view_dashboard");
   const canSeeSettings = hasPerm("manage_settings") || hasPerm("view_branch") || hasPerm("create_branch") || hasPerm("edit_branch") || hasPerm("delete_branch") || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user") || hasPerm("view_roles") || hasPerm("view_professionals");

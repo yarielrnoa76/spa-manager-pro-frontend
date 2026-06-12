@@ -250,7 +250,7 @@ const Leads: React.FC<LeadsProps> = ({ user }) => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const perms = user?.permissions || [];
-  const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
+  const isAdmin = user?.is_super_admin;
   const canImportLeads = isAdmin || perms.includes("import_leads");
 
   const fetchData = useCallback(async () => {

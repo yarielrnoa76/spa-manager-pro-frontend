@@ -129,7 +129,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
 
   const isSuperAdmin = user?.is_super_admin === true;
-  const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
+  const isAdmin = isSuperAdmin;
   const canViewLeads = isAdmin || perms.includes("view_leads");
   const canViewBranch = isAdmin || perms.includes("view_branch");
   const canImport = isAdmin || perms.includes("import_sales");

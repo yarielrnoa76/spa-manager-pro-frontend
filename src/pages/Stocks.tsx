@@ -112,7 +112,7 @@ const Stocks: React.FC = () => {
       const perms: string[] =
         me?.permissions || me?.role?.permissions?.map((p: any) => p.name) || [];
 
-      const isAdmin = me?.role?.name === "admin" || me?.role?.name === "superadmin" || me?.is_super_admin === true;
+      const isAdmin = me?.role?.name === "superadmin" || me?.is_super_admin === true;
 
       setCanDeleteProduct(
         isAdmin ||

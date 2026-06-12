@@ -32,7 +32,7 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
   const [selectedSaleId, setSelectedSaleId] = useState<string>("");
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
 
-  const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
+  const isAdmin = user?.is_super_admin;
 
   // Filters
   const now = new Date();

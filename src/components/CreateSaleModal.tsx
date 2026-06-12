@@ -48,7 +48,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     initialData,
 }) => {
     const isSuperAdmin = user?.is_super_admin === true;
-    const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
+    const isAdmin = isSuperAdmin;
     const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
     const canViewLeads = isAdmin || perms.includes("view_leads");
     const canIncreasePrice = isAdmin || perms.includes("sale_increase_price");

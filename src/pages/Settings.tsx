@@ -34,7 +34,7 @@ const SettingsPage: React.FC<{
   user?: UserData | null;
 }> = ({ isSuperAdmin, currentTenantName, user }) => {
   const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
-  const isAdmin = user?.role?.name === "admin" || isSuperAdmin;
+  const isAdmin = isSuperAdmin;
   const hasPerm = (p: string) => perms.includes(p) || isAdmin;
 
   const canManageSettings = hasPerm("manage_settings");

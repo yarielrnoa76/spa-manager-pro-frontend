@@ -19,7 +19,7 @@ const Expenses: React.FC<ExpensesProps> = ({ user }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<string | number | null>(null);
 
-  const isAdmin = user?.role?.name === "admin" || user?.is_super_admin;
+  const isAdmin = user?.is_super_admin;
 
   // Default to current month/year
   const now = new Date();
