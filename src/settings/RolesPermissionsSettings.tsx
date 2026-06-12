@@ -44,24 +44,39 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
       const rawGroup = parts.length > 1 ? parts.slice(1).join('_') : 'general';
 
       const groupMap: Record<string, string> = {
-        user: "users",
-        lead: "leads",
+        // Configuración
+        user: "configuración",
+        users: "configuración",
+        branch: "configuración",
+        branches: "configuración",
+        role: "configuración",
+        roles: "configuración",
+        professional: "configuración",
+        professionals: "configuración",
+        settings: "configuración",
+        tenant: "configuración",
+        tenants: "configuración",
+
+        // Ventas
         sale: "sales",
-        product: "products",
-        appointment: "appointments",
-        branch: "branches",
-        ticket: "tickets",
-        refund: "refunds",
-        conversation: "conversations",
         sale_increase_price: "sales",
         sale_decrease_price: "sales",
         import_sales: "sales",
         increase_price: "sales",
         decrease_price: "sales",
+        all_sales: "sales",
+        my_sales_only: "sales",
+
+        // Otros
+        lead: "leads",
+        product: "products",
+        appointment: "appointments",
+        ticket: "tickets",
+        refund: "refunds",
+        conversation: "conversations",
         expense: "expenses",
         expenses: "expenses",
         all_conversations: "conversations",
-        professional: "professionals",
       };
 
       const groupName = groupMap[rawGroup] || rawGroup;

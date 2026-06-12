@@ -137,7 +137,7 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
         return perms.includes(p);
     };
 
-    const isAdminOrSuperAdmin = user?.is_super_admin || ["superadmin", "admin"].includes(user?.role?.name?.toLowerCase() || "");
+    const isAdminOrSuperAdmin = user?.is_super_admin || user?.permissions?.includes("reply_all_conversations");
     const canReply = isAdminOrSuperAdmin || hasPerm('reply_all_conversations') || (hasPerm('reply_conversations') && (conversation.assigned_user_id === user?.id || !conversation.assigned_user_id));
 
     return (

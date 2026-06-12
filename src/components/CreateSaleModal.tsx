@@ -57,7 +57,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     
     // Un usuario está restringido a su sucursal si no es admin ni superadmin y tiene una sucursal asignada
     const userBranchId = user?.branch_id || user?.branch?.id;
-    const isBranchRestricted = userBranchId && user?.role?.name !== "admin" && !user?.is_super_admin;
+    const isBranchRestricted = userBranchId && !user?.is_super_admin && !user?.permissions?.includes("view_all_sales");
     const canSelectBranch = !isBranchRestricted && (isAdmin || perms.includes("view_branch"));
 
     const now = localISODateTime();

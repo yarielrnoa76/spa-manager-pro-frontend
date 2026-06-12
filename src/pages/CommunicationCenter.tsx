@@ -92,7 +92,7 @@ export default function CommunicationCenter({ user }: { user: any }) {
         }
     }
 
-    const isAuthorizedToDelete = user?.is_superadmin || ['admin', 'superadmin'].includes(user?.role?.name?.toLowerCase());
+    const isAuthorizedToDelete = user?.is_super_admin || user?.permissions?.includes("delete_conversations");
 
     const handleInitiateChat = async () => {
         if (!newChatPhone) return;

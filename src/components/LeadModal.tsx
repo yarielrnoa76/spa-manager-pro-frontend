@@ -143,7 +143,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 setUserBranchId(fetchedBranchId);
                 setIsSuperAdmin(u.is_super_admin === true);
 
-                if (fetchedBranchId && u.role?.name !== 'admin' && u.is_super_admin !== true && !leadToEdit && !initialBranchId) {
+                if (fetchedBranchId && !u.is_super_admin && !u.permissions?.includes("view_all_sales") && !leadToEdit && !initialBranchId) {
                     setFormData(prev => ({ ...prev, branch_id: String(fetchedBranchId) }));
                 }
             }
