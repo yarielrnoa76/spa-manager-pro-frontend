@@ -622,7 +622,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     toNumber(newSale.amount) > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full space-y-6">
       <LeadModal
         isOpen={isLeadModalOpen}
         onClose={() => setIsLeadModalOpen(false)}
@@ -831,8 +831,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       </div>
 
       {/* TABLA Y FILTROS */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-4">
+      <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-4 shrink-0">
           <div className="relative flex-1">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -978,9 +978,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold">
+        <div className="flex-1 overflow-auto min-h-0 relative">
+          <table className="w-full text-left relative min-w-max">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold sticky top-0 z-10 shadow-sm">
               <tr>
                 <th className="px-6 py-4">Fecha de Registro</th>
                 <th className="px-6 py-4">Vendedor(a)</th>
@@ -1106,7 +1106,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
         {/* PAGINATION BAR */}
         {totalRecords > 0 && (
-          <div className="px-4 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="px-4 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             {/* Info: Mostrando X-Y de Z registros */}
             <div className="text-sm text-gray-500">
               Mostrando{" "}
