@@ -31,6 +31,15 @@ function localISODate(d = new Date()) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+function localISODateTime(d = new Date()) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
 const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     isOpen,
     onClose,
@@ -51,10 +60,10 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const isBranchRestricted = userBranchId && user?.role?.name !== "admin" && !user?.is_super_admin;
     const canSelectBranch = !isBranchRestricted && (isAdmin || perms.includes("view_branch"));
 
-    const today = localISODate();
+    const now = localISODateTime();
 
     const [form, setForm] = useState({
-        date: today,
+        date: now,
         branch_id: "",
         product_id: "",
         lead_id: "",
@@ -85,7 +94,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         if (!isOpen) return;
 
         setForm({
-            date: today,
+            date: now,
             branch_id: initialData?.branch_id ? String(initialData.branch_id) : (userBranchId ? String(userBranchId) : ""),
             product_id: "",
             lead_id: initialData?.lead_id ? String(initialData.lead_id) : "",
@@ -340,7 +349,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
                                     <input
-                                        type="date"
+                                        type="datetime-local"
                                         required
                                         className="w-full border rounded-lg p-2 text-sm"
                                         value={form.date}

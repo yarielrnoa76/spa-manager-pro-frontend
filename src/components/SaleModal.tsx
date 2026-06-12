@@ -370,14 +370,26 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                         <form onSubmit={handleUpdate} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-6">
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div>
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Fecha</label>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Fecha de Venta</label>
                                                     <input
-                                                        type="date"
+                                                        type="datetime-local"
                                                         className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                                                         value={formData.date}
                                                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                                                     />
                                                 </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                        <span>Fecha de Creación del Registro</span>
+                                                        <span className="bg-gray-200 text-gray-500 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Sistema</span>
+                                                    </label>
+                                                    <div className="text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2.5 rounded-xl border border-gray-100 italic cursor-not-allowed">
+                                                        {sale.created_at ? new Date(sale.created_at).toLocaleString() : '—'}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-6">
                                                 <div>
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vendedora</label>
                                                     <select
@@ -459,9 +471,20 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                             </div>
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div>
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Fecha</label>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Fecha de Venta</label>
                                                     <div className="text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100">{sale.date}</div>
                                                 </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                        <span>Fecha de Creación del Registro</span>
+                                                        <span className="bg-gray-200 text-gray-500 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Sistema</span>
+                                                    </label>
+                                                    <div className="text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2.5 rounded-xl border border-gray-100 italic">
+                                                        {sale.created_at ? new Date(sale.created_at).toLocaleString() : '—'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-6">
                                                 <div>
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vendedora</label>
                                                     <div className="text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100">{sale.seller?.name || '-'}</div>

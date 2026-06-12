@@ -97,33 +97,10 @@ function normalizeDateOnly(d: any): string {
 // ✅ muestra "YYYY-MM-DD HH:mm" usando 'date' como fecha principal
 function formatSaleDateTime(sale: any): string {
   const dateStr = String(sale?.date ?? "").trim();
-  const createdStr = String(sale?.created_at ?? sale?.createdAt ?? "").trim();
-
-  if (!dateStr && !createdStr) return "—";
-
-  let datePart = "";
-  if (dateStr && dateStr.length >= 10) {
-    datePart = dateStr.slice(0, 10);
-  } else if (createdStr) {
-    const dt = new Date(createdStr);
-    if (!isNaN(dt.getTime())) {
-      datePart = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-    } else if (createdStr.length >= 10) {
-      datePart = createdStr.slice(0, 10);
-    }
-  }
-
-  let timePart = "";
-  if (createdStr) {
-    const dt = new Date(createdStr);
-    if (!isNaN(dt.getTime())) {
-      timePart = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
-    } else if (/^\d{4}-\d{2}-\d{2}\s+(\d{2}:\d{2})/.test(createdStr)) {
-      timePart = createdStr.match(/^\d{4}-\d{2}-\d{2}\s+(\d{2}:\d{2})/)?.[1] || "";
-    }
-  }
-
-  return timePart ? `${datePart} ${timePart}` : datePart;
+  if (!dateStr) return "—";
+  
+  // The backend now sends 'YYYY-MM-DD HH:mm:ss', so we just display it nicely
+  return dateStr;
 }
 
 // ✅ fecha LOCAL (evita UTC que te pone "mañana")
