@@ -309,7 +309,7 @@ const Stocks: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold">Gestión de Inventario</h1>
@@ -395,7 +395,7 @@ const Stocks: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
         <div className="p-4 border-b flex gap-4">
           <div className="relative flex-1">
             <Search
@@ -411,7 +411,7 @@ const Stocks: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto min-h-0">
+        <div className="overflow-auto min-h-[300px] max-h-[60vh]">
           <table className="w-full text-left text-sm relative min-w-max">
             <thead className="bg-gray-50 font-bold text-gray-500 uppercase text-xs sticky top-0 z-10 shadow-sm">
             <tr>

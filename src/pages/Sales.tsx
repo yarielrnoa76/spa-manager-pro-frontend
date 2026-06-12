@@ -622,7 +622,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     toNumber(newSale.amount) > 0;
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="space-y-6">
       <LeadModal
         isOpen={isLeadModalOpen}
         onClose={() => setIsLeadModalOpen(false)}
@@ -831,7 +831,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       </div>
 
       {/* TABLA Y FILTROS */}
-      <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 min-h-0 shadow-sm">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
         <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row flex-wrap gap-3 shrink-0">
           <div className="relative flex-1 min-w-[200px]">
             <Search
@@ -980,7 +980,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto min-h-0 relative rounded-b-xl">
+        <div className="overflow-auto min-h-[300px] max-h-[60vh] relative rounded-b-xl">
           <table className="w-full text-left relative min-w-max">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold sticky top-0 z-10 shadow-sm">
               <tr>
@@ -1108,22 +1108,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
         {/* PAGINATION BAR */}
         {totalRecords > 0 && (
-          <div className="px-4 py-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
             {/* Info: Mostrando X-Y de Z registros */}
-            <div className="text-sm text-gray-500">
-              Mostrando{" "}
-              <span className="font-bold text-gray-700">
-                {paginationFrom ?? 0}
-              </span>
-              {" "}a{" "}
-              <span className="font-bold text-gray-700">
-                {paginationTo ?? 0}
-              </span>
+            <div className="text-xs sm:text-sm text-gray-500">
+              <span className="font-bold text-gray-700">{paginationFrom ?? 0}</span>
+              –
+              <span className="font-bold text-gray-700">{paginationTo ?? 0}</span>
               {" "}de{" "}
-              <span className="font-bold text-gray-700">
-                {totalRecords.toLocaleString()}
-              </span>
-              {" "}registros
+              <span className="font-bold text-gray-700">{totalRecords.toLocaleString()}</span>
             </div>
 
             {/* Page navigation */}
@@ -1149,7 +1141,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                 <ChevronLeft size={16} />
               </button>
 
-              {/* Page numbers */}
+              {/* Page numbers - hidden on very small screens */}
+              <span className="hidden sm:contents">
               {getPageNumbers().map((pageNum, idx) =>
                 pageNum === "..." ? (
                   <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400 text-sm">
@@ -1160,7 +1153,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                     key={pageNum}
                     type="button"
                     onClick={() => goToPage(pageNum)}
-                    className={`min-w-[36px] h-9 rounded-lg text-sm font-bold transition-colors ${
+                    className={`min-w-[32px] h-8 rounded-lg text-xs sm:text-sm font-bold transition-colors ${
                       currentPage === pageNum
                         ? "bg-indigo-600 text-white shadow-sm"
                         : "border border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -1170,6 +1163,11 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                   </button>
                 ),
               )}
+              </span>
+              {/* Mobile: show current/total */}
+              <span className="sm:hidden text-xs font-bold text-gray-600">
+                {currentPage}/{lastPage}
+              </span>
 
               {/* Next page */}
               <button
@@ -1193,8 +1191,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               </button>
             </div>
 
-            {/* Per page selector */}
-            <div className="flex items-center gap-2">
+            {/* Per page selector - hidden on mobile */}
+            <div className="hidden sm:flex items-center gap-2">
               <span className="text-sm text-gray-500">Mostrar</span>
               <select
                 value={perPage}
