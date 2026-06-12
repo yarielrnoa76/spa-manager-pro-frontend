@@ -342,38 +342,38 @@ const Stocks: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex overflow-x-auto md:grid md:grid-cols-3 gap-6 pb-2 snap-x shrink-0">
-        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
+      <div className="flex overflow-x-auto md:grid md:grid-cols-3 gap-3 md:gap-6 pb-2 snap-x shrink-0">
+        <div className="min-w-[160px] md:min-w-0 snap-start bg-white p-4 md:p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-gray-500 text-sm">Total Productos</p>
-              <h3 className="text-2xl font-bold mt-1">{products.length}</h3>
+              <p className="text-gray-500 text-xs md:text-sm">Total Productos</p>
+              <h3 className="text-xl md:text-2xl font-bold mt-1">{products.length}</h3>
             </div>
             <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-              <Package />
+              <Package className="w-5 h-5 md:w-6 md:h-6" />
             </div>
           </div>
         </div>
 
-        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
+        <div className="min-w-[160px] md:min-w-0 snap-start bg-white p-4 md:p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-gray-500 text-sm">Stock Bajo</p>
-              <h3 className="text-2xl font-bold mt-1 text-amber-600">
+              <p className="text-gray-500 text-xs md:text-sm">Stock Bajo</p>
+              <h3 className="text-xl md:text-2xl font-bold mt-1 text-amber-600">
                 {products.filter((p) => p.is_low_stock).length}
               </h3>
             </div>
             <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-              <AlertTriangle />
+              <AlertTriangle className="w-5 h-5 md:w-6 md:h-6" />
             </div>
           </div>
         </div>
 
-        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
+        <div className="min-w-[160px] md:min-w-0 snap-start bg-white p-4 md:p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-gray-500 text-sm">Valor Inventario</p>
-              <h3 className="text-2xl font-bold mt-1">
+              <p className="text-gray-500 text-xs md:text-sm">Valor Inventario</p>
+              <h3 className="text-xl md:text-2xl font-bold mt-1">
                 $
                 {products
                   .reduce(
@@ -384,12 +384,12 @@ const Stocks: React.FC = () => {
                   )
                   .toLocaleString()}
               </h3>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[9px] md:text-[11px] text-gray-400 mt-0.5 md:mt-1">
                 (calculado por Cost Price)
               </p>
             </div>
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-              <TrendingUp />
+              <TrendingUp className="w-5 h-5 md:w-6 md:h-6" />
             </div>
           </div>
         </div>

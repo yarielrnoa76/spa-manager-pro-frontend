@@ -756,73 +756,73 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
       {/* RESUMEN */}
       <div className="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-5 gap-3 lg:gap-4 pb-2 snap-x shrink-0">
-        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
-            <ShoppingBag size={24} />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-indigo-500">
+          <div className="p-2 md:p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+            <ShoppingBag className="w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               {filterByMonth ? "Ventas del Mes" : "Ventas del Día"}
             </p>
-            <p className="text-xl font-black text-indigo-900">{stats.count}</p>
+            <p className="text-lg md:text-xl font-black text-indigo-900">{stats.count}</p>
           </div>
         </div>
 
-        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-4 border-l-4 border-l-green-600">
-          <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-            <DollarSign size={24} />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-green-600">
+          <div className="p-2 md:p-3 bg-green-50 text-green-600 rounded-lg">
+            <DollarSign className="w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Importe Filtrado
             </p>
-            <p className="text-xl font-black text-green-900">
+            <p className="text-lg md:text-xl font-black text-green-900">
               ${money(stats.total)}
             </p>
           </div>
         </div>
 
-        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
-          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-lg">
-            <Package size={24} />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-indigo-500">
+          <div className="p-2 md:p-3 bg-indigo-50 text-indigo-700 rounded-lg">
+            <Package className="w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Acumulado Mes
             </p>
-            <p className="text-xl font-black text-indigo-900">
+            <p className="text-lg md:text-xl font-black text-indigo-900">
               ${money(stats.monthlyTotal)}
             </p>
           </div>
         </div>
 
-        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-4 border-l-4 border-l-amber-500">
-          <div className="p-3 bg-amber-50 text-amber-700 rounded-lg">
-            <ChevronRight size={24} />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-amber-500">
+          <div className="p-2 md:p-3 bg-amber-50 text-amber-700 rounded-lg">
+            <ChevronRight className="w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Días Trabajados
             </p>
-            <p className="text-xl font-black text-amber-900">
-              {stats.daysWorked} <span className="text-[10px] text-gray-400 font-normal">días</span>
+            <p className="text-lg md:text-xl font-black text-amber-900">
+              {stats.daysWorked} <span className="text-[8px] md:text-[10px] text-gray-400 font-normal">días</span>
             </p>
           </div>
         </div>
 
-        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-4 border-l-4 border-l-emerald-500">
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-lg">
-            <DollarSign size={24} />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-emerald-500">
+          <div className="p-2 md:p-3 bg-emerald-50 text-emerald-700 rounded-lg">
+            <DollarSign className="w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Proyección Mes
             </p>
             <div className="flex flex-col">
-              <p className="text-xl font-black text-emerald-900">
+              <p className="text-lg md:text-xl font-black text-emerald-900">
                 ${money(stats.projection)}
               </p>
-              <p className="text-[9px] text-gray-400 font-medium">
+              <p className="text-[8px] md:text-[9px] text-gray-400 font-medium">
                 ({stats.totalWorkingDays} días laborables)
               </p>
             </div>
