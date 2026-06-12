@@ -580,7 +580,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         return;
       }
 
-      const headerFields = ["Fecha", "Cliente", "Servicio/Producto", "Profesional", "Valor ($)", "Método Pago", "Vendedor", "Sucursal"];
+      const headerFields = ["Fecha de Registro", "Cliente", "Servicio/Producto", "Profesional", "Valor ($)", "Método Pago", "Vendedor", "Sucursal"];
       const rows = allSales.map((s: any) =>
         [
           normalizeDateOnly(s.date),
@@ -1005,7 +1005,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           <table className="w-full text-left">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold">
               <tr>
-                <th className="px-6 py-4">Fecha</th>
+                <th className="px-6 py-4">Fecha de Registro</th>
                 <th className="px-6 py-4">Vendedor(a)</th>
                 <th className="px-6 py-4">Sucursal</th>
                 <th className="px-6 py-4">Cliente</th>
