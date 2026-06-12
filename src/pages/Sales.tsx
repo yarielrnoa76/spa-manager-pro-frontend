@@ -930,9 +930,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                     <button
                       type="button"
                       onClick={() => {
-                        if (!selectedDate) {
-                          setSelectedDate(localISODate());
-                        }
+                        setSelectedDate(localISODate());
                         setFilterByMonth(true);
                         setIsDateDropdownOpen(false);
                       }}
