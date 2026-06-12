@@ -98,7 +98,7 @@ function normalizeDateOnly(d: any): string {
 function formatSaleDateTime(sale: any): string {
   const dateStr = String(sale?.date ?? "").trim();
   if (!dateStr) return "—";
-  
+
   // The backend now sends 'YYYY-MM-DD HH:mm:ss', so we just display it nicely
   return dateStr;
 }
@@ -314,12 +314,12 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, filterByMonth, selectedSeller]);
 
   useEffect(() => {
     fetchData(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -737,7 +737,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                 <tbody className="divide-y divide-gray-100">
                   {weeklyData.map((w, idx) => (
                     <tr key={idx} className={idx % 2 === 1 ? "bg-blue-50/20" : ""}>
-                      <td className="px-6 py-3">Del {String(w.startDay).padStart(2,"0")} al {String(w.endDay).padStart(2,"0")}</td>
+                      <td className="px-6 py-3">Del {String(w.startDay).padStart(2, "0")} al {String(w.endDay).padStart(2, "0")}</td>
                       <td className="px-6 py-3 text-center">{w.count}</td>
                       <td className="px-6 py-3 text-right font-bold">${w.total.toLocaleString()}</td>
                     </tr>
@@ -850,133 +850,132 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
             {/* FILTRO FECHA DROPDOWN */}
             <div className="relative flex-1 min-w-[150px]">
-            <button
-              type="button"
-              onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-              className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none ${
-                filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
-              }`}
-              title="Filtrar por fecha o mes"
+              <button
+                type="button"
+                onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
+                className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
+                  }`}
+                title="Filtrar por fecha o mes"
+              >
+                <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600" : "text-gray-500"} />
+                <span className="font-bold">
+                  {filterByMonth
+                    ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
+                    : selectedDate === ""
+                      ? "Todas las Fechas"
+                      : selectedDate}
+                </span>
+                <ChevronDown size={14} className="text-gray-400" />
+              </button>
+
+              {isDateDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setIsDateDropdownOpen(false)}
+                  />
+                  <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-4 w-72 space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        Seleccionar Día
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700 font-bold"
+                        value={selectedDate}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          setFilterByMonth(false);
+                        }}
+                        max={localISODate()}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(localISODate());
+                          setFilterByMonth(false);
+                          setIsDateDropdownOpen(false);
+                        }}
+                        className="px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                        title="Seleccionar el día de hoy"
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(localISODate());
+                          setFilterByMonth(true);
+                          setIsDateDropdownOpen(false);
+                        }}
+                        className="px-2 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                        title="Ver todas las ventas de este mes"
+                      >
+                        ThisMonth
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate("");
+                          setFilterByMonth(false);
+                          setIsDateDropdownOpen(false);
+                        }}
+                        className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
+                        title="Limpiar filtro de fecha"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* FILTRO SUCURSAL */}
+            <select
+              className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px]"
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              title="Filtrar por sucursal"
             >
-              <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600" : "text-gray-500"} />
-              <span className="font-bold">
-                {filterByMonth
-                  ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
-                  : selectedDate === ""
-                  ? "Todas las Fechas"
-                  : selectedDate}
-              </span>
-              <ChevronDown size={14} className="text-gray-400" />
-            </button>
+              <option value="all">Todas las Sucursales</option>
+              {branches.map((b) => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
 
-            {isDateDropdownOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40 cursor-default"
-                  onClick={() => setIsDateDropdownOpen(false)}
-                />
-                <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-4 w-72 space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1">
-                      Seleccionar Día
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700 font-bold"
-                      value={selectedDate}
-                      onChange={(e) => {
-                        setSelectedDate(e.target.value);
-                        setFilterByMonth(false);
-                      }}
-                      max={localISODate()}
-                    />
-                  </div>
+            {/* FILTRO VENDEDORA */}
+            <select
+              className={`bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px] ${canViewMySalesOnly ? "opacity-60 cursor-not-allowed" : ""}`}
+              value={selectedSeller}
+              onChange={(e) => setSelectedSeller(e.target.value)}
+              title={canViewMySalesOnly ? "Solo puedes ver tus propias ventas" : "Filtrar por vendedora"}
+              disabled={canViewMySalesOnly}
+            >
+              <option value="all">Todas las Vendedoras</option>
+              {usersList.map((u) => (
+                <option key={u.id} value={String(u.id)}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
 
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDate(localISODate());
-                        setFilterByMonth(false);
-                        setIsDateDropdownOpen(false);
-                      }}
-                      className="px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
-                      title="Seleccionar el día de hoy"
-                    >
-                      Today
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDate(localISODate());
-                        setFilterByMonth(true);
-                        setIsDateDropdownOpen(false);
-                      }}
-                      className="px-2 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
-                      title="Ver todas las ventas de este mes"
-                    >
-                      ThisMonth
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDate("");
-                        setFilterByMonth(false);
-                        setIsDateDropdownOpen(false);
-                      }}
-                      className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
-                      title="Limpiar filtro de fecha"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* FILTRO SUCURSAL */}
-          <select
-            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px]"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            title="Filtrar por sucursal"
-          >
-            <option value="all">Todas las Sucursales</option>
-            {branches.map((b) => (
-              <option key={b.id} value={String(b.id)}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-
-          {/* FILTRO VENDEDORA */}
-          <select
-            className={`bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px] ${canViewMySalesOnly ? "opacity-60 cursor-not-allowed" : ""}`}
-            value={selectedSeller}
-            onChange={(e) => setSelectedSeller(e.target.value)}
-            title={canViewMySalesOnly ? "Solo puedes ver tus propias ventas" : "Filtrar por vendedora"}
-            disabled={canViewMySalesOnly}
-          >
-            <option value="all">Todas las Vendedoras</option>
-            {usersList.map((u) => (
-              <option key={u.id} value={String(u.id)}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-
-          {/* FILTRO ESTADO */}
-          <select
-            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[100px]"
-            value={saleVisibility}
-            onChange={(e) => setSaleVisibility(e.target.value as any)}
-            title="Filtrar por estado"
-          >
-            <option value="active">Activas</option>
-            <option value="all">Todas</option>
-            <option value="cancelled">Canceladas</option>
-          </select>
+            {/* FILTRO ESTADO */}
+            <select
+              className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[100px]"
+              value={saleVisibility}
+              onChange={(e) => setSaleVisibility(e.target.value as any)}
+              title="Filtrar por estado"
+            >
+              <option value="active">Activas</option>
+              <option value="all">Todas</option>
+              <option value="cancelled">Canceladas</option>
+            </select>
           </div>
         </div>
 
@@ -1143,26 +1142,25 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
               {/* Page numbers - hidden on very small screens */}
               <span className="hidden sm:contents">
-              {getPageNumbers().map((pageNum, idx) =>
-                pageNum === "..." ? (
-                  <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400 text-sm">
-                    …
-                  </span>
-                ) : (
-                  <button
-                    key={pageNum}
-                    type="button"
-                    onClick={() => goToPage(pageNum)}
-                    className={`min-w-[32px] h-8 rounded-lg text-xs sm:text-sm font-bold transition-colors ${
-                      currentPage === pageNum
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : "border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                ),
-              )}
+                {getPageNumbers().map((pageNum, idx) =>
+                  pageNum === "..." ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400 text-sm">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => goToPage(pageNum)}
+                      className={`min-w-[32px] h-8 rounded-lg text-xs sm:text-sm font-bold transition-colors ${currentPage === pageNum
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ),
+                )}
               </span>
               {/* Mobile: show current/total */}
               <span className="sm:hidden text-xs font-bold text-gray-600">
