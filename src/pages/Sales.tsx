@@ -1153,8 +1153,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                       type="button"
                       onClick={() => goToPage(pageNum)}
                       className={`min-w-[32px] h-8 rounded-lg text-xs sm:text-sm font-bold transition-colors ${currentPage === pageNum
-                          ? "bg-indigo-600 text-white shadow-sm"
-                          : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "border border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}
                     >
                       {pageNum}
