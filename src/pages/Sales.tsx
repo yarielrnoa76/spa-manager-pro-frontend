@@ -640,9 +640,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         />
       )}
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
+        <div className="min-w-0">
+          <h1 className="text-xl lg:text-2xl font-bold text-gray-900">
             Registro de Ventas Diarias
           </h1>
           <p className="text-gray-500 text-sm">
@@ -661,22 +661,22 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {canImport && (
             <button
               onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 border border-indigo-200 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100"
+              className="flex items-center gap-2 px-3 py-2 border border-indigo-200 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100"
             >
-              <Download size={18} className="rotate-180" /> Importar
+              <Download size={18} className="rotate-180" /> <span className="hidden sm:inline">Importar</span>
             </button>
           )}
 
           {canExport && (
             <button
               onClick={exportToCSV}
-              className="flex items-center gap-2 px-4 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
+              className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-white text-sm font-medium hover:bg-gray-50"
             >
-              <Download size={18} /> Exportar
+              <Download size={18} /> <span className="hidden sm:inline">Exportar</span>
             </button>
           )}
 
@@ -685,7 +685,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               setNewSale(initialNewSale);
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
+            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700"
           >
             <Plus size={18} /> Nueva Venta
           </button>
@@ -755,8 +755,8 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       })()}
 
       {/* RESUMEN */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 lg:gap-4">
-        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
+      <div className="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-5 gap-3 lg:gap-4 pb-2 snap-x shrink-0">
+        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
             <ShoppingBag size={24} />
           </div>
@@ -768,7 +768,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-4 border-l-4 border-l-green-600">
+        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-4 border-l-4 border-l-green-600">
           <div className="p-3 bg-green-50 text-green-600 rounded-lg">
             <DollarSign size={24} />
           </div>
@@ -782,7 +782,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
+        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
           <div className="p-3 bg-indigo-50 text-indigo-700 rounded-lg">
             <Package size={24} />
           </div>
@@ -796,7 +796,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-4 border-l-4 border-l-amber-500">
+        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-4 border-l-4 border-l-amber-500">
           <div className="p-3 bg-amber-50 text-amber-700 rounded-lg">
             <ChevronRight size={24} />
           </div>
@@ -810,7 +810,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-4 border-l-4 border-l-emerald-500">
+        <div className="min-w-[240px] lg:min-w-0 snap-start bg-white p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-4 border-l-4 border-l-emerald-500">
           <div className="p-3 bg-emerald-50 text-emerald-700 rounded-lg">
             <DollarSign size={24} />
           </div>
@@ -831,9 +831,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       </div>
 
       {/* TABLA Y FILTROS */}
-      <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row gap-4 shrink-0">
-          <div className="relative flex-1">
+      <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 min-h-0 shadow-sm">
+        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row flex-wrap gap-3 shrink-0">
+          <div className="relative flex-1 min-w-[200px]">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               size={18}
@@ -847,8 +847,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             />
           </div>
 
-          {/* FILTRO FECHA DROPDOWN */}
-          <div className="relative">
+          <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
+            {/* FILTRO FECHA DROPDOWN */}
+            <div className="relative flex-1 min-w-[150px]">
             <button
               type="button"
               onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
@@ -936,7 +937,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
           {/* FILTRO SUCURSAL */}
           <select
-            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
+            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px]"
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
             title="Filtrar por sucursal"
@@ -951,7 +952,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
           {/* FILTRO VENDEDORA */}
           <select
-            className={`bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none ${canViewMySalesOnly ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[130px] ${canViewMySalesOnly ? "opacity-60 cursor-not-allowed" : ""}`}
             value={selectedSeller}
             onChange={(e) => setSelectedSeller(e.target.value)}
             title={canViewMySalesOnly ? "Solo puedes ver tus propias ventas" : "Filtrar por vendedora"}
@@ -967,7 +968,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
           {/* FILTRO ESTADO */}
           <select
-            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none"
+            className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[100px]"
             value={saleVisibility}
             onChange={(e) => setSaleVisibility(e.target.value as any)}
             title="Filtrar por estado"
@@ -976,9 +977,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <option value="all">Todas</option>
             <option value="cancelled">Canceladas</option>
           </select>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-auto min-h-0 relative">
+        <div className="flex-1 overflow-auto min-h-0 relative rounded-b-xl">
           <table className="w-full text-left relative min-w-max">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-semibold sticky top-0 z-10 shadow-sm">
               <tr>

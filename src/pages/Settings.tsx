@@ -115,8 +115,22 @@ const SettingsPage: React.FC<{
           <h3 className="text-lg font-bold text-gray-900">{title}</h3>
         </div>
 
-        {tab === "branches" && canSeeBranches && <BranchesSettings isSuperAdmin={isSuperAdmin} />}
-        {tab === "users" && canSeeUsers && <UsersSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "branches" && canSeeBranches && (
+          <BranchesSettings
+            isSuperAdmin={isSuperAdmin}
+            canCreate={hasPerm("manage_settings") || hasPerm("create_branch")}
+            canEdit={hasPerm("manage_settings") || hasPerm("edit_branch")}
+            canDelete={hasPerm("manage_settings") || hasPerm("delete_branch")}
+          />
+        )}
+        {tab === "users" && canSeeUsers && (
+          <UsersSettings
+            isSuperAdmin={isSuperAdmin}
+            canCreate={hasPerm("manage_settings") || hasPerm("create_user")}
+            canEdit={hasPerm("manage_settings") || hasPerm("edit_user")}
+            canDelete={hasPerm("manage_settings") || hasPerm("delete_user")}
+          />
+        )}
         {tab === "rbac" && canSeeRbac && <RolesPermissionsSettings canManage={hasPerm("manage_roles")} />}
         {tab === "professionals" && canSeeProfessionals && (
           <ProfessionalsSettings 

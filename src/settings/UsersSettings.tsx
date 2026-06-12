@@ -33,7 +33,17 @@ function getErrorMessage(e: any): string {
   return e?.message ?? "Ocurrió un error.";
 }
 
-export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean }) {
+export default function UsersSettings({
+  isSuperAdmin,
+  canCreate = false,
+  canEdit = false,
+  canDelete = false,
+}: {
+  isSuperAdmin?: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -252,6 +262,7 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
         </div>
       )}
 
+      {(canCreate || editing) && (
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <input
           className="border rounded-lg px-3 py-2"
@@ -346,6 +357,7 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
           </button>
         </div>
       </div>
+      )}
 
       {isSuperAdmin && (
         <div className="flex items-center gap-2 mt-4 mb-2">
@@ -439,31 +451,35 @@ export default function UsersSettings({ isSuperAdmin }: { isSuperAdmin?: boolean
                     <td className="p-3 text-right space-x-2">
                       {!deleted && (
                         <>
-                          <button
-                            className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
-                            onClick={() => {
-                              setEditing(u);
-                              setForm({
-                                name: u.name ?? "",
-                                email: u.email ?? "",
-                                password: "",
-                                password_confirmation: "",
-                                role_id: u.role?.id ? String(u.role.id) : "",
-                                branch_id: u.branch?.id
-                                  ? String(u.branch.id)
-                                  : "",
-                              });
-                            }}
-                          >
-                            Editar
-                          </button>
+                          {canEdit && (
+                            <button
+                              className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
+                              onClick={() => {
+                                setEditing(u);
+                                setForm({
+                                  name: u.name ?? "",
+                                  email: u.email ?? "",
+                                  password: "",
+                                  password_confirmation: "",
+                                  role_id: u.role?.id ? String(u.role.id) : "",
+                                  branch_id: u.branch?.id
+                                    ? String(u.branch.id)
+                                    : "",
+                                });
+                              }}
+                            >
+                              Editar
+                            </button>
+                          )}
 
-                          <button
-                            className="px-3 py-1 rounded-lg border hover:bg-red-50 text-red-600 font-semibold"
-                            onClick={() => softDelete(u.id)}
-                          >
-                            Eliminar
-                          </button>
+                          {canDelete && (
+                            <button
+                              className="px-3 py-1 rounded-lg border hover:bg-red-50 text-red-600 font-semibold"
+                              onClick={() => softDelete(u.id)}
+                            >
+                              Eliminar
+                            </button>
+                          )}
                         </>
                       )}
 

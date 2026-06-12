@@ -342,8 +342,8 @@ const Stocks: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl border shadow-sm">
+      <div className="flex overflow-x-auto md:grid md:grid-cols-3 gap-6 pb-2 snap-x shrink-0">
+        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-gray-500 text-sm">Total Productos</p>
@@ -355,7 +355,7 @@ const Stocks: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border shadow-sm">
+        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-gray-500 text-sm">Stock Bajo</p>
@@ -369,7 +369,7 @@ const Stocks: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border shadow-sm">
+        <div className="min-w-[240px] md:min-w-0 snap-start bg-white p-6 rounded-xl border shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <p className="text-gray-500 text-sm">Valor Inventario</p>
@@ -411,8 +411,8 @@ const Stocks: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <table className="w-full text-left text-sm relative">
+        <div className="flex-1 overflow-auto min-h-0">
+          <table className="w-full text-left text-sm relative min-w-max">
             <thead className="bg-gray-50 font-bold text-gray-500 uppercase text-xs sticky top-0 z-10 shadow-sm">
             <tr>
               <th className="px-6 py-4">Producto</th>

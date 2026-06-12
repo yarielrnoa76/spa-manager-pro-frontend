@@ -24,6 +24,7 @@ import {
   Ticket,
   HelpCircle,
   MessageSquare,
+  X,
 } from "lucide-react";
 
 import NotificationBell from "./components/NotificationBell";
@@ -308,16 +309,33 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Mobile sidebar backdrop */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } z-30`}
+        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } z-50 lg:z-auto`}
       >
         <div className="h-full flex flex-col p-4">
-          <h1 className="text-xl font-bold text-indigo-600 mb-8 px-4 flex items-center gap-2">
-            <Store /> ManPro
-          </h1>
+          <div className="flex items-center justify-between mb-8 px-4">
+            <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-2">
+              <Store /> ManPro
+            </h1>
+            <button
+              className="lg:hidden p-1 rounded-lg hover:bg-gray-100 text-gray-400"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-          <nav className="flex-1 space-y-1">
+          <nav className="flex-1 space-y-1 overflow-y-auto min-h-0">
             {navItems.map((item) => (
               <SidebarItem
                 key={item.to}
@@ -328,15 +346,16 @@ const App: React.FC = () => {
             ))}
           </nav>
 
-          <div className="space-y-2">
+          <div className="space-y-2 shrink-0 pt-2 border-t border-gray-100 mt-2">
             <button
               onClick={() => {
                 api.clearToken();
                 api.clearCurrentTenantId();
                 setUser(null);
+                setSidebarOpen(false);
                 navigate("/login", { replace: true });
               }}
-              className="w-full px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50 font-semibold"
+              className="w-full px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50 font-semibold text-sm"
             >
               Clear session
             </button>
@@ -345,9 +364,10 @@ const App: React.FC = () => {
               onClick={async () => {
                 await api.logout();
                 setUser(null);
+                setSidebarOpen(false);
                 navigate("/login", { replace: true });
               }}
-              className="w-full flex items-center justify-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-semibold"
+              className="w-full flex items-center justify-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-semibold text-sm"
             >
               <LogOut size={18} /> Logout
             </button>
@@ -356,16 +376,19 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-16 bg-white border-b flex items-center px-6 gap-4">
+        <header className="h-14 lg:h-16 bg-white border-b flex items-center px-4 lg:px-6 gap-3 shrink-0">
           {/* LEFT SIDE */}
-          <div className="flex items-center gap-4">
-            <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
-              <Menu />
+          <div className="flex items-center gap-3">
+            <button
+              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-600"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu size={22} />
             </button>
           </div>
 
           {/* RIGHT SIDE */}
-          <div className="ml-auto flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-2 lg:gap-4 min-w-0">
             {/* Tenant indicator/selector */}
             {isSuperAdmin && tenants.length > 0 ? (
               <TenantSelector
@@ -385,7 +408,7 @@ const App: React.FC = () => {
             <NotificationBell />
 
             {/* User info */}
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 hidden sm:block truncate max-w-[200px]">
               {user?.email ?? ""}{" "}
               <span className="font-bold">
                 ({user?.role?.name ?? "No Role"})
@@ -394,7 +417,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-6">
           {isSuperAdmin && !currentTenantId ? (
             <Routes>
               <Route

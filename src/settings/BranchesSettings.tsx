@@ -25,7 +25,17 @@ function getErrorMessage(e: any): string {
   return e?.message ?? "Ocurrió un error.";
 }
 
-export default function BranchesSettings({ isSuperAdmin }: { isSuperAdmin?: boolean }) {
+export default function BranchesSettings({
+  isSuperAdmin,
+  canCreate = false,
+  canEdit = false,
+  canDelete = false,
+}: {
+  isSuperAdmin?: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const [rows, setRows] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +113,7 @@ export default function BranchesSettings({ isSuperAdmin }: { isSuperAdmin?: bool
         </div>
       )}
 
+      {(canCreate || editing) && (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <input
           className="border rounded-lg px-3 py-2"
@@ -147,6 +158,7 @@ export default function BranchesSettings({ isSuperAdmin }: { isSuperAdmin?: bool
           )}
         </div>
       </div>
+      )}
 
       <div className="overflow-x-auto border rounded-xl">
         <table className="min-w-full text-sm">
@@ -202,23 +214,27 @@ export default function BranchesSettings({ isSuperAdmin }: { isSuperAdmin?: bool
                     <td className="p-3 text-right space-x-2">
                       {!deleted && (
                         <>
-                          <button
-                            className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
-                            onClick={() => {
-                              setEditing(b);
-                              setName(b.name);
-                              setCode(b.code || "");
-                              setAddress(b.address || "");
-                            }}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            className="px-3 py-1 rounded-lg border hover:bg-red-50 text-red-600 font-semibold"
-                            onClick={() => softDelete(b.id)}
-                          >
-                            Eliminar
-                          </button>
+                          {canEdit && (
+                            <button
+                              className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
+                              onClick={() => {
+                                setEditing(b);
+                                setName(b.name);
+                                setCode(b.code || "");
+                                setAddress(b.address || "");
+                              }}
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              className="px-3 py-1 rounded-lg border hover:bg-red-50 text-red-600 font-semibold"
+                              onClick={() => softDelete(b.id)}
+                            >
+                              Eliminar
+                            </button>
+                          )}
                         </>
                       )}
                       {deleted && (
