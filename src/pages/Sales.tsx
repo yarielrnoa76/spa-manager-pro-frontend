@@ -233,45 +233,38 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const fetchData = useCallback(async (forceAll = false) => {
     setLoading(true);
-    try {
-      const salesOpts: any = {};
+    const salesOpts: any = {};
 
-      if (saleVisibility === "cancelled") {
-        salesOpts.only_cancelled = true;
-      } else if (saleVisibility === "all") {
-        salesOpts.include_cancelled = true;
-      }
+    if (saleVisibility === "cancelled") {
+      salesOpts.only_cancelled = true;
+    } else if (saleVisibility === "all") {
+      salesOpts.include_cancelled = true;
+    }
 
-      salesOpts.page = currentPage;
-      salesOpts.per_page = perPage;
+    salesOpts.page = currentPage;
+    salesOpts.per_page = perPage;
 
-      if (debouncedSearch) {
-        salesOpts.search = debouncedSearch;
-      }
+    if (debouncedSearch) {
+      salesOpts.search = debouncedSearch;
+    }
 
-      // Server-side date filter
-      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
-        salesOpts.date_month = selectedDate.slice(0, 7);
-      } else if (selectedDate) {
-        salesOpts.date = selectedDate;
-      }
+    // Server-side date filter
+    if (filterByMonth && selectedDate && selectedDate.length >= 7) {
+      salesOpts.date_month = selectedDate.slice(0, 7);
+    } else if (selectedDate) {
+      salesOpts.date = selectedDate;
+    }
 
-      if (selectedSeller !== "all") {
-        salesOpts.seller_id = selectedSeller;
-      }
+    if (selectedSeller !== "all") {
+      salesOpts.seller_id = selectedSeller;
+    }
 
-      const shouldFetchDeps = forceAll || branches.length === 0;
+    const shouldFetchDeps = forceAll || branches.length === 0;
 
-      const promises: Promise<any>[] = [
-        api.listSales(selectedBranch, salesOpts),
-        api.getSalesStats(selectedBranch, {
-          date: filterByMonth && selectedDate && selectedDate.length >= 7 ? selectedDate.slice(0, 7) : selectedDate,
-          seller_id: selectedSeller,
-        }),
-      ];
-
-      if (shouldFetchDeps) {
-        promises.push(
+    // Load dependencies (branches, products, leads, etc.) separately so sales errors don't wipe them
+    if (shouldFetchDeps) {
+      try {
+        const [branchesRes, productsRes, leadsRes, paymentMethodsRes, usersRes] = await Promise.allSettled([
           canViewBranch
             ? api.listBranches()
             : user?.branch
@@ -281,13 +274,38 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           canViewLeads ? api.listLeads() : Promise.resolve([]),
           api.listPaymentMethods(),
           api.listUsers()
-        );
+        ]);
+
+        if (branchesRes.status === "fulfilled") {
+          setBranches(Array.isArray(branchesRes.value) ? branchesRes.value : []);
+        }
+        if (productsRes.status === "fulfilled") {
+          setProducts(Array.isArray(productsRes.value) ? productsRes.value : []);
+        }
+        if (leadsRes.status === "fulfilled") {
+          setLeads(Array.isArray(leadsRes.value) ? leadsRes.value : []);
+        }
+        if (paymentMethodsRes.status === "fulfilled") {
+          setPaymentMethods(Array.isArray(paymentMethodsRes.value) ? paymentMethodsRes.value : []);
+        }
+        if (usersRes.status === "fulfilled") {
+          setUsersList(Array.isArray(usersRes.value) ? usersRes.value : []);
+        }
+      } catch (depErr) {
+        console.error("Sales fetchDeps error:", depErr);
       }
+    }
 
-      const results = await Promise.all(promises);
+    // Load sales data and stats
+    try {
+      const [paginatedResult, statsResult] = await Promise.all([
+        api.listSales(selectedBranch, salesOpts),
+        api.getSalesStats(selectedBranch, {
+          date: filterByMonth && selectedDate && selectedDate.length >= 7 ? selectedDate.slice(0, 7) : selectedDate,
+          seller_id: selectedSeller,
+        }),
+      ]);
 
-      const paginatedResult = results[0];
-      const statsResult = results[1];
       setSales(Array.isArray(paginatedResult?.data) ? paginatedResult.data : []);
       setTotalRecords(paginatedResult?.total ?? 0);
       setTotalFilteredAmount(paginatedResult?.total_amount ?? 0);
@@ -298,24 +316,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       if (statsResult) {
         setStatsData(statsResult);
       }
-
-      if (shouldFetchDeps) {
-        setBranches(Array.isArray(results[2]) ? results[2] : []);
-        setProducts(Array.isArray(results[3]) ? results[3] : []);
-        setLeads(Array.isArray(results[4]) ? results[4] : []);
-        setPaymentMethods(Array.isArray(results[5]) ? results[5] : []);
-        setUsersList(Array.isArray(results[6]) ? results[6] : []);
-      }
     } catch (err) {
       console.error("Sales fetchData error:", err);
-      if (forceAll || branches.length === 0) {
-        setSales([]);
-        setBranches([]);
-        setProducts([]);
-        setLeads([]);
-        setPaymentMethods([]);
-        setUsersList([]);
-      }
+      setSales([]);
     } finally {
       setLoading(false);
     }
