@@ -45,6 +45,11 @@ function money(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
 
+function formatMoney(n: number): string {
+  return (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+
 function saleAmount(sale: any): number {
   const candidates = [
     sale?.amount,
@@ -777,7 +782,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               Importe Filtrado
             </p>
             <p className="text-lg md:text-xl font-black text-green-900">
-              ${money(stats.total)}
+              ${formatMoney(stats.total)}
             </p>
           </div>
         </div>
@@ -791,7 +796,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               Acumulado Mes
             </p>
             <p className="text-lg md:text-xl font-black text-indigo-900">
-              ${money(stats.monthlyTotal)}
+              ${formatMoney(stats.monthlyTotal)}
             </p>
           </div>
         </div>
@@ -820,7 +825,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             </p>
             <div className="flex flex-col">
               <p className="text-lg md:text-xl font-black text-emerald-900">
-                ${money(stats.projection)}
+                ${formatMoney(stats.projection)}
               </p>
               <p className="text-[8px] md:text-[9px] text-gray-400 font-medium">
                 ({stats.totalWorkingDays} días laborables)
@@ -849,16 +854,16 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
           <div className="flex flex-wrap gap-2 items-center w-full md:w-auto">
             {/* FILTRO FECHA DROPDOWN */}
-            <div className="relative flex-1 min-w-[150px]">
+            <div className="relative flex-1 min-w-[160px]">
               <button
                 type="button"
                 onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-                className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none whitespace-nowrap ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
+                className={`flex items-center justify-between w-full gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none whitespace-nowrap overflow-hidden ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
                   }`}
                 title="Filtrar por fecha o mes"
               >
                 <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600 shrink-0" : "text-gray-500 shrink-0"} />
-                <span className="font-bold truncate">
+                <span className="font-bold truncate flex-1 text-left">
                   {filterByMonth
                     ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
                     : selectedDate === ""
@@ -967,7 +972,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
             {/* FILTRO ESTADO */}
             <select
-              className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none flex-1 min-w-[100px]"
+              className="bg-gray-50 border rounded-lg text-sm py-2 px-3 focus:outline-none w-[110px] shrink-0"
               value={saleVisibility}
               onChange={(e) => setSaleVisibility(e.target.value as any)}
               title="Filtrar por estado"
