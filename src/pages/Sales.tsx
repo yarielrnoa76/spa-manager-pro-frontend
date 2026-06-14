@@ -134,12 +134,11 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
 
   const isSuperAdmin = user?.is_super_admin === true;
-  const isAdmin = isSuperAdmin;
-  const canViewLeads = isAdmin || perms.includes("view_leads");
-  const canViewBranch = isAdmin || perms.includes("view_branch");
-  const canImport = isAdmin || perms.includes("import_sales");
-  const canExport = isAdmin || perms.includes("export_sales");
-  const canViewAllSales = isAdmin || perms.includes("view_all_sales");
+  const canViewAllSales = isSuperAdmin || perms.includes("view_all_sales");
+  const canViewLeads = isSuperAdmin || perms.includes("view_leads");
+  const canViewBranch = isSuperAdmin || perms.includes("view_branch") || canViewAllSales;
+  const canImport = isSuperAdmin || perms.includes("import_sales");
+  const canExport = isSuperAdmin || perms.includes("export_sales");
   const canViewMySalesOnly = perms.includes("view_my_sales_only") && !canViewAllSales;
   const [sales, setSales] = useState<DailyLog[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
