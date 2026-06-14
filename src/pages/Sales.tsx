@@ -853,19 +853,19 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               <button
                 type="button"
                 onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-                className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
+                className={`flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none whitespace-nowrap ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
                   }`}
                 title="Filtrar por fecha o mes"
               >
-                <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600" : "text-gray-500"} />
-                <span className="font-bold">
+                <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600 shrink-0" : "text-gray-500 shrink-0"} />
+                <span className="font-bold truncate">
                   {filterByMonth
                     ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
                     : selectedDate === ""
                       ? "Todas las Fechas"
                       : selectedDate}
                 </span>
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className="text-gray-400 shrink-0" />
               </button>
 
               {isDateDropdownOpen && (
