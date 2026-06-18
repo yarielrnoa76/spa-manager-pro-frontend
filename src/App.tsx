@@ -30,6 +30,9 @@ import {
 import NotificationBell from "./components/NotificationBell";
 import Tickets from "./pages/Tickets";
 import Help from "./pages/Help";
+import SupportTickets from "./pages/Support/SupportTickets";
+import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
+import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
 
 import { api } from "./services/api";
 import { Tenant } from "./types";
@@ -207,14 +210,15 @@ const App: React.FC = () => {
     ...(hasPerm("restore_conversations")
       ? [{ to: "/chat-admin", icon: Shield, label: "Chat Admin" }]
       : []),
-    ...(hasPerm("view_ticket")
-      ? [{ to: "/tickets", icon: Ticket, label: "Tickets" }]
-      : []),
+
     ...(canSeeExpenses
       ? [{ to: "/expenses", icon: DollarSign, label: "Gastos" }]
       : []),
     ...(canSeeRefunds
       ? [{ to: "/refunds", icon: History, label: "Devoluciones" }]
+      : []),
+    ...(hasPerm("view_support_tickets") || hasPerm("view_all_support_tickets")
+      ? [{ to: "/support-tickets", icon: Ticket, label: "Soporte Técnico" }]
       : []),
     { to: "/help", icon: HelpCircle, label: "Ayuda" },
     ...(canSeeSettings
@@ -458,9 +462,12 @@ const App: React.FC = () => {
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/communications" element={<CommunicationCenter user={user} />} />
               <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />
-              <Route path="/tickets" element={<Tickets />} />
+
               <Route path="/expenses" element={<Expenses user={user} />} />
               <Route path="/refunds" element={<Refunds user={user} />} />
+              <Route path="/support-tickets" element={<SupportTickets user={user} />} />
+              <Route path="/support-tickets/config" element={<SupportTicketConfig user={user} />} />
+              <Route path="/support-tickets/:id" element={<SupportTicketDetail user={user} />} />
               <Route path="/help" element={<Help />} />
               <Route
                 path="/settings"

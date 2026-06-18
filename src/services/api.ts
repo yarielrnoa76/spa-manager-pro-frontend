@@ -675,8 +675,8 @@ export const api = {
     return res.blob();
   },
 
-  // --- Tickets Module ---
-  async listTickets(params: any = {}) {
+  // --- Support Tickets Module ---
+  async listSupportTickets(params: any = {}) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -687,52 +687,98 @@ export const api = {
         }
       }
     });
-    return request<{ data: any[]; last_page: number; total: number }>(`/api/tickets?${searchParams.toString()}`, { method: "GET", auth: true });
+    return request<{ data: import('../types/support').SupportTicket[]; current_page: number; last_page: number; total: number }>(`/api/support-tickets?${searchParams.toString()}`, { method: "GET", auth: true });
   },
 
-  async getTicket(id: number) {
-    return request<any>(`/api/tickets/${id}`, { method: "GET", auth: true });
+  async getSupportTicketDashboardSummary(params: any = {}) {
+    const searchParams = new URLSearchParams(params as any);
+    return request<any>(`/api/support-tickets/dashboard-summary?${searchParams.toString()}`, { method: "GET", auth: true });
   },
 
-  async createTicket(payload: any) {
-    return request<any>(`/api/tickets`, { method: "POST", body: payload, auth: true });
+  async getSupportTicketAssignableUsers() {
+    return request<any[]>(`/api/support-tickets/assignable-users`, { method: "GET", auth: true });
   },
 
-  async updateTicket(id: number, payload: any) {
-    return request<any>(`/api/tickets/${id}`, { method: "PUT", body: payload, auth: true });
+  async getSupportTicket(id: number | string) {
+    return request<{ data: import('../types/support').SupportTicket }>(`/api/support-tickets/${id}`, { method: "GET", auth: true });
   },
 
-  async deleteTicket(id: number) {
-    return request(`/api/tickets/${id}`, { method: "DELETE", auth: true });
+  async createSupportTicket(payload: FormData) {
+    // For FormData we cannot use our generic request since we don't set Content-Type to application/json
+    const token = this.getToken();
+    const tenantId = this.getCurrentTenantId();
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+    if (tenantId) headers['X-Tenant-ID'] = tenantId;
+
+    const res = await fetch(`${API_URL}/api/support-tickets`, {
+      method: 'POST',
+      headers,
+      body: payload,
+    });
+    const rawText = await res.text().catch(() => "");
+    const data = safeJsonParse(rawText);
+    if (!res.ok) throw new ApiError(data?.message || 'Error creating ticket', { status: res.status, data });
+    return data;
   },
 
-  async updateTicketStatus(id: number, status: string, cancel_reason?: string) {
-    return request(`/api/tickets/${id}/status`, { method: "POST", body: { status, cancel_reason }, auth: true });
+  async updateSupportTicket(id: number | string, payload: any) {
+    return request<any>(`/api/support-tickets/${id}`, { method: "PUT", body: payload, auth: true });
   },
 
-  async assignTicket(id: number, responsable_id: number) {
-    return request(`/api/tickets/${id}/assign`, { method: "POST", body: { responsable_id }, auth: true });
+  async deleteSupportTicket(id: number | string, reason: string) {
+    return request(`/api/support-tickets/${id}`, { method: "DELETE", body: { reason }, auth: true });
   },
 
-  async addTicketComment(id: number, comment: string) {
-    return request(`/api/tickets/${id}/comments`, { method: "POST", body: { comment }, auth: true });
+  async restoreSupportTicket(id: number | string) {
+    return request(`/api/support-tickets/${id}/restore`, { method: "POST", auth: true });
   },
 
-  // --- Ticket Categories & Priorities ---
-  async listTicketCategories() {
-    return request<any[]>(`/api/ticket-categories`, { method: "GET", auth: true });
+  async addSupportTicketComment(id: number | string, payload: FormData) {
+    const token = this.getToken();
+    const tenantId = this.getCurrentTenantId();
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+    if (tenantId) headers['X-Tenant-ID'] = tenantId;
+
+    const res = await fetch(`${API_URL}/api/support-tickets/${id}/comments`, {
+      method: 'POST',
+      headers,
+      body: payload,
+    });
+    const rawText = await res.text().catch(() => "");
+    const data = safeJsonParse(rawText);
+    if (!res.ok) throw new ApiError(data?.message || 'Error creating comment', { status: res.status, data });
+    return data;
   },
 
-  async createTicketCategory(payload: any) {
-    return request<any>(`/api/ticket-categories`, { method: "POST", body: payload, auth: true });
+  // --- Support Ticket Config ---
+  async listSupportTicketPriorities() {
+    return request<import('../types/support').SupportTicketPriority[]>(`/api/support-ticket-priorities`, { method: "GET", auth: true });
+  },
+  async createSupportTicketPriority(payload: any) {
+    return request<any>(`/api/support-ticket-priorities`, { method: "POST", auth: true, body: JSON.stringify(payload) });
+  },
+  async updateSupportTicketPriority(id: number | string, payload: any) {
+    return request<any>(`/api/support-ticket-priorities/${id}`, { method: "PUT", auth: true, body: JSON.stringify(payload) });
+  },
+  async deleteSupportTicketPriority(id: number | string) {
+    return request<any>(`/api/support-ticket-priorities/${id}`, { method: "DELETE", auth: true });
   },
 
-  async listTicketPriorities() {
-    return request<any[]>(`/api/ticket-priorities`, { method: "GET", auth: true });
+  async listSupportTicketTypes() {
+    return request<import('../types/support').SupportTicketType[]>(`/api/support-ticket-types`, { method: "GET", auth: true });
   },
-
-  async createTicketPriority(payload: any) {
-    return request<any>(`/api/ticket-priorities`, { method: "POST", body: payload, auth: true });
+  async createSupportTicketType(payload: any) {
+    return request<any>(`/api/support-ticket-types`, { method: "POST", auth: true, body: JSON.stringify(payload) });
+  },
+  async updateSupportTicketType(id: number | string, payload: any) {
+    return request<any>(`/api/support-ticket-types/${id}`, { method: "PUT", auth: true, body: JSON.stringify(payload) });
+  },
+  async deleteSupportTicketType(id: number | string) {
+    return request<any>(`/api/support-ticket-types/${id}`, { method: "DELETE", auth: true });
   },
 
   // --- Notifications ---

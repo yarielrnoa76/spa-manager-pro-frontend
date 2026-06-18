@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, CheckCircle, Ticket as TicketIcon, Info } from 'lucide-react';
+import { Bell, CheckCircle, Ticket as TicketIcon, Info, MessageSquare } from 'lucide-react';
 import { api } from '../services/api';
 import { Notification } from '../types';
 import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 
 const NotificationBell: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
 
     const fetchNotifications = async () => {
         try {
@@ -57,8 +60,12 @@ const NotificationBell: React.FC = () => {
 
     const getIcon = (type: string) => {
         switch (type) {
+            case 'support_ticket_created': return <TicketIcon className="text-emerald-600" size={16} />;
+            case 'support_ticket_status_changed': return <CheckCircle className="text-amber-600" size={16} />;
+            case 'support_ticket_commented': return <MessageSquare className="text-blue-600" size={16} />;
+            case 'support_ticket_assigned':
             case 'ticket_assigned': return <TicketIcon className="text-indigo-600" size={16} />;
-            default: return <Info className="text-blue-600" size={16} />;
+            default: return <Info className="text-gray-400" size={16} />;
         }
     };
 
@@ -101,9 +108,12 @@ const NotificationBell: React.FC = () => {
                                 <div
                                     key={n.id}
                                     className={`p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer ${!n.read_at ? 'bg-indigo-50/30' : ''}`}
-                                    onClick={() => {
-                                        if (!n.read_at) handleMarkAsRead(n.id);
-                                        if (n.url) window.location.href = n.url;
+                                    onClick={async () => {
+                                        if (!n.read_at) {
+                                            await handleMarkAsRead(n.id);
+                                        }
+                                        if (n.url) navigate(n.url);
+                                        setIsOpen(false);
                                     }}
                                 >
                                     <div className="flex gap-3">
@@ -117,7 +127,7 @@ const NotificationBell: React.FC = () => {
                                             </div>
                                             <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</p>
                                             <p className="text-[10px] text-gray-400 mt-1">
-                                                {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                                                {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: es })}
                                             </p>
                                         </div>
                                     </div>
