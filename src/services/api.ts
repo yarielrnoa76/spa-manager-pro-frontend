@@ -760,7 +760,7 @@ export const api = {
   },
 
   async getSupportTicket(id: number | string) {
-    return request<{ data: import('../types/support').SupportTicket }>(`/api/support-tickets/${id}`, { method: "GET", auth: true });
+    return request<import('../types/support').SupportTicket>(`/api/support-tickets/${id}`, { method: "GET", auth: true });
   },
 
   async createSupportTicket(payload: FormData) {

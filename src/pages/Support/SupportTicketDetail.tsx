@@ -59,7 +59,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
         api.listSupportTicketPriorities(),
         api.listSupportTicketTypes()
       ]);
-      setTicket(ticketRes.data);
+      setTicket(ticketRes);
       setAssignableUsers(usersRes);
       setPriorities(pRes);
       setTypes(tRes);
