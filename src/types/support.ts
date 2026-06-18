@@ -24,6 +24,7 @@ export interface SupportTicketComment {
   created_at: string;
   updated_at: string;
   attachments?: SupportTicketAttachment[];
+  creator?: { id: number; name: string };
 }
 
 export interface SupportTicketAttachment {

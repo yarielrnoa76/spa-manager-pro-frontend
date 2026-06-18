@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Paperclip, MessageSquare, AlertCircle,
-  Bell, BellOff, Lock, User as UserIcon, Clock, Trash2
+  Bell, BellOff, Lock, User as UserIcon, Clock, Trash2, X
 } from 'lucide-react';
 import { api } from "../../services/api";
 import { SupportTicket, SupportTicketComment } from "../../types/support";

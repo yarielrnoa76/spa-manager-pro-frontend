@@ -45,16 +45,16 @@ const SupportTickets: React.FC<Props> = ({ user }) => {
       setTickets(ticketsRes.data || []);
       setSummary(summaryRes);
       if (prioritiesRes && !Array.isArray(prioritiesRes)) {
-         setPriorities(prioritiesRes.data || []);
+         setPriorities((prioritiesRes as any).data || []);
       } else {
          setPriorities(prioritiesRes as any);
       }
       
       if (types.length === 0) {
         const typesRes = await api.listSupportTicketTypes();
-        setTypes(typesRes.data || typesRes as any);
+        setTypes((typesRes as any).data || typesRes as any);
         const usersRes = await api.getSupportTicketAssignableUsers();
-        setUsers(usersRes.data);
+        setUsers((usersRes as any).data || usersRes as any);
       }
     } catch (err) {
       console.error(err);

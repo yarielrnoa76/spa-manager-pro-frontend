@@ -29,8 +29,8 @@ const SupportTicketConfig: React.FC<Props> = ({ user }) => {
         canConfigPriorities ? api.listSupportTicketPriorities() : Promise.resolve({ data: [] }),
         canConfigTypes ? api.listSupportTicketTypes() : Promise.resolve({ data: [] })
       ]);
-      setPriorities((pRes.data || pRes) as any);
-      setTypes((tRes.data || tRes) as any);
+      setPriorities(((pRes as any).data || pRes) as any);
+      setTypes(((tRes as any).data || tRes) as any);
     } catch (err) {
       console.error(err);
     } finally {
