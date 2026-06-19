@@ -238,6 +238,8 @@ const SupportTickets: React.FC<Props> = ({ user }) => {
                   <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
                   <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Prioridad</th>
                   <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Asignado a</th>
+                  <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Creado por</th>
+                  <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Creado</th>
                   <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actualizado</th>
                 </tr>
               </thead>
@@ -257,6 +259,8 @@ const SupportTickets: React.FC<Props> = ({ user }) => {
                       )}
                     </td>
                     <td className="p-4 text-gray-600 text-sm">{ticket.assignee?.name || '—'}</td>
+                    <td className="p-4 text-gray-600 text-sm">{ticket.creator?.name || '—'}</td>
+                    <td className="p-4 text-gray-500 text-sm">{new Date(ticket.created_at).toLocaleDateString()}</td>
                     <td className="p-4 text-gray-500 text-sm">{new Date(ticket.updated_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
