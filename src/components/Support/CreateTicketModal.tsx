@@ -14,29 +14,34 @@ const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermission
   const [body, setBody] = useState('');
   const [priorityId, setPriorityId] = useState('');
   const [typeId, setTypeId] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
   const [disableNotifications, setDisableNotifications] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   
   const [priorities, setPriorities] = useState<SupportTicketPriority[]>([]);
   const [types, setTypes] = useState<SupportTicketType[]>([]);
+  const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const canSilenceNotifications = userPermissions.includes('silence_ticket_notifications');
+  const canAssign = userPermissions.includes('assign_support_ticket');
 
   useEffect(() => {
     let mounted = true;
     const loadConfig = async () => {
       try {
-        const [pData, tData] = await Promise.all([
+        const [pData, tData, uData] = await Promise.all([
           api.listSupportTicketPriorities(),
           api.listSupportTicketTypes(),
+          canAssign ? api.getSupportTicketAssignableUsers() : Promise.resolve([]),
         ]);
         if (mounted) {
           setPriorities(pData || []);
           setTypes(tData || []);
+          setAssignableUsers(uData || []);
           if (pData?.length) setPriorityId(String(pData[0].id));
           if (tData?.length) setTypeId(String(tData[0].id));
         }
@@ -76,6 +81,10 @@ const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermission
       formData.append('ticket_body', body);
       formData.append('support_ticket_priority_id', priorityId);
       formData.append('support_ticket_type_id', typeId);
+      
+      if (canAssign && assignedTo) {
+        formData.append('assigned_to', assignedTo);
+      }
       
       if (canSilenceNotifications) {
         formData.append('disable_notifications', disableNotifications ? '1' : '0');
@@ -123,7 +132,7 @@ const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermission
           ) : (
             <form id="create-ticket-form" onSubmit={handleSubmit} className="space-y-6">
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className={canAssign ? "grid grid-cols-1 md:grid-cols-3 gap-6" : "grid grid-cols-1 md:grid-cols-2 gap-6"}>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Prioridad <span className="text-red-500">*</span>
@@ -157,6 +166,24 @@ const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermission
                     ))}
                   </select>
                 </div>
+
+                {canAssign && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Asignar a
+                    </label>
+                    <select
+                      value={assignedTo}
+                      onChange={(e) => setAssignedTo(e.target.value)}
+                      className="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none"
+                    >
+                      <option value="">Sin asignar</option>
+                      {assignableUsers.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div>
