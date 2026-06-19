@@ -168,10 +168,10 @@ const Notifications: React.FC = () => {
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       {!n.read_at && (
                         <button
-                          onClick={() => handleMarkAsRead(n.id)}
+                          onClick={(e) => { e.stopPropagation(); handleMarkAsRead(n.id); }}
                           className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                           title="Marcar como leída"
                         >
@@ -179,7 +179,7 @@ const Notifications: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => handleDelete(n.id)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Eliminar"
                       >
