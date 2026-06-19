@@ -7,9 +7,10 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   userPermissions: string[];
+  isSuperAdmin: boolean;
 }
 
-const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermissions }) => {
+const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermissions, isSuperAdmin }) => {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [priorityId, setPriorityId] = useState('');
@@ -26,8 +27,8 @@ const CreateTicketModal: React.FC<Props> = ({ onClose, onSuccess, userPermission
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const canSilenceNotifications = userPermissions.includes('silence_ticket_notifications');
-  const canAssign = userPermissions.includes('assign_support_ticket');
+  const canSilenceNotifications = isSuperAdmin || userPermissions.includes('silence_ticket_notifications');
+  const canAssign = isSuperAdmin || userPermissions.includes('assign_support_ticket');
 
   useEffect(() => {
     let mounted = true;

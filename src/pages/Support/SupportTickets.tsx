@@ -275,6 +275,7 @@ const SupportTickets: React.FC<Props> = ({ user }) => {
       {isCreateModalOpen && (
         <CreateTicketModal
           userPermissions={user?.permissions || []}
+          isSuperAdmin={!!user?.is_super_admin}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={() => {
             setIsCreateModalOpen(false);
