@@ -53,7 +53,8 @@ const Notifications: React.FC = () => {
     try {
       await api.deleteNotification(id);
       fetchNotifications(pagination.current_page);
-    } catch (error) {
+    } catch (error: any) {
+      alert("Error al eliminar notificación: " + (error?.message || JSON.stringify(error)));
       console.error("Failed to delete notification", error);
     }
   };
