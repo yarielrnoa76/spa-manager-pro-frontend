@@ -328,7 +328,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
                     <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded border shadow-sm">
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-bold text-sm text-gray-900">{log.performer?.name || 'Sistema'}</span>
-                        <span className="text-xs text-gray-500">{formatDate(log.performed_at)}</span>
+                        <span className="text-xs text-gray-500" title={log.performed_at} >{formatDate(log.performed_at)}</span>
                       </div>
                       <p className="text-sm text-gray-600">
                         {log.action === 'ticket_created' && 'Creó el ticket'}
