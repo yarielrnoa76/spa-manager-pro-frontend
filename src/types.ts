@@ -240,6 +240,11 @@ export interface Notification {
   url?: string;
   read_at?: string;
   created_at: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
 }
 
 export interface ConversationMessage {
