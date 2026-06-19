@@ -46,6 +46,14 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
   const canCreateInternalNotes = hasPerm('create_internal_notes');
   const canSeeLogs = hasPerm('manage_support_tickets') || isSuperAdmin;
 
+  const formatDate = (val: string | undefined | null) => {
+    if (!val) return '';
+    let str = val;
+    if (!str.includes('T') && str.includes(' ')) str = str.replace(' ', 'T');
+    if (!str.endsWith('Z')) str += 'Z';
+    return new Date(str).toLocaleString();
+  };
+
   useEffect(() => {
     fetchData();
   }, [id]);
@@ -134,7 +142,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">
-              Creado por <span className="font-semibold">{ticket.creator?.name || 'Usuario desconocido'}</span> el {new Date(ticket.created_at).toLocaleString()}
+              Creado por <span className="font-semibold">{ticket.creator?.name || 'Usuario desconocido'}</span> el {formatDate(ticket.created_at)}
             </p>
           </div>
         </div>
@@ -161,7 +169,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
                 <div className="flex justify-between items-start mb-2">
                   <span className="font-semibold text-gray-900">{ticket.creator?.name || 'Autor'}</span>
                   <span className="text-xs text-gray-500 flex items-center gap-1">
-                    <Clock size={12} /> {new Date(ticket.created_at).toLocaleString()}
+                    <Clock size={12} /> {formatDate(ticket.created_at)}
                   </span>
                 </div>
                 <div className="text-gray-700 whitespace-pre-wrap">{ticket.ticket_body}</div>
@@ -216,7 +224,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
                           <span className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded border border-yellow-200">Nota Interna</span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">{new Date(comment.created_at).toLocaleString()}</span>
+                      <span className="text-xs text-gray-500">{formatDate(comment.created_at)}</span>
                     </div>
                     <div className="text-gray-700 whitespace-pre-wrap">{comment.body}</div>
                     
@@ -320,7 +328,7 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
                     <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded border shadow-sm">
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-bold text-sm text-gray-900">{log.performer?.name || 'Sistema'}</span>
-                        <span className="text-xs text-gray-500">{new Date(log.performed_at + (log.performed_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}</span>
+                        <span className="text-xs text-gray-500">{formatDate(log.performed_at)}</span>
                       </div>
                       <p className="text-sm text-gray-600">
                         {log.action === 'ticket_created' && 'Creó el ticket'}
@@ -469,12 +477,12 @@ const SupportTicketDetail: React.FC<Props> = ({ user }) => {
             <div className="p-5 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-sm text-gray-500">Creación:</span>
-                <span className="text-sm font-medium text-gray-900">{new Date(ticket.created_at).toLocaleString()}</span>
+                <span className="text-sm font-medium text-gray-900">{formatDate(ticket.created_at)}</span>
               </div>
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-sm text-gray-500">Primera Respuesta:</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {ticket.first_response_at ? new Date(ticket.first_response_at).toLocaleString() : 'Pendiente'}
+                  {ticket.first_response_at ? formatDate(ticket.first_response_at) : 'Pendiente'}
                 </span>
               </div>
               <div className="flex justify-between items-center border-b pb-2">
