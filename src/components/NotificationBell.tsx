@@ -137,8 +137,14 @@ const NotificationBell: React.FC = () => {
                     </div>
 
                     <div className="p-3 border-t bg-gray-50 text-center">
-                        <button className="text-xs text-gray-500 font-medium hover:text-gray-700">
-                            Ver todas las actividades
+                        <button 
+                            onClick={() => {
+                                setIsOpen(false);
+                                navigate('/notifications');
+                            }}
+                            className="text-xs text-gray-500 font-medium hover:text-gray-700"
+                        >
+                            Ver todas las notificaciones
                         </button>
                     </div>
                 </div>

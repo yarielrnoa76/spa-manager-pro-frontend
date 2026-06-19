@@ -30,6 +30,7 @@ import {
 import NotificationBell from "./components/NotificationBell";
 import Tickets from "./pages/Tickets";
 import Help from "./pages/Help";
+import Notifications from "./pages/Notifications";
 import SupportTickets from "./pages/Support/SupportTickets";
 import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
 import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
@@ -465,6 +466,7 @@ const App: React.FC = () => {
 
               <Route path="/expenses" element={<Expenses user={user} />} />
               <Route path="/refunds" element={<Refunds user={user} />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/support-tickets" element={<SupportTickets user={user} />} />
               <Route path="/support-tickets/config" element={<SupportTicketConfig user={user} />} />
               <Route path="/support-tickets/:id" element={<SupportTicketDetail user={user} />} />

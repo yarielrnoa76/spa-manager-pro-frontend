@@ -842,8 +842,15 @@ export const api = {
   },
 
   // --- Notifications ---
-  async listNotifications() {
-    return request<{ notifications: any[]; unread_count: number }>(`/api/notifications`, { method: "GET", auth: true });
+  async listNotifications(params: any = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") {
+        searchParams.append(key, String(value));
+      }
+    });
+    const qs = searchParams.toString();
+    return request<{ notifications: any[]; unread_count: number; pagination?: any }>(`/api/notifications${qs ? `?${qs}` : ''}`, { method: "GET", auth: true });
   },
 
   async markNotificationAsRead(id: number) {
@@ -852,6 +859,34 @@ export const api = {
 
   async markAllNotificationsAsRead() {
     return request(`/api/notifications/read-all`, { method: "POST", auth: true });
+  },
+
+  async deleteNotification(id: number) {
+    return request(`/api/notifications/${id}`, { method: "DELETE", auth: true });
+  },
+
+  async deleteAllNotifications() {
+    return request(`/api/notifications/delete-all`, { method: "DELETE", auth: true });
+  },
+
+  // --- Admin Notifications ---
+  async listAdminNotifications(params: any = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") {
+        searchParams.append(key, String(value));
+      }
+    });
+    const qs = searchParams.toString();
+    return request<any>(`/api/admin/notifications${qs ? `?${qs}` : ''}`, { method: "GET", auth: true });
+  },
+
+  async deleteAdminNotification(id: number) {
+    return request(`/api/admin/notifications/${id}`, { method: "DELETE", auth: true });
+  },
+
+  async bulkDeleteAdminNotifications(ids: number[]) {
+    return request(`/api/admin/notifications`, { method: "DELETE", auth: true, body: { ids } });
   },
 
   // --- Live Chat ---

@@ -3,10 +3,11 @@ import BranchesSettings from "../settings/BranchesSettings";
 import UsersSettings from "../settings/UsersSettings";
 import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
+import NotificationsSettings from "../settings/NotificationsSettings";
 import Tenants from "./Tenants";
 import { UserData } from "../App";
 
-type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications";
 
 const TabButton = ({
   active,
@@ -88,6 +89,11 @@ const SettingsPage: React.FC<{
             Tenants
           </TabButton>
         )}
+        {isSuperAdmin && (
+          <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
+            Notificaciones
+          </TabButton>
+        )}
         {canSeeBranches && (
           <TabButton active={tab === "branches"} onClick={() => setTab("branches")}>
             Sucursales
@@ -141,6 +147,7 @@ const SettingsPage: React.FC<{
           />
         )}
         {tab === "tenants" && isSuperAdmin && <Tenants />}
+        {tab === "notifications" && isSuperAdmin && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
       </div>
     </div>
   );

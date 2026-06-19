@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
+import BranchFormModal from "../components/BranchFormModal";
 
 type Tenant = { id: number; name: string };
 
@@ -11,19 +12,6 @@ type Branch = {
   tenant?: Tenant | null;
   deleted_at?: string | null;
 };
-
-// Error Helper
-type ApiValidationErrors = Record<string, string[]>;
-function getErrorMessage(e: any): string {
-  const status = e?.status;
-  const errors: ApiValidationErrors | undefined = e?.errors;
-  if (status === 422 && errors) {
-    const firstKey = Object.keys(errors)[0];
-    const firstMsg = firstKey ? errors[firstKey]?.[0] : null;
-    return firstMsg ?? "Validation failed.";
-  }
-  return e?.message ?? "Ocurrió un error.";
-}
 
 export default function BranchesSettings({
   isSuperAdmin,
@@ -38,13 +26,9 @@ export default function BranchesSettings({
 }) {
   const [rows, setRows] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // formulario
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [address, setAddress] = useState("");
-  const [editing, setEditing] = useState<Branch | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -61,38 +45,24 @@ export default function BranchesSettings({
     load();
   }, []);
 
-  const save = async () => {
-    setError(null);
-    if (!name.trim() || !code.trim() || !address.trim()) {
-      setError("Nombre, código y dirección son obligatorios.");
-      return;
-    }
+  const openCreate = () => {
+    setEditingBranch(null);
+    setModalOpen(true);
+  };
 
-    const payload = {
-      name: name.trim(),
-      code: code.trim(),
-      address: address.trim()
-    };
+  const openEdit = (branch: Branch) => {
+    setEditingBranch(branch);
+    setModalOpen(true);
+  };
 
-    setLoading(true);
-    try {
-      if (editing) {
-        await api.put(`/branches/${editing.id}`, payload);
-      } else {
-        await api.post(`/branches`, payload);
-      }
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingBranch(null);
+  };
 
-      setName("");
-      setCode("");
-      setAddress("");
-      setEditing(null);
-      await load();
-    } catch (e: any) {
-      setError(getErrorMessage(e));
-      console.error("SAVE BRANCH ERROR =>", e);
-    } finally {
-      setLoading(false);
-    }
+  const handleSaved = async () => {
+    closeModal();
+    await load();
   };
 
   const softDelete = async (id: number) => {
@@ -107,57 +77,23 @@ export default function BranchesSettings({
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="border rounded-lg p-3 bg-red-50 text-red-700 text-sm">
-          {error}
+      {canCreate && (
+        <div className="flex justify-end">
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
+          >
+            + Nueva Sucursal
+          </button>
         </div>
       )}
 
-      {(canCreate || editing) && (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <input
-          className="border rounded-lg px-3 py-2"
-          placeholder="Nombre"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+      {modalOpen && (
+        <BranchFormModal
+          branch={editingBranch}
+          onClose={closeModal}
+          onSaved={handleSaved}
         />
-        <input
-          className="border rounded-lg px-3 py-2"
-          placeholder="Código (ej. HIA)"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-        />
-        <input
-          className="border rounded-lg px-3 py-2"
-          placeholder="Dirección"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
-
-        <div className="flex gap-2">
-          <button
-            onClick={save}
-            disabled={loading}
-            className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {editing ? "Guardar" : "Agregar"}
-          </button>
-
-          {editing && (
-            <button
-              onClick={() => {
-                setEditing(null);
-                setName("");
-                setCode("");
-                setAddress("");
-              }}
-              className="px-4 py-2 rounded-lg border font-semibold hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-          )}
-        </div>
-      </div>
       )}
 
       <div className="overflow-x-auto border rounded-xl">
@@ -217,12 +153,7 @@ export default function BranchesSettings({
                           {canEdit && (
                             <button
                               className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
-                              onClick={() => {
-                                setEditing(b);
-                                setName(b.name);
-                                setCode(b.code || "");
-                                setAddress(b.address || "");
-                              }}
+                              onClick={() => openEdit(b)}
                             >
                               Editar
                             </button>
