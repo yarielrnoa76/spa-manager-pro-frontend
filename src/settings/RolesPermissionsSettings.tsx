@@ -361,7 +361,7 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
                                 />
                               </div>
                               <span className={`text-sm font-semibold capitalize ${checked ? "text-indigo-900" : "text-gray-700"}`}>
-                                {p.name.replace("_", " ")}
+                                {p.name.replaceAll("_", " ")}
                               </span>
                             </label>
                           );
