@@ -4,10 +4,11 @@ import UsersSettings from "../settings/UsersSettings";
 import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import NotificationsSettings from "../settings/NotificationsSettings";
+import PaymentsSettings from "../settings/PaymentsSettings";
 import Tenants from "./Tenants";
 import { UserData } from "../App";
 
-type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments";
 
 const TabButton = ({
   active,
@@ -43,6 +44,7 @@ const SettingsPage: React.FC<{
   const canSeeUsers = canManageSettings || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user");
   const canSeeRbac = canManageSettings || hasPerm("view_roles") || hasPerm("manage_roles");
   const canSeeProfessionals = canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional");
+  const canSeePayments = !!isSuperAdmin || user?.role?.name === "admin";
 
   const [tab, setTab] = useState<TabKey>(() => {
     if (isSuperAdmin) return "tenants";
@@ -58,6 +60,7 @@ const SettingsPage: React.FC<{
     if (tab === "users") return "Usuarios";
     if (tab === "professionals") return "Profesionales";
     if (tab === "tenants") return "Tenants";
+    if (tab === "payments") return "Pagos (Stripe)";
     return "Roles y permisos";
   }, [tab]);
 
@@ -114,6 +117,11 @@ const SettingsPage: React.FC<{
             Profesionales
           </TabButton>
         )}
+        {canSeePayments && (
+          <TabButton active={tab === "payments"} onClick={() => setTab("payments")}>
+            Pagos (Stripe)
+          </TabButton>
+        )}
       </div>
 
       <div className="bg-white border rounded-2xl p-4">
@@ -148,6 +156,7 @@ const SettingsPage: React.FC<{
         )}
         {tab === "tenants" && isSuperAdmin && <Tenants />}
         {tab === "notifications" && isSuperAdmin && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "payments" && canSeePayments && <PaymentsSettings isSuperAdmin={isSuperAdmin} user={user} />}
       </div>
     </div>
   );

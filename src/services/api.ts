@@ -649,6 +649,14 @@ export const api = {
     });
   },
 
+  async patch<T = unknown>(path: string, body?: unknown, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), {
+      method: "PATCH",
+      body,
+      auth: opts?.auth ?? true,
+    });
+  },
+
   async delete<T = unknown>(path: string, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "DELETE",
