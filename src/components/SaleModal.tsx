@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare } from "lucide-react";
+import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare, CreditCard, Copy, ExternalLink } from "lucide-react";
 import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
+import { PaymentRequest } from "../types/payments";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -12,6 +13,84 @@ type SaleModalProps = {
     user: any;
     onSuccess: () => void;
 };
+
+const SALE_STATUS_LABELS: Record<string, string> = {
+    draft: "Borrador",
+    pending_payment: "Pendiente de Pago",
+    payment_link_sent: "Link de Pago Enviado",
+    paid: "Pagado",
+    payment_failed: "Pago Fallido",
+    cancelled: "Cancelada",
+    refunded: "Reembolsada",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const SALE_STATUS_BADGE: Record<string, string> = {
+    draft: "bg-gray-100 text-gray-600",
+    pending_payment: "bg-amber-100 text-amber-700",
+    payment_link_sent: "bg-blue-100 text-blue-700",
+    paid: "bg-green-100 text-green-700",
+    payment_failed: "bg-red-100 text-red-700",
+    cancelled: "bg-gray-200 text-gray-600",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+    unpaid: "Sin Pagar",
+    pending: "Pendiente",
+    paid: "Pagado",
+    failed: "Fallido",
+    refunded: "Reembolsado",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const PAYMENT_STATUS_BADGE: Record<string, string> = {
+    unpaid: "bg-gray-100 text-gray-600",
+    pending: "bg-amber-100 text-amber-700",
+    paid: "bg-green-100 text-green-700",
+    failed: "bg-red-100 text-red-700",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+const PAYMENT_REQUEST_STATUS_LABELS: Record<string, string> = {
+    pending: "Pendiente",
+    link_generated: "Link Generado",
+    paid: "Pagado",
+    failed: "Fallido",
+    expired: "Expirado",
+    cancelled: "Cancelado",
+    refunded: "Reembolsado",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const PAYMENT_REQUEST_STATUS_BADGE: Record<string, string> = {
+    pending: "bg-gray-100 text-gray-600",
+    link_generated: "bg-blue-100 text-blue-700",
+    paid: "bg-green-100 text-green-700",
+    failed: "bg-red-100 text-red-700",
+    expired: "bg-amber-100 text-amber-700",
+    cancelled: "bg-gray-200 text-gray-600",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+function getPaymentErrorMessage(e: any): string {
+    const status = e?.status;
+    const errors: Record<string, string[]> | undefined = e?.errors;
+    if (status === 422 && errors) {
+        const firstKey = Object.keys(errors)[0];
+        const firstMsg = firstKey ? errors[firstKey]?.[0] : null;
+        if (firstMsg) return firstMsg;
+    }
+    return e?.message ?? "Ocurrió un error al procesar el cobro.";
+}
+
+function isPaymentRequestExpired(pr: PaymentRequest | null): boolean {
+    if (!pr?.expires_at) return false;
+    return new Date(pr.expires_at).getTime() < Date.now();
+}
 
 const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, onSuccess }) => {
     const [sale, setSale] = useState<any>(null);
@@ -43,6 +122,12 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const [leadForm, setLeadForm] = useState({
         name: '', phone: '', email: '', source: '', message: '', status: '', branch_id: '',
     });
+
+    // Payment Request (Stripe) state
+    const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+    const [paymentRequestLoading, setPaymentRequestLoading] = useState(false);
+    const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | null>(null);
+    const [paymentActionError, setPaymentActionError] = useState<string | null>(null);
 
     const hasPerm = useCallback((p: string) => {
         const perms = (user?.permissions || []) as string[];
@@ -135,6 +220,81 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         } finally {
             setLoading(false);
         }
+    };
+
+    // Re-fetches only the sale (no conversations, no onClose-on-error) so payment
+    // actions can refresh sale_status/payment_status without risking closing the modal.
+    const refreshSale = async () => {
+        if (!saleId) return;
+        try {
+            const data = await api.getSale(saleId);
+            setSale(data);
+        } catch (err) {
+            console.error("Error refreshing sale after payment action", err);
+        }
+    };
+
+    const loadPaymentRequest = useCallback(async (currentSaleId: number | string) => {
+        setPaymentRequestLoading(true);
+        try {
+            const res = await api.get<{ data: PaymentRequest[] }>(`/payment-requests?sale_id=${currentSaleId}&per_page=1`);
+            setPaymentRequest(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
+        } catch (err) {
+            console.error("Error loading payment request", err);
+            setPaymentRequest(null);
+        } finally {
+            setPaymentRequestLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (sale?.payment_provider === 'stripe' && sale?.id) {
+            loadPaymentRequest(sale.id);
+        } else {
+            setPaymentRequest(null);
+        }
+    }, [sale?.id, sale?.payment_provider, loadPaymentRequest]);
+
+    const handleGeneratePaymentRequest = async () => {
+        if (!sale?.id) return;
+        setPaymentActionBusy('generate');
+        setPaymentActionError(null);
+        try {
+            const pr = await api.post<PaymentRequest>('/payment-requests', { sale_id: sale.id });
+            setPaymentRequest(pr);
+            onSuccess();
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            await loadPaymentRequest(sale.id);
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleCancelPaymentRequest = async () => {
+        if (!paymentRequest?.id) return;
+        const ok = window.confirm("¿Cancelar este Payment Request? El cliente ya no podrá pagar con este link.");
+        if (!ok) return;
+
+        setPaymentActionBusy('cancel');
+        setPaymentActionError(null);
+        try {
+            const pr = await api.post<PaymentRequest>(`/payment-requests/${paymentRequest.id}/cancel`);
+            setPaymentRequest(pr);
+            onSuccess();
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleCopyPaymentLink = () => {
+        if (!paymentRequest?.payment_url) return;
+        navigator.clipboard.writeText(paymentRequest.payment_url);
+        alert("Copiado");
     };
 
     const handleUpdate = async (e: React.FormEvent) => {
@@ -363,6 +523,108 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                     <div className="text-sm font-bold text-gray-700 truncate">{sale.lead.email || <span className="text-gray-300 italic">Sin email</span>}</div>
                                                 </div>
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {sale.payment_provider === 'stripe' && (
+                                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+                                            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <CreditCard size={14} /> Cobro con Stripe
+                                            </h4>
+
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${SALE_STATUS_BADGE[sale.sale_status || ''] || 'bg-gray-100 text-gray-600'}`}>
+                                                    Venta: {SALE_STATUS_LABELS[sale.sale_status || ''] || sale.sale_status || '—'}
+                                                </span>
+                                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${PAYMENT_STATUS_BADGE[sale.payment_status || ''] || 'bg-gray-100 text-gray-600'}`}>
+                                                    Pago: {PAYMENT_STATUS_LABELS[sale.payment_status || ''] || sale.payment_status || '—'}
+                                                </span>
+                                                {sale.paid_at && (
+                                                    <span className="text-[10px] font-bold text-gray-400">Pagado el {new Date(sale.paid_at).toLocaleString()}</span>
+                                                )}
+                                            </div>
+
+                                            {paymentActionError && (
+                                                <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-lg p-3">
+                                                    {paymentActionError}
+                                                </div>
+                                            )}
+
+                                            {paymentRequestLoading ? (
+                                                <p className="text-xs text-gray-400 italic">Cargando estado del cobro...</p>
+                                            ) : paymentRequest ? (
+                                                <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+                                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                                        <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${PAYMENT_REQUEST_STATUS_BADGE[paymentRequest.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                            Payment Request: {PAYMENT_REQUEST_STATUS_LABELS[paymentRequest.status] || paymentRequest.status}
+                                                        </span>
+                                                        {paymentRequest.status === 'link_generated' && isPaymentRequestExpired(paymentRequest) && (
+                                                            <span className="text-[10px] font-black uppercase px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                                                                Link Vencido
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {paymentRequest.payment_url && (
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                readOnly
+                                                                value={paymentRequest.payment_url}
+                                                                className="flex-1 text-xs font-mono text-gray-600 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none"
+                                                                onFocus={(e) => e.target.select()}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleCopyPaymentLink}
+                                                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                title="Copiar link"
+                                                            >
+                                                                <Copy size={16} />
+                                                            </button>
+                                                            <a
+                                                                href={paymentRequest.payment_url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                title="Abrir link"
+                                                            >
+                                                                <ExternalLink size={16} />
+                                                            </a>
+                                                        </div>
+                                                    )}
+
+                                                    {paymentRequest.expires_at && (
+                                                        <p className="text-[10px] text-gray-400">Expira: {new Date(paymentRequest.expires_at).toLocaleString()}</p>
+                                                    )}
+
+                                                    {hasPerm('edit_sale') && ['pending', 'link_generated'].includes(paymentRequest.status) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCancelPaymentRequest}
+                                                            disabled={paymentActionBusy !== null}
+                                                            className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-all"
+                                                        >
+                                                            {paymentActionBusy === 'cancel' ? 'Cancelando...' : 'Cancelar Payment Request'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-gray-400 italic">Todavía no se ha generado un Payment Request para esta venta.</p>
+                                            )}
+
+                                            {hasPerm('edit_sale') &&
+                                                ['pending_payment', 'payment_link_sent'].includes(sale.sale_status || '') &&
+                                                ['pending', 'unpaid'].includes(sale.payment_status || '') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleGeneratePaymentRequest}
+                                                        disabled={paymentActionBusy !== null}
+                                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-white transition-all shadow-md ${paymentActionBusy !== null ? 'bg-gray-300' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
+                                                    >
+                                                        {paymentActionBusy === 'generate' ? 'Generando...' : 'Generar Payment Request'}
+                                                    </button>
+                                                )}
                                         </div>
                                     )}
 

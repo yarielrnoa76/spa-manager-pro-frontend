@@ -116,6 +116,26 @@ function localISODate(d = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const STRIPE_STATUS_LABELS: Record<string, string> = {
+  pending_payment: "Pendiente",
+  payment_link_sent: "Link Enviado",
+  paid: "Pagado",
+  payment_failed: "Pago Fallido",
+  cancelled: "Cancelada",
+  refunded: "Reembolsada",
+  partially_refunded: "Reemb. Parcial",
+};
+
+const STRIPE_STATUS_BADGE: Record<string, string> = {
+  pending_payment: "bg-amber-100 text-amber-700",
+  payment_link_sent: "bg-blue-100 text-blue-700",
+  paid: "bg-green-100 text-green-700",
+  payment_failed: "bg-red-100 text-red-700",
+  cancelled: "bg-gray-200 text-gray-600",
+  refunded: "bg-purple-100 text-purple-700",
+  partially_refunded: "bg-purple-100 text-purple-700",
+};
+
 function isSaleCancelled(sale: any) {
   return Boolean(
     sale?.deleted_at ||
@@ -1084,7 +1104,19 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                       ${money(saleAmount(sale))}
                     </td>
 
-                    <td className="px-6 py-4">{sale.payment_method}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span>{sale.payment_method}</span>
+                        {sale.payment_provider === "stripe" && (
+                          <span
+                            className={`inline-block w-fit text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${STRIPE_STATUS_BADGE[sale.sale_status || ""] || "bg-gray-100 text-gray-600"
+                              }`}
+                          >
+                            Stripe: {STRIPE_STATUS_LABELS[sale.sale_status || ""] || sale.sale_status || "—"}
+                          </span>
+                        )}
+                      </div>
+                    </td>
 
                     <td className="px-6 py-4 text-right">
                       {isSaleCancelled(sale) ? (

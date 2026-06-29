@@ -90,6 +90,12 @@ export interface DailyLog {
   seller_name?: string;
   professional_name?: string | null;
   professional?: ProfessionalPerson | null;
+  // Payment lifecycle (Payment Platform) — ausentes en ventas históricas pre-migración
+  sale_status?: string;
+  payment_status?: string;
+  payment_provider?: string | null;
+  paid_at?: string | null;
+  cancelled_at?: string | null;
 }
 
 export interface ProfessionalPerson {

@@ -28,3 +28,30 @@ export interface TenantStripeAccountSafe {
   connected_at: string | null;
   disconnected_at: string | null;
 }
+
+export type PaymentRequestStatus =
+  | "pending"
+  | "link_generated"
+  | "paid"
+  | "failed"
+  | "expired"
+  | "cancelled"
+  | "refunded"
+  | "partially_refunded";
+
+export interface PaymentRequest {
+  id: number;
+  sale_id: number;
+  lead_id: number | null;
+  appointment_id: number | null;
+  amount: number | string;
+  currency: string;
+  status: PaymentRequestStatus;
+  sent_at: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  stripe_checkout_session_id: string | null;
+  payment_url: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
