@@ -37,6 +37,10 @@ export type DashboardStats = {
   recentLeads: Array<Lead>;
   salesCount: number;
   lowStockCount: number;
+  // Revenue system — snake_case, payment_status driven
+  revenue_paid?: number;
+  revenue_pending?: number;
+  revenue_refunded?: number;
 };
 
 if (!API_URL) {
@@ -271,10 +275,15 @@ export const api = {
   },
 
   // --- Dashboard ---
-  async getDashboardStats(branch_id: string | number = "all") {
-    const q = branch_id && branch_id !== "all"
-      ? `?branch_id=${encodeURIComponent(String(branch_id))}`
-      : "";
+  async getDashboardStats(
+    branch_id: string | number = "all",
+    opts?: { from?: string; to?: string },
+  ) {
+    const params = new URLSearchParams();
+    if (branch_id && branch_id !== "all") params.set("branch_id", String(branch_id));
+    if (opts?.from) params.set("from", opts.from);
+    if (opts?.to) params.set("to", opts.to);
+    const q = params.toString() ? `?${params.toString()}` : "";
     return request(`/api/dashboard/stats${q}`, { method: "GET", auth: true });
   },
 

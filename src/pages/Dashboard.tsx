@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import RevenueTab from "../components/revenue/RevenueTab";
 import {
   BarChart as ReBarChart,
   Bar,
@@ -37,6 +38,10 @@ type DashboardStats = {
   recentLeads: Lead[];
   salesCount: number;
   lowStockCount: number;
+  // Revenue system — snake_case, payment_status driven
+  revenue_paid?: number;
+  revenue_pending?: number;
+  revenue_refunded?: number;
 };
 
 type Product = {
@@ -138,7 +143,7 @@ const Dashboard: React.FC = () => {
   const nowInit = new Date();
   const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(nowInit.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(nowInit.getFullYear());
-  const [activeTab, setActiveTab] = useState<"summary" | "annual">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "annual" | "revenue">("summary");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -148,6 +153,11 @@ const Dashboard: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [refunds, setRefunds] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+
+  // Revenue Tab state — lazy loaded only when tab is active
+  const [revenueStats, setRevenueStats] = useState<DashboardStats | null>(null);
+  const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+  const [revenueLoading, setRevenueLoading] = useState(false);
 
   const [user, setUser] = useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -201,6 +211,58 @@ const Dashboard: React.FC = () => {
       setSelectedBranch(String(userBranchId));
     }
   }, [user]);
+
+  // Revenue Tab — lazy fetch: fires only when the tab is active.
+  // Fetches period-aware dashboard stats (with from/to) + payment requests.
+  // Date range is computed here directly (same logic as the period useMemo below)
+  // to avoid a temporal dead zone reference inside the useEffect.
+  useEffect(() => {
+    if (activeTab !== "revenue") return;
+    let cancelled = false;
+
+    const now = new Date();
+    const isCurrentYear = now.getFullYear() === selectedYear;
+    let fromStr: string;
+    let toStr: string;
+    if (selectedMonth === "all") {
+      const start = new Date(selectedYear, 0, 1);
+      const end = isCurrentYear ? now : new Date(selectedYear, 11, 31);
+      fromStr = toISODate(start);
+      toStr = toISODate(end);
+    } else {
+      const start = new Date(selectedYear, (selectedMonth as number) - 1, 1);
+      const endOfMonth = new Date(selectedYear, selectedMonth as number, 0);
+      const isCurrentMonth = isCurrentYear && now.getMonth() + 1 === selectedMonth;
+      const end = isCurrentMonth ? now : endOfMonth;
+      fromStr = toISODate(start);
+      toStr = toISODate(end);
+    }
+
+    const fetchRevenue = async () => {
+      setRevenueLoading(true);
+      try {
+        const [statsRes, prRes] = await Promise.all([
+          api.getDashboardStats(selectedBranch, { from: fromStr, to: toStr }),
+          api.get<any>(`/api/payment-requests?per_page=50${selectedBranch !== "all" ? `&branch_id=${selectedBranch}` : ""}`),
+        ]);
+        if (cancelled) return;
+        setRevenueStats(statsRes as DashboardStats);
+        const prList = Array.isArray(prRes)
+          ? prRes
+          : Array.isArray((prRes as any)?.data)
+          ? (prRes as any).data
+          : [];
+        setPaymentRequests(prList);
+      } catch {
+        // Silently degrade — revenue tab shows zeros, not an error screen
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    };
+
+    fetchRevenue();
+    return () => { cancelled = true; };
+  }, [activeTab, selectedBranch, selectedMonth, selectedYear]);
 
   const userBranchId = user?.branch_id || user?.branch?.id;
   const isBranchRestricted = userBranchId && !user?.is_super_admin && !user?.permissions?.includes("view_all_sales");
@@ -531,9 +593,23 @@ const Dashboard: React.FC = () => {
           Resumen Anual y Cierre
           {activeTab === 'annual' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
         </button>
+        <button onClick={() => setActiveTab("revenue")} className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'revenue' ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          Revenue
+          {activeTab === 'revenue' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-600 rounded-t-full" />}
+        </button>
       </div>
 
-      {activeTab === "summary" ? (
+      {activeTab === "revenue" ? (
+        <RevenueTab
+          revenuePaid={revenueStats?.revenue_paid ?? 0}
+          revenuePending={revenueStats?.revenue_pending ?? 0}
+          revenueRefunded={revenueStats?.revenue_refunded ?? 0}
+          periodSales={periodSales}
+          paymentRequests={paymentRequests}
+          periodLabel={periodLabel}
+          revenueLoading={revenueLoading}
+        />
+      ) : activeTab === "summary" ? (
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6">
             <StatCard title={`Ventas (${periodLabel})`} value={`$${kpi.totalSales.toLocaleString()}`} icon={DollarSign} color="bg-indigo-600" />
@@ -605,6 +681,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       ) : (
+        /* activeTab === "annual" */
         <div className="space-y-8 animate-in fade-in duration-500">
           {/* TABLA 1: Acumulado Anual por Sucursal */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
