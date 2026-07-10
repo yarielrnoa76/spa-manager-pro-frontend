@@ -614,15 +614,19 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                             )}
 
                                             {hasPerm('edit_sale') &&
-                                                ['pending_payment', 'payment_link_sent'].includes(sale.sale_status || '') &&
-                                                ['pending', 'unpaid'].includes(sale.payment_status || '') && (
+                                                ['pending_payment', 'payment_link_sent', 'payment_failed'].includes(sale.sale_status || '') &&
+                                                ['pending', 'unpaid', 'failed'].includes(sale.payment_status || '') && (
                                                     <button
                                                         type="button"
                                                         onClick={handleGeneratePaymentRequest}
                                                         disabled={paymentActionBusy !== null}
                                                         className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-white transition-all shadow-md ${paymentActionBusy !== null ? 'bg-gray-300' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
                                                     >
-                                                        {paymentActionBusy === 'generate' ? 'Generando...' : 'Generar Payment Request'}
+                                                        {paymentActionBusy === 'generate'
+                                                            ? 'Generando...'
+                                                            : sale.sale_status === 'payment_failed'
+                                                                ? 'Reintentar Cobro Stripe'
+                                                                : 'Generar Payment Request'}
                                                     </button>
                                                 )}
                                         </div>
