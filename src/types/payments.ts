@@ -39,6 +39,21 @@ export type PaymentRequestStatus =
   | "refunded"
   | "partially_refunded";
 
+export type PaymentTimelineEntryType =
+  | 'pr_created'
+  | 'status_change'
+  | 'stripe_session'
+  | 'transaction'
+  | 'pr_updated';
+
+export interface PaymentTimelineEntry {
+  type: PaymentTimelineEntryType;
+  timestamp: string;
+  actor: string | null;
+  label: string;
+  meta: Record<string, string | null>;
+}
+
 export interface PaymentRequest {
   id: number;
   sale_id: number;

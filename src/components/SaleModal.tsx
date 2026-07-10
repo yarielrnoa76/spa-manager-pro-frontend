@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare, CreditCard, Copy, ExternalLink } from "lucide-react";
+import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare, CreditCard, Copy, ExternalLink, Clock } from "lucide-react";
 import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
-import { PaymentRequest } from "../types/payments";
+import { PaymentRequest, PaymentTimelineEntry } from "../types/payments";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -128,6 +128,10 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const [paymentRequestLoading, setPaymentRequestLoading] = useState(false);
     const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | null>(null);
     const [paymentActionError, setPaymentActionError] = useState<string | null>(null);
+
+    // Payment Timeline state
+    const [timeline, setTimeline] = useState<PaymentTimelineEntry[]>([]);
+    const [timelineLoading, setTimelineLoading] = useState(false);
 
     const hasPerm = useCallback((p: string) => {
         const perms = (user?.permissions || []) as string[];
@@ -254,6 +258,19 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             setPaymentRequest(null);
         }
     }, [sale?.id, sale?.payment_provider, loadPaymentRequest]);
+
+    useEffect(() => {
+        if (!paymentRequest?.id) {
+            setTimeline([]);
+            setTimelineLoading(false);
+            return;
+        }
+        setTimelineLoading(true);
+        api.get<PaymentTimelineEntry[]>(`/payment-requests/${paymentRequest.id}/timeline`)
+            .then(data => setTimeline(Array.isArray(data) ? data : []))
+            .catch(() => setTimeline([]))
+            .finally(() => setTimelineLoading(false));
+    }, [paymentRequest?.id, paymentRequest?.status]);
 
     const handleGeneratePaymentRequest = async () => {
         if (!sale?.id) return;
@@ -607,6 +624,32 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                         >
                                                             {paymentActionBusy === 'cancel' ? 'Cancelando...' : 'Cancelar Payment Request'}
                                                         </button>
+                                                    )}
+
+                                                    {(timelineLoading || timeline.length > 0) && (
+                                                        <div className="border-t border-gray-100 pt-3">
+                                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                                                <Clock size={10} /> Historial de Cobro
+                                                            </p>
+                                                            {timelineLoading ? (
+                                                                <p className="text-xs text-gray-400 italic">Cargando historial...</p>
+                                                            ) : (
+                                                                <div className="space-y-2">
+                                                                    {timeline.map((entry, i) => (
+                                                                        <div key={i} className="flex gap-2.5 items-start">
+                                                                            <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-300 shrink-0" />
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-xs font-semibold text-gray-700 leading-tight">{entry.label}</p>
+                                                                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                                    {new Date(entry.timestamp).toLocaleString()}
+                                                                                    {entry.actor && <span className="ml-1 font-bold">· {entry.actor}</span>}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
                                             ) : (
