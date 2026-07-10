@@ -17,6 +17,12 @@ if (window.location.pathname === "/settings/payments/stripe" && window.location.
   window.history.replaceState(null, "", `/#/settings${window.location.search}`);
 }
 
+// Stripe Checkout también redirige a una ruta real (success_url/cancel_url
+// apuntan a /pay/:id) fuera del hash. Mismo workaround que arriba.
+if (!window.location.hash && window.location.pathname.startsWith("/pay/")) {
+  window.history.replaceState(null, "", `/#${window.location.pathname}${window.location.search}`);
+}
+
 import { GoogleOAuthProvider } from "@react-oauth/google";
 
 createRoot(rootElement).render(
