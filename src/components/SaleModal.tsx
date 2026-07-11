@@ -41,6 +41,7 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
     pending: "Pendiente",
     paid: "Pagado",
     failed: "Fallido",
+    cancelled: "Cancelado",
     refunded: "Reembolsado",
     partially_refunded: "Reembolso Parcial",
 };
@@ -50,6 +51,7 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
     pending: "bg-amber-100 text-amber-700",
     paid: "bg-green-100 text-green-700",
     failed: "bg-red-100 text-red-700",
+    cancelled: "bg-gray-200 text-gray-600",
     refunded: "bg-purple-100 text-purple-700",
     partially_refunded: "bg-purple-100 text-purple-700",
 };

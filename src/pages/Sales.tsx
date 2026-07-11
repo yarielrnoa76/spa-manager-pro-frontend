@@ -143,7 +143,9 @@ function isSaleCancelled(sale: any) {
     sale?.is_deleted ||
     sale?.isDeleted ||
     String(sale?.status || "").toLowerCase() === "cancelled" ||
-    String(sale?.status || "").toLowerCase() === "canceled",
+    String(sale?.status || "").toLowerCase() === "canceled" ||
+    String(sale?.sale_status || "").toLowerCase() === "cancelled" ||
+    String(sale?.payment_status || "").toLowerCase() === "cancelled",
   );
 }
 
