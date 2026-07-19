@@ -444,6 +444,7 @@ const App: React.FC = () => {
                     <SettingsPage
                       isSuperAdmin={isSuperAdmin}
                       currentTenantName={currentTenantName}
+                      currentTenantId={currentTenantId}
                       user={user}
                     />
                   ) : (
@@ -490,6 +491,7 @@ const App: React.FC = () => {
                     <SettingsPage
                       isSuperAdmin={isSuperAdmin}
                       currentTenantName={currentTenantName}
+                      currentTenantId={currentTenantId}
                       user={user}
                     />
                   ) : (
