@@ -19,6 +19,7 @@ import {
   Building2,
   X,
   Download,
+  Ban,
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
@@ -315,6 +316,23 @@ const Dashboard: React.FC = () => {
     const productsSold = periodSales.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
     return { totalSales, salesCount, productsSold };
   }, [periodSales]);
+
+  // Control-only cancellation summary — same period/branch filters as periodSales,
+  // inverted to select cancelled sales instead of excluding them. Never mixed into
+  // `kpi` above (see docs/architecture/payment-platform.md).
+  const cancelledPeriodSales = useMemo(() => {
+    return (sales || []).filter((s) => {
+      const d = normalizeDate(s.date);
+      if (!d || d < period.startStr || d > period.endStr) return false;
+      if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
+      return isSaleCancelled(s);
+    });
+  }, [sales, selectedBranch, period.startStr, period.endStr]);
+
+  const cancelledKpi = useMemo(() => {
+    const amount = cancelledPeriodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
+    return { count: cancelledPeriodSales.length, amount };
+  }, [cancelledPeriodSales]);
 
   const periodLabel = useMemo(() => {
     if (selectedMonth === "all") return `Año ${selectedYear}`;
@@ -619,6 +637,21 @@ const Dashboard: React.FC = () => {
             <StatCard title="Cant. Ventas" value={kpi.salesCount} icon={Users} color="bg-amber-500" />
             <StatCard title="Productos" value={kpi.productsSold} icon={ShoppingBag} color="bg-rose-500" />
           </div>
+
+          {/* CONTROL: VENTAS CANCELADAS — informativo, no es revenue ni venta vigente.
+              Deliberadamente fuera del grid de KPIs de arriba para no mezclarse con los
+              totales principales (ver docs/architecture/payment-platform.md). */}
+          {(cancelledKpi.count > 0 || cancelledKpi.amount > 0) && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-500">
+              <Ban size={16} className="text-gray-400 shrink-0" />
+              <p className="text-xs font-medium">
+                <span className="font-bold text-gray-600">Control — Ventas Canceladas:</span>{" "}
+                {cancelledKpi.count} {cancelledKpi.count === 1 ? "venta" : "ventas"} · $
+                {cancelledKpi.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                <span className="text-gray-400"> (no incluido en los totales de arriba, solo auditoría)</span>
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
