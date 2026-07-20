@@ -407,6 +407,9 @@ export const api = {
       from: number | null;
       to: number | null;
       total_amount: number;
+      valid_count: number;
+      cancelled_count: number;
+      cancelled_amount: number;
     }>(`/api/sales${q}`, {
       method: "GET",
       auth: true,

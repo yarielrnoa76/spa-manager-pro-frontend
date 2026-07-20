@@ -20,6 +20,7 @@ import {
   Calendar,
   ChevronsLeft,
   ChevronsRight,
+  Ban,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -194,6 +195,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [perPage, setPerPage] = useState(400);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalFilteredAmount, setTotalFilteredAmount] = useState(0);
+  const [validCount, setValidCount] = useState(0);
+  const [cancelledCount, setCancelledCount] = useState(0);
+  const [cancelledAmount, setCancelledAmount] = useState(0);
   const [lastPage, setLastPage] = useState(1);
   const [paginationFrom, setPaginationFrom] = useState<number | null>(null);
   const [paginationTo, setPaginationTo] = useState<number | null>(null);
@@ -204,6 +208,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     days_worked: number;
     total_working_days: number;
     projection: number;
+    cancelled_day_count?: number;
+    cancelled_day_amount?: number;
+    cancelled_month_count?: number;
+    cancelled_month_amount?: number;
     weekly_breakdown?: {
       start: string;
       end: string;
@@ -330,6 +338,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       setSales(Array.isArray(paginatedResult?.data) ? paginatedResult.data : []);
       setTotalRecords(paginatedResult?.total ?? 0);
       setTotalFilteredAmount(paginatedResult?.total_amount ?? 0);
+      setValidCount(paginatedResult?.valid_count ?? 0);
+      setCancelledCount(paginatedResult?.cancelled_count ?? 0);
+      setCancelledAmount(paginatedResult?.cancelled_amount ?? 0);
       setLastPage(paginatedResult?.last_page ?? 1);
       setCurrentPage(paginatedResult?.current_page ?? 1);
       setPaginationFrom(paginatedResult?.from ?? null);
@@ -386,14 +397,17 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const stats = useMemo(() => {
     return {
-      count: totalRecords,
+      // valid_count/total_amount are backend-computed and always exclude
+      // cancelled sales, regardless of the Activas/Todas/Canceladas tab
+      // (validForMetrics() scope) — see docs/architecture/payment-platform.md.
+      count: validCount,
       total: statsData.total_day || totalFilteredAmount, // Use backend's filtered amount
       monthlyTotal: statsData.total_month || 0,
       daysWorked: statsData.days_worked || 0,
       totalWorkingDays: statsData.total_working_days || 0,
       projection: statsData.projection || 0,
     };
-  }, [totalFilteredAmount, totalRecords, statsData]);
+  }, [totalFilteredAmount, validCount, statsData]);
 
   const availableProducts = useMemo(
     () => products.filter((p: any) => Number((p as any).stock) > 0),
@@ -858,6 +872,20 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
       </div>
+
+      {/* CONTROL: VENTAS CANCELADAS — informativo, no es revenue ni venta vigente.
+          Deliberadamente fuera del grid de KPIs de arriba para no mezclarse con los
+          totales principales (ver docs/architecture/payment-platform.md). */}
+      {(cancelledCount > 0 || cancelledAmount > 0) && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 shrink-0">
+          <Ban size={16} className="text-gray-400 shrink-0" />
+          <p className="text-xs font-medium">
+            <span className="font-bold text-gray-600">Control — Ventas Canceladas:</span>{" "}
+            {cancelledCount} {cancelledCount === 1 ? "venta" : "ventas"} · ${formatMoney(cancelledAmount)}
+            <span className="text-gray-400"> (no incluido en los totales de arriba, solo auditoría)</span>
+          </p>
+        </div>
+      )}
 
       {/* TABLA Y FILTROS */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
