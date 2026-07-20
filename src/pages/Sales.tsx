@@ -117,6 +117,21 @@ function localISODate(d = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Calendar week (Mon-Sun) containing anchorDate — display only. The backend
+// (SalesController::index(), date_week param) computes the authoritative range
+// via Carbon's startOfWeek()/endOfWeek(), which default to the same Mon-Sun week.
+function weekRangeFor(anchorDate: string): { start: string; end: string } {
+  const [y, m, d] = anchorDate.split("-").map(Number);
+  const anchor = new Date(y, (m || 1) - 1, d || 1);
+  const dayOfWeek = anchor.getDay(); // 0=Sun .. 6=Sat
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(anchor);
+  monday.setDate(anchor.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: localISODate(monday), end: localISODate(sunday) };
+}
+
 const STRIPE_STATUS_LABELS: Record<string, string> = {
   pending_payment: "Pendiente",
   payment_link_sent: "Link Enviado",
@@ -183,7 +198,11 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
 
   const today = localISODate();
   const [selectedDate, setSelectedDate] = useState<string>(today);
-  const [filterByMonth, setFilterByMonth] = useState(false);
+  // The selected date is the anchor for the Day/Week/Month quick filters below —
+  // switching granularity never changes the anchor, only how much of the
+  // calendar around it is shown (see docs/architecture/payment-platform.md, ADR-020).
+  type DateGranularity = "day" | "week" | "month";
+  const [dateGranularity, setDateGranularity] = useState<DateGranularity>("day");
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -258,7 +277,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [saleVisibility, selectedBranch, selectedDate, filterByMonth, selectedSeller]);
+  }, [saleVisibility, selectedBranch, selectedDate, dateGranularity, selectedSeller]);
 
   const fetchData = useCallback(async (forceAll = false) => {
     setLoading(true);
@@ -277,11 +296,16 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       salesOpts.search = debouncedSearch;
     }
 
-    // Server-side date filter
-    if (filterByMonth && selectedDate && selectedDate.length >= 7) {
-      salesOpts.date_month = selectedDate.slice(0, 7);
-    } else if (selectedDate) {
-      salesOpts.date = selectedDate;
+    // Server-side date filter — selectedDate is always the anchor; dateGranularity
+    // only decides how much of the calendar around it the backend includes.
+    if (selectedDate) {
+      if (dateGranularity === "month") {
+        salesOpts.date_month = selectedDate.slice(0, 7);
+      } else if (dateGranularity === "week") {
+        salesOpts.date_week = selectedDate;
+      } else {
+        salesOpts.date = selectedDate;
+      }
     }
 
     if (selectedSeller !== "all") {
@@ -325,12 +349,16 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       }
     }
 
-    // Load sales data and stats
+    // Load sales data and stats. stats() always receives the full, untruncated
+    // anchor date regardless of dateGranularity — it always reports "the month
+    // containing the anchor" (Acumulado/Días Trabajados/Proyección/Desglose
+    // Semanal are inherently month-level figures independent of the Day/Week/
+    // Month quick filter applied to the listing above).
     try {
       const [paginatedResult, statsResult] = await Promise.all([
         api.listSales(selectedBranch, salesOpts),
         api.getSalesStats(selectedBranch, {
-          date: filterByMonth && selectedDate && selectedDate.length >= 7 ? selectedDate.slice(0, 7) : selectedDate,
+          date: selectedDate,
           seller_id: selectedSeller,
         }),
       ]);
@@ -355,7 +383,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, filterByMonth, selectedSeller]);
+  }, [currentPage, perPage, debouncedSearch, saleVisibility, selectedBranch, selectedDate, dateGranularity, selectedSeller]);
 
   useEffect(() => {
     fetchData(true);
@@ -392,16 +420,33 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     [selectedBranchName],
   );
 
+  // Human-readable label for whatever Day/Week/Month range is anchored on
+  // selectedDate — used by the header, the KPI card title, and the dropdown button.
+  const dateFilterLabel = useMemo(() => {
+    if (!selectedDate) return { kind: "Fecha", value: "Todas las Fechas" };
+    if (dateGranularity === "month") {
+      return { kind: "Mes", value: selectedDate.slice(0, 7) };
+    }
+    if (dateGranularity === "week") {
+      const { start, end } = weekRangeFor(selectedDate);
+      return { kind: "Semana", value: `${start} — ${end}` };
+    }
+    return { kind: "Fecha", value: selectedDate };
+  }, [selectedDate, dateGranularity]);
+
   // With server-side pagination, sales already contains the filtered page
   const visibleSales = sales;
 
   const stats = useMemo(() => {
     return {
-      // valid_count/total_amount are backend-computed and always exclude
-      // cancelled sales, regardless of the Activas/Todas/Canceladas tab
-      // (validForMetrics() scope) — see docs/architecture/payment-platform.md.
+      // valid_count/total_amount come from index() and always correctly reflect
+      // whichever Day/Week/Month filter is active (validForMetrics() scope) —
+      // see docs/architecture/payment-platform.md. total_day from stats() is no
+      // longer used here: it's always "the anchor day's total" regardless of
+      // dateGranularity, which isn't what "Importe Filtrado" should show in
+      // Week/Month mode.
       count: validCount,
-      total: statsData.total_day || totalFilteredAmount, // Use backend's filtered amount
+      total: totalFilteredAmount,
       monthlyTotal: statsData.total_month || 0,
       daysWorked: statsData.days_worked || 0,
       totalWorkingDays: statsData.total_working_days || 0,
@@ -581,10 +626,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       if (debouncedSearch) {
         exportOpts.search = debouncedSearch;
       }
-      if (filterByMonth && selectedDate && selectedDate.length >= 7) {
-        exportOpts.date_month = selectedDate.slice(0, 7);
-      } else if (selectedDate) {
-        exportOpts.date = selectedDate;
+      if (selectedDate) {
+        if (dateGranularity === "month") {
+          exportOpts.date_month = selectedDate.slice(0, 7);
+        } else if (dateGranularity === "week") {
+          exportOpts.date_week = selectedDate;
+        } else {
+          exportOpts.date = selectedDate;
+        }
       }
 
       if (selectedSeller !== "all") {
@@ -619,7 +668,13 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ventas_${filterByMonth ? "mes_" + selectedDate.slice(0, 7) : selectedDate}_${branchLabelForFile}.csv`;
+      const dateLabelForFile =
+        dateGranularity === "month"
+          ? "mes_" + selectedDate.slice(0, 7)
+          : dateGranularity === "week"
+            ? "semana_" + weekRangeFor(selectedDate).start
+            : selectedDate;
+      a.download = `ventas_${dateLabelForFile}_${branchLabelForFile}.csv`;
       a.click();
     } catch (err: any) {
       alert("Error exportando ventas: " + (err.message || ""));
@@ -697,9 +752,9 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             <span className="font-bold text-gray-600">
               {selectedBranchName}
             </span>{" "}
-            · {filterByMonth ? "Mes: " : "Fecha: "}{" "}
+            · {dateFilterLabel.kind}:{" "}
             <span className="font-bold text-gray-600">
-              {filterByMonth ? selectedDate.slice(0, 7) : selectedDate}
+              {dateFilterLabel.value}
             </span>
           </p>
         </div>
@@ -805,7 +860,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
-              {filterByMonth ? "Ventas del Mes" : "Ventas del Día"}
+              {dateGranularity === "month" ? "Ventas del Mes" : dateGranularity === "week" ? "Ventas de la Semana" : "Ventas del Día"}
             </p>
             <p className="text-lg md:text-xl font-black text-indigo-900">{stats.count}</p>
           </div>
@@ -910,17 +965,15 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               <button
                 type="button"
                 onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-                className={`flex items-center justify-between w-full gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none whitespace-nowrap overflow-hidden ${filterByMonth || selectedDate === "" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
+                className={`flex items-center justify-between w-full gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors focus:outline-none whitespace-nowrap overflow-hidden ${selectedDate === "" || dateGranularity !== "day" ? "border-indigo-500 text-indigo-700 bg-indigo-50/30" : "text-gray-700"
                   }`}
-                title="Filtrar por fecha o mes"
+                title="Filtrar por día, semana o mes"
               >
-                <Calendar size={16} className={filterByMonth || selectedDate === "" ? "text-indigo-600 shrink-0" : "text-gray-500 shrink-0"} />
+                <Calendar size={16} className={selectedDate === "" || dateGranularity !== "day" ? "text-indigo-600 shrink-0" : "text-gray-500 shrink-0"} />
                 <span className="font-bold truncate flex-1 text-left">
-                  {filterByMonth
-                    ? `Este Mes (${selectedDate ? selectedDate.slice(0, 7) : "—"})`
-                    : selectedDate === ""
-                      ? "Todas las Fechas"
-                      : selectedDate}
+                  {dateFilterLabel.kind === "Fecha" && selectedDate === ""
+                    ? "Todas las Fechas"
+                    : `${dateFilterLabel.kind}: ${dateFilterLabel.value}`}
                 </span>
                 <ChevronDown size={14} className="text-gray-400 shrink-0" />
               </button>
@@ -934,50 +987,64 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                   <div className="absolute left-0 mt-2 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-4 w-72 space-y-3">
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">
-                        Seleccionar Día
+                        Fecha ancla
                       </label>
+                      {/* La fecha ancla decide QUÉ día/semana/mes se muestra; los
+                          botones de abajo solo cambian CUÁNTO calendario alrededor
+                          de ella se incluye — nunca la reemplazan por "hoy". */}
                       <input
                         type="date"
                         className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700 font-bold"
                         value={selectedDate}
                         onChange={(e) => {
                           setSelectedDate(e.target.value);
-                          setFilterByMonth(false);
                         }}
                         max={localISODate()}
                       />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+                    <div className="grid grid-cols-4 gap-2 pt-2 border-t border-gray-100">
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedDate(localISODate());
-                          setFilterByMonth(false);
+                          if (!selectedDate) setSelectedDate(localISODate());
+                          setDateGranularity("day");
                           setIsDateDropdownOpen(false);
                         }}
-                        className="px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
-                        title="Seleccionar el día de hoy"
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${dateGranularity === "day" ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"}`}
+                        title="Ver solo la fecha ancla"
                       >
-                        Today
+                        Day
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedDate(localISODate());
-                          setFilterByMonth(true);
+                          if (!selectedDate) setSelectedDate(localISODate());
+                          setDateGranularity("week");
                           setIsDateDropdownOpen(false);
                         }}
-                        className="px-2 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"
-                        title="Ver todas las ventas de este mes"
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${dateGranularity === "week" ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"}`}
+                        title="Ver la semana que contiene la fecha ancla"
                       >
-                        ThisMonth
+                        Week
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedDate) setSelectedDate(localISODate());
+                          setDateGranularity("month");
+                          setIsDateDropdownOpen(false);
+                        }}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${dateGranularity === "month" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}`}
+                        title="Ver el mes que contiene la fecha ancla"
+                      >
+                        Month
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           setSelectedDate("");
-                          setFilterByMonth(false);
+                          setDateGranularity("day");
                           setIsDateDropdownOpen(false);
                         }}
                         className="px-2 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold text-center transition-all cursor-pointer"

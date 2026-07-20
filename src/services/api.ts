@@ -374,6 +374,7 @@ export const api = {
       per_page?: number;
       search?: string;
       date?: string;
+      date_week?: string;
       date_month?: string;
       seller_id?: string | number;
     },
@@ -393,6 +394,7 @@ export const api = {
     if (opts?.per_page) params.set("per_page", String(opts.per_page));
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_week) params.set("date_week", opts.date_week);
     if (opts?.date_month) params.set("date_month", opts.date_month);
     if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
@@ -423,6 +425,7 @@ export const api = {
       only_cancelled?: boolean;
       search?: string;
       date?: string;
+      date_week?: string;
       date_month?: string;
       seller_id?: string | number;
     },
@@ -440,6 +443,7 @@ export const api = {
 
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_week) params.set("date_week", opts.date_week);
     if (opts?.date_month) params.set("date_month", opts.date_month);
     if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
