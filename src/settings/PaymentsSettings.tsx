@@ -12,6 +12,12 @@ type ActionKey = "connect" | "refresh" | "oauth" | "toggle" | "note";
 
 type Banner = { type: "success" | "error" | "info"; message: string };
 
+type WebhookHealth = {
+  last_received_event_at: string | null;
+  recent_signature_failures_24h: number;
+  last_signature_failure_at: string | null;
+};
+
 function getErrorMessage(e: any): string {
   const status = e?.status;
   const errors: Record<string, string[]> | undefined = e?.errors;
@@ -69,6 +75,19 @@ function formatDate(value: string | null): string {
   }
 }
 
+function formatRelative(value: string | null): string {
+  if (!value) return "nunca";
+  const ms = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(ms)) return value;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "hace instantes";
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days} d`;
+}
+
 const PaymentsSettings: React.FC<{
   isSuperAdmin?: boolean;
   user?: UserData | null;
@@ -81,6 +100,9 @@ const PaymentsSettings: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [note, setNote] = useState("");
+
+  const [webhookHealth, setWebhookHealth] = useState<WebhookHealth | null>(null);
+  const [webhookHealthLoading, setWebhookHealthLoading] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -101,8 +123,23 @@ const PaymentsSettings: React.FC<{
     }
   };
 
+  const loadWebhookHealth = async () => {
+    if (!isSuperAdmin) return;
+    setWebhookHealthLoading(true);
+    try {
+      const res = await api.get<WebhookHealth>("/payments/stripe-account/webhook-health");
+      setWebhookHealth(res);
+    } catch {
+      // Silently degrade — this is a diagnostic panel, not core connection state.
+      setWebhookHealth(null);
+    } finally {
+      setWebhookHealthLoading(false);
+    }
+  };
+
   useEffect(() => {
     load();
+    loadWebhookHealth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -309,6 +346,76 @@ const PaymentsSettings: React.FC<{
           </div>
         )}
       </div>
+
+      {isSuperAdmin && (
+        <div className="border rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-bold text-gray-900">Estado de los Webhooks (entrante)</h4>
+              <p className="text-sm text-gray-500">
+                "Refresh status" arriba solo confirma que la plataforma puede llamar a Stripe (saliente).
+                Esto confirma lo contrario: que Stripe nos está alcanzando y que podemos verificar lo que envía.
+              </p>
+            </div>
+            <button
+              onClick={loadWebhookHealth}
+              disabled={webhookHealthLoading}
+              className="px-3 py-1.5 rounded-lg border hover:bg-gray-50 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {webhookHealthLoading ? "…" : "Actualizar"}
+            </button>
+          </div>
+
+          {webhookHealthLoading && !webhookHealth ? (
+            <p className="text-sm text-gray-500">Cargando…</p>
+          ) : webhookHealth ? (
+            <>
+              {webhookHealth.recent_signature_failures_24h > 0 && (
+                <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg text-sm">
+                  <p className="font-bold">
+                    {webhookHealth.recent_signature_failures_24h} fallo(s) de verificación de firma en las últimas 24h.
+                  </p>
+                  <p className="opacity-90 mt-1">
+                    Stripe está intentando entregar eventos, pero <code>STRIPE_WEBHOOK_SECRET</code> no coincide
+                    con el destino que los está firmando. Revisa el signing secret en Stripe Dashboard → Webhooks,
+                    y si acabas de rotarlo, corre <code>php artisan config:clear</code> y reinicia PHP-FPM en el servidor.
+                  </p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último evento recibido</p>
+                  <p className="font-semibold text-gray-800">
+                    {formatRelative(webhookHealth.last_received_event_at)}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatDate(webhookHealth.last_received_event_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">Fallos de firma (24h)</p>
+                  <span
+                    className={`px-2 py-1 rounded-md text-xs font-medium ${
+                      webhookHealth.recent_signature_failures_24h > 0
+                        ? "bg-red-100 text-red-800"
+                        : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {webhookHealth.recent_signature_failures_24h}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último fallo de firma</p>
+                  <p className="font-semibold text-gray-800">
+                    {formatRelative(webhookHealth.last_signature_failure_at)}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatDate(webhookHealth.last_signature_failure_at)}</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No se pudo cargar el estado de los webhooks.</p>
+          )}
+        </div>
+      )}
 
       {canManageConnection && (
         <div className="border rounded-xl p-4 space-y-3">
