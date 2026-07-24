@@ -128,7 +128,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     // Payment Request (Stripe) state
     const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
     const [paymentRequestLoading, setPaymentRequestLoading] = useState(false);
-    const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | null>(null);
+    const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | 'reconcile' | null>(null);
     const [paymentActionError, setPaymentActionError] = useState<string | null>(null);
 
     // Payment Timeline state
@@ -302,6 +302,34 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             const pr = await api.post<PaymentRequest>(`/payment-requests/${paymentRequest.id}/cancel`);
             setPaymentRequest(pr);
             onSuccess();
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleReconcilePaymentRequest = async () => {
+        if (!paymentRequest?.id) return;
+        const ok = window.confirm(
+            "¿Consultar directamente en Stripe si este pago ya se completó?\n\nSolo úsalo si el pago se hizo en Stripe pero la venta sigue pendiente aquí (ej. por una falla temporal de webhooks)."
+        );
+        if (!ok) return;
+
+        setPaymentActionBusy('reconcile');
+        setPaymentActionError(null);
+        try {
+            const res = await api.post<{ reconciled: boolean; payment_request: PaymentRequest }>(
+                `/payment-requests/${paymentRequest.id}/reconcile`
+            );
+            setPaymentRequest(res.payment_request);
+            if (res.reconciled) {
+                alert("Stripe confirmó el pago — la venta quedó marcada como pagada.");
+                onSuccess();
+            } else {
+                alert("Stripe confirma que este pago todavía no se ha completado. No se hizo ningún cambio.");
+            }
         } catch (err: any) {
             setPaymentActionError(getPaymentErrorMessage(err));
         } finally {
@@ -617,16 +645,33 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                         <p className="text-[10px] text-gray-400">Expira: {new Date(paymentRequest.expires_at).toLocaleString()}</p>
                                                     )}
 
-                                                    {hasPerm('edit_sale') && ['pending', 'link_generated'].includes(paymentRequest.status) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleCancelPaymentRequest}
-                                                            disabled={paymentActionBusy !== null}
-                                                            className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-all"
-                                                        >
-                                                            {paymentActionBusy === 'cancel' ? 'Cancelando...' : 'Cancelar Payment Request'}
-                                                        </button>
-                                                    )}
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {hasPerm('edit_sale') && ['pending', 'link_generated'].includes(paymentRequest.status) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleCancelPaymentRequest}
+                                                                disabled={paymentActionBusy !== null}
+                                                                className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-all"
+                                                            >
+                                                                {paymentActionBusy === 'cancel' ? 'Cancelando...' : 'Cancelar Payment Request'}
+                                                            </button>
+                                                        )}
+
+                                                        {/* SuperAdmin only — escape hatch para pagos confirmados en Stripe que
+                                                            se quedaron pending localmente por una falla de webhook (ver
+                                                            docs/architecture/payment-platform.md ADR-021/022). */}
+                                                        {user?.is_super_admin && paymentRequest.status === 'link_generated' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleReconcilePaymentRequest}
+                                                                disabled={paymentActionBusy !== null}
+                                                                className="text-xs font-bold text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50 disabled:opacity-50 transition-all"
+                                                                title="Consulta directamente en Stripe si este pago ya se completó"
+                                                            >
+                                                                {paymentActionBusy === 'reconcile' ? 'Consultando Stripe...' : 'Reconciliar con Stripe'}
+                                                            </button>
+                                                        )}
+                                                    </div>
 
                                                     {(timelineLoading || timeline.length > 0) && (
                                                         <div className="border-t border-gray-100 pt-3">

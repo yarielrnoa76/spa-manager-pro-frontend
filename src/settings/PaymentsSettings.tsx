@@ -16,6 +16,7 @@ type WebhookHealth = {
   last_received_event_at: string | null;
   recent_signature_failures_24h: number;
   last_signature_failure_at: string | null;
+  stuck_payment_requests_count: number;
 };
 
 function getErrorMessage(e: any): string {
@@ -382,7 +383,18 @@ const PaymentsSettings: React.FC<{
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              {webhookHealth.stuck_payment_requests_count > 0 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+                  <p className="font-bold">
+                    {webhookHealth.stuck_payment_requests_count} payment request(s) con más de 30 min esperando confirmación.
+                  </p>
+                  <p className="opacity-90 mt-1">
+                    Pueden estar realmente pendientes, o pagados en Stripe sin haber llegado por webhook. Abre la
+                    venta correspondiente y usa "Reconciliar con Stripe" para consultar el estado real de cada uno.
+                  </p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último evento recibido</p>
                   <p className="font-semibold text-gray-800">
@@ -408,6 +420,18 @@ const PaymentsSettings: React.FC<{
                     {formatRelative(webhookHealth.last_signature_failure_at)}
                   </p>
                   <p className="text-xs text-gray-400">{formatDate(webhookHealth.last_signature_failure_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">Posiblemente atascados</p>
+                  <span
+                    className={`px-2 py-1 rounded-md text-xs font-medium ${
+                      webhookHealth.stuck_payment_requests_count > 0
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {webhookHealth.stuck_payment_requests_count}
+                  </span>
                 </div>
               </div>
             </>
