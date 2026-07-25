@@ -16,6 +16,7 @@ type WebhookHealth = {
   last_received_event_at: string | null;
   recent_signature_failures_24h: number;
   last_signature_failure_at: string | null;
+  last_signature_failure_message: string | null;
   stuck_payment_requests_count: number;
 };
 
@@ -382,6 +383,11 @@ const PaymentsSettings: React.FC<{
                     con el destino que los está firmando. Revisa el signing secret en Stripe Dashboard → Webhooks,
                     y si acabas de rotarlo, corre <code>php artisan config:clear</code> y reinicia PHP-FPM en el servidor.
                   </p>
+                  {webhookHealth.last_signature_failure_message && (
+                    <p className="opacity-90 mt-2 font-mono text-xs bg-red-100 border border-red-200 rounded px-2 py-1 break-all">
+                      {webhookHealth.last_signature_failure_message}
+                    </p>
+                  )}
                 </div>
               )}
               {webhookHealth.stuck_payment_requests_count > 0 && (
