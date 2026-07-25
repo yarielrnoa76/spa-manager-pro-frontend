@@ -4,7 +4,7 @@ import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
-import { PaymentRequest, PaymentTimelineEntry } from "../types/payments";
+import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund } from "../types/payments";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -78,6 +78,20 @@ const PAYMENT_REQUEST_STATUS_BADGE: Record<string, string> = {
     partially_refunded: "bg-purple-100 text-purple-700",
 };
 
+const PAYMENT_REFUND_STATUS_LABELS: Record<string, string> = {
+    pending: "Pendiente",
+    succeeded: "Completado",
+    failed: "Fallido",
+    canceled: "Cancelado",
+};
+
+const PAYMENT_REFUND_STATUS_BADGE: Record<string, string> = {
+    pending: "bg-amber-100 text-amber-700",
+    succeeded: "bg-emerald-100 text-emerald-700",
+    failed: "bg-red-100 text-red-700",
+    canceled: "bg-gray-200 text-gray-600",
+};
+
 function getPaymentErrorMessage(e: any): string {
     const status = e?.status;
     const errors: Record<string, string[]> | undefined = e?.errors;
@@ -134,6 +148,18 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     // Payment Timeline state
     const [timeline, setTimeline] = useState<PaymentTimelineEntry[]>([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
+
+    // Payment methods catalog (for the editable "Método de Pago" select)
+    const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+
+    // Payment Transaction + Refunds (Stripe) state
+    const [paymentTransaction, setPaymentTransaction] = useState<PaymentTransaction | null>(null);
+    const [paymentTransactionLoading, setPaymentTransactionLoading] = useState(false);
+    const [showRefundForm, setShowRefundForm] = useState(false);
+    const [refundAmount, setRefundAmount] = useState('');
+    const [refundReason, setRefundReason] = useState('');
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [refundError, setRefundError] = useState<string | null>(null);
 
     const hasPerm = useCallback((p: string) => {
         const perms = (user?.permissions || []) as string[];
@@ -196,6 +222,9 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         if (isOpen) {
             if (hasPerm('edit_sale') || hasPerm('edit_ticket') || hasPerm('view_ticket')) {
                 api.listUsers().then(u => Array.isArray(u) ? setUsers(u) : setUsers([])).catch(console.error);
+            }
+            if (hasPerm('edit_sale')) {
+                api.listPaymentMethods().then(pm => Array.isArray(pm) ? setPaymentMethods(pm) : setPaymentMethods([])).catch(() => setPaymentMethods([]));
             }
             if (hasPerm('view_branch') || hasPerm('edit_lead')) {
                 api.listBranches().then(b => Array.isArray(b) ? setBranches(b) : setBranches([])).catch(console.error);
@@ -260,6 +289,71 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             setPaymentRequest(null);
         }
     }, [sale?.id, sale?.payment_provider, loadPaymentRequest]);
+
+    const loadPaymentTransaction = useCallback(async (paymentRequestId: number) => {
+        setPaymentTransactionLoading(true);
+        try {
+            const res = await api.get<{ data: PaymentTransaction[] }>(`/payment-transactions?payment_request_id=${paymentRequestId}&per_page=1`);
+            setPaymentTransaction(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
+        } catch (err) {
+            console.error("Error loading payment transaction", err);
+            setPaymentTransaction(null);
+        } finally {
+            setPaymentTransactionLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (paymentRequest?.id) {
+            loadPaymentTransaction(paymentRequest.id);
+        } else {
+            setPaymentTransaction(null);
+        }
+    }, [paymentRequest?.id, paymentRequest?.status, loadPaymentTransaction]);
+
+    const refundedTotal = (paymentTransaction?.refunds || [])
+        .filter(r => r.status === 'succeeded' || r.status === 'pending')
+        .reduce((sum, r) => sum + Number(r.amount), 0);
+    const refundableAmount = paymentTransaction ? Number(paymentTransaction.amount) - refundedTotal : 0;
+
+    const handleOpenRefundForm = () => {
+        setRefundAmount(refundableAmount > 0 ? refundableAmount.toFixed(2) : '');
+        setRefundReason('');
+        setRefundError(null);
+        setShowRefundForm(true);
+    };
+
+    const handleSubmitRefund = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!paymentTransaction?.id || !paymentRequest?.id) return;
+
+        const amountNum = Number(refundAmount);
+        if (!amountNum || amountNum <= 0) {
+            setRefundError("Ingresa un monto válido.");
+            return;
+        }
+
+        const ok = window.confirm(`¿Reembolsar $${amountNum.toFixed(2)} al cliente vía Stripe? Esta acción no se puede deshacer.`);
+        if (!ok) return;
+
+        setRefundSubmitting(true);
+        setRefundError(null);
+        try {
+            await api.post('/payment-refunds', {
+                payment_transaction_id: paymentTransaction.id,
+                amount: amountNum,
+                reason: refundReason || undefined,
+            });
+            setShowRefundForm(false);
+            onSuccess();
+        } catch (err: any) {
+            setRefundError(getPaymentErrorMessage(err));
+        } finally {
+            await loadPaymentTransaction(paymentRequest.id);
+            await refreshSale();
+            setRefundSubmitting(false);
+        }
+    };
 
     useEffect(() => {
         if (!paymentRequest?.id) {
@@ -698,6 +792,102 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                             )}
                                                         </div>
                                                     )}
+
+                                                    {paymentTransaction?.status === 'succeeded' && (
+                                                        <div className="border-t border-gray-100 pt-3 space-y-2.5">
+                                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Reembolsos</p>
+                                                                <p className="text-[10px] font-bold text-gray-500">
+                                                                    Disponible: <span className="text-gray-700">${refundableAmount.toFixed(2)}</span> de ${Number(paymentTransaction.amount).toFixed(2)}
+                                                                </p>
+                                                            </div>
+
+                                                            {(paymentTransaction.refunds || []).length > 0 && (
+                                                                <div className="space-y-1.5">
+                                                                    {(paymentTransaction.refunds || []).map((r: PaymentRefund) => (
+                                                                        <div key={r.id} className="flex items-center justify-between text-xs bg-white border border-gray-100 rounded-lg px-3 py-2 gap-2">
+                                                                            <div className="min-w-0">
+                                                                                <span className="font-bold text-gray-700">${Number(r.amount).toFixed(2)}</span>
+                                                                                {r.reason && <span className="text-gray-400 ml-2 italic truncate">"{r.reason}"</span>}
+                                                                            </div>
+                                                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${PAYMENT_REFUND_STATUS_BADGE[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                                {PAYMENT_REFUND_STATUS_LABELS[r.status] || r.status}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {refundError && (
+                                                                <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-lg p-2.5">
+                                                                    {refundError}
+                                                                </div>
+                                                            )}
+
+                                                            {hasPerm('refund_payments') && (
+                                                                showRefundForm ? (
+                                                                    <form onSubmit={handleSubmitRefund} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2.5">
+                                                                        <div className="grid grid-cols-2 gap-2.5">
+                                                                            <div>
+                                                                                <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Monto a reembolsar</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.01"
+                                                                                    min="0.01"
+                                                                                    max={refundableAmount}
+                                                                                    required
+                                                                                    className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 outline-none focus:ring-2 focus:ring-red-400"
+                                                                                    value={refundAmount}
+                                                                                    onChange={(e) => setRefundAmount(e.target.value)}
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Motivo (opcional)</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    maxLength={255}
+                                                                                    className="w-full text-sm font-medium text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 outline-none focus:ring-2 focus:ring-red-400"
+                                                                                    value={refundReason}
+                                                                                    onChange={(e) => setRefundReason(e.target.value)}
+                                                                                    placeholder="Ej: cliente insatisfecho"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setShowRefundForm(false)}
+                                                                                disabled={refundSubmitting}
+                                                                                className="px-3 py-1.5 rounded-lg text-xs font-black uppercase text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                                                                            >
+                                                                                Cancelar
+                                                                            </button>
+                                                                            <button
+                                                                                type="submit"
+                                                                                disabled={refundSubmitting}
+                                                                                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase text-white transition-all ${refundSubmitting ? 'bg-gray-300' : 'bg-red-600 hover:bg-red-700 active:scale-95'}`}
+                                                                            >
+                                                                                {refundSubmitting ? 'Procesando...' : 'Confirmar Reembolso'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </form>
+                                                                ) : (
+                                                                    refundableAmount > 0.009 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleOpenRefundForm}
+                                                                            className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-all"
+                                                                        >
+                                                                            Reembolsar
+                                                                        </button>
+                                                                    )
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {paymentTransactionLoading && (
+                                                        <p className="text-xs text-gray-400 italic">Cargando datos del cobro...</p>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <p className="text-xs text-gray-400 italic">Todavía no se ha generado un Payment Request para esta venta.</p>
@@ -778,17 +968,36 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div>
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Método de Pago</label>
-                                                    <select
-                                                        className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                                        value={formData.payment_method}
-                                                        onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                                                    >
-                                                        <option value="Zelle">Zelle</option>
-                                                        <option value="Efectivo">Efectivo</option>
-                                                        <option value="Transferencia">Transferencia</option>
-                                                        <option value="Tarjeta">Tarjeta</option>
-                                                    </select>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                        <span>Método de Pago</span>
+                                                        {sale.payment_provider === 'stripe' && (
+                                                            <span className="bg-gray-200 text-gray-500 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">No editable</span>
+                                                        )}
+                                                    </label>
+                                                    {sale.payment_provider === 'stripe' ? (
+                                                        <div className="text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2.5 rounded-xl border border-gray-100 italic cursor-not-allowed">
+                                                            {sale.payment_method}
+                                                        </div>
+                                                    ) : (
+                                                        <select
+                                                            className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                                            value={formData.payment_method}
+                                                            onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                                                        >
+                                                            {paymentMethods.length > 0 ? (
+                                                                paymentMethods
+                                                                    .filter(pm => pm.name !== 'Stripe')
+                                                                    .map(pm => <option key={pm.id} value={pm.name}>{pm.name}</option>)
+                                                            ) : (
+                                                                <>
+                                                                    <option value="Zelle">Zelle</option>
+                                                                    <option value="Efectivo">Efectivo</option>
+                                                                    <option value="Transferencia">Transferencia</option>
+                                                                    <option value="Tarjeta">Tarjeta</option>
+                                                                </>
+                                                            )}
+                                                        </select>
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Monto Total (No editable)</label>

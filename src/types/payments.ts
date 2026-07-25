@@ -70,3 +70,42 @@ export interface PaymentRequest {
   expires_at: string | null;
   created_at: string;
 }
+
+export type PaymentTransactionStatus =
+  | "pending"
+  | "succeeded"
+  | "failed"
+  | "refunded"
+  | "partially_refunded";
+
+export type PaymentRefundStatus = "pending" | "succeeded" | "failed" | "canceled";
+
+export interface PaymentRefund {
+  id: number;
+  payment_transaction_id: number;
+  stripe_refund_id: string | null;
+  amount: number | string;
+  currency: string;
+  reason: string | null;
+  failure_reason: string | null;
+  status: PaymentRefundStatus;
+  requested_by: number | null;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export interface PaymentTransaction {
+  id: number;
+  sale_id: number;
+  payment_request_id: number;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
+  amount: number | string;
+  fee_amount: number | string | null;
+  net_amount: number | string | null;
+  currency: string;
+  status: PaymentTransactionStatus;
+  failure_reason: string | null;
+  paid_at: string | null;
+  refunds?: PaymentRefund[];
+}
