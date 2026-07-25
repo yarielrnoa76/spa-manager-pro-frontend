@@ -21,6 +21,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Ban,
+  Undo2,
 } from "lucide-react";
 import { EXCEL_FIELDS } from "../config/excelFields";
 
@@ -227,6 +228,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     days_worked: number;
     total_working_days: number;
     projection: number;
+    refunded_day?: number;
     cancelled_day_count?: number;
     cancelled_day_amount?: number;
     cancelled_month_count?: number;
@@ -451,6 +453,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       daysWorked: statsData.days_worked || 0,
       totalWorkingDays: statsData.total_working_days || 0,
       projection: statsData.projection || 0,
+      // Suma de payment_refunds con status=succeeded cuya fecha de refund cae en el
+      // día anclado (nunca el monto original de las ventas afectadas) — ver
+      // SalesController::stats()/refundedRevenueQuery().
+      refundedDay: statsData.refunded_day || 0,
     };
   }, [totalFilteredAmount, validCount, statsData]);
 
@@ -853,7 +859,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       })()}
 
       {/* RESUMEN */}
-      <div className="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-5 gap-3 lg:gap-4 pb-2 snap-x shrink-0">
+      <div className="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4 pb-2 snap-x shrink-0">
         <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-indigo-500">
           <div className="p-2 md:p-3 bg-indigo-50 text-indigo-600 rounded-lg">
             <ShoppingBag className="w-5 h-5 md:w-6 md:h-6" />
@@ -890,6 +896,20 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
             </p>
             <p className="text-lg md:text-xl font-black text-indigo-900">
               ${formatMoney(stats.monthlyTotal)}
+            </p>
+          </div>
+        </div>
+
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-red-500">
+          <div className="p-2 md:p-3 bg-red-50 text-red-600 rounded-lg">
+            <Undo2 className="w-5 h-5 md:w-6 md:h-6" />
+          </div>
+          <div>
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              Reembolsado del Día
+            </p>
+            <p className="text-lg md:text-xl font-black text-red-700">
+              ${formatMoney(stats.refundedDay)}
             </p>
           </div>
         </div>

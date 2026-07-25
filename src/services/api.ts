@@ -478,6 +478,7 @@ export const api = {
       days_worked: number;
       total_working_days: number;
       projection: number;
+      refunded_day: number;
     }>(`/api/sales/stats${q}`, {
       method: "GET",
       auth: true,
