@@ -356,6 +356,7 @@ const PaymentsSettings: React.FC<{
               <p className="text-sm text-gray-500">
                 "Refresh status" arriba solo confirma que la plataforma puede llamar a Stripe (saliente).
                 Esto confirma lo contrario: que Stripe nos está alcanzando y que podemos verificar lo que envía.
+                Los fallos de firma mostrados aquí son específicos de este tenant.
               </p>
             </div>
             <button
