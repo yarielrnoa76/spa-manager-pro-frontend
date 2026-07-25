@@ -44,6 +44,7 @@ export type PaymentTimelineEntryType =
   | 'status_change'
   | 'stripe_session'
   | 'transaction'
+  | 'refund'
   | 'pr_updated';
 
 export interface PaymentTimelineEntry {
@@ -51,6 +52,9 @@ export interface PaymentTimelineEntry {
   timestamp: string;
   actor: string | null;
   label: string;
+  // Presente (con signo implícito por `type`) en 'transaction' (pago exitoso, +) y
+  // 'refund' (siempre -). Ausente/null en los demás tipos de entrada.
+  amount?: number | null;
   meta: Record<string, string | null>;
 }
 
@@ -78,7 +82,7 @@ export type PaymentTransactionStatus =
   | "refunded"
   | "partially_refunded";
 
-export type PaymentRefundStatus = "pending" | "succeeded" | "failed" | "canceled";
+export type PaymentRefundStatus = "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
 
 export interface PaymentRefund {
   id: number;
@@ -108,4 +112,25 @@ export interface PaymentTransaction {
   failure_reason: string | null;
   paid_at: string | null;
   refunds?: PaymentRefund[];
+  // Contrato financiero calculado por el backend (App\Models\PaymentTransaction) —
+  // siempre derivado de payment_refunds, nunca recalculado en el frontend.
+  gross_paid_amount: number;
+  successful_refunded_amount: number;
+  pending_refund_amount: number;
+  net_collected_amount: number;
+  remaining_refundable_amount: number;
+}
+
+/**
+ * Resumen financiero de una venta completa a través de TODAS sus transacciones
+ * (una venta puede tener más de un PaymentIntent: intentos fallidos previos + el
+ * exitoso). Devuelto por GET /payment-transactions cuando se filtra por sale_id.
+ */
+export interface SaleFinancialSummary {
+  gross_paid_amount: number;
+  successful_refunded_amount: number;
+  pending_refund_amount: number;
+  net_collected_amount: number;
+  remaining_refundable_amount: number;
+  transaction_count: number;
 }

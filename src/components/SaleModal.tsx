@@ -80,6 +80,7 @@ const PAYMENT_REQUEST_STATUS_BADGE: Record<string, string> = {
 
 const PAYMENT_REFUND_STATUS_LABELS: Record<string, string> = {
     pending: "Pendiente",
+    requires_action: "Requiere Acción",
     succeeded: "Completado",
     failed: "Fallido",
     canceled: "Cancelado",
@@ -87,9 +88,25 @@ const PAYMENT_REFUND_STATUS_LABELS: Record<string, string> = {
 
 const PAYMENT_REFUND_STATUS_BADGE: Record<string, string> = {
     pending: "bg-amber-100 text-amber-700",
+    requires_action: "bg-amber-100 text-amber-700",
     succeeded: "bg-emerald-100 text-emerald-700",
     failed: "bg-red-100 text-red-700",
     canceled: "bg-gray-200 text-gray-600",
+};
+
+// Solo los tres estados de PaymentTransaction relevantes una vez que el pago
+// original tuvo éxito — succeeded/partially_refunded/refunded (nunca processing,
+// failed, etc., que no llegan a mostrar este panel).
+const PAYMENT_TRANSACTION_STATUS_LABELS: Record<string, string> = {
+    succeeded: "Pagado",
+    partially_refunded: "Parcialmente Reembolsado",
+    refunded: "Reembolsado",
+};
+
+const PAYMENT_TRANSACTION_STATUS_BADGE: Record<string, string> = {
+    succeeded: "bg-green-100 text-green-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+    refunded: "bg-purple-100 text-purple-700",
 };
 
 function getPaymentErrorMessage(e: any): string {
@@ -311,10 +328,11 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         }
     }, [paymentRequest?.id, paymentRequest?.status, loadPaymentTransaction]);
 
-    const refundedTotal = (paymentTransaction?.refunds || [])
-        .filter(r => r.status === 'succeeded' || r.status === 'pending')
-        .reduce((sum, r) => sum + Number(r.amount), 0);
-    const refundableAmount = paymentTransaction ? Number(paymentTransaction.amount) - refundedTotal : 0;
+    // El saldo reembolsable SIEMPRE viene del backend (PaymentTransaction::
+    // getRemainingRefundableAmountAttribute()) — nunca se recalcula aquí, para que la
+    // UI y la validación del servidor jamás puedan divergir sobre cuánto queda
+    // disponible.
+    const refundableAmount = Number(paymentTransaction?.remaining_refundable_amount ?? 0);
 
     const handleOpenRefundForm = () => {
         setRefundAmount(refundableAmount > 0 ? refundableAmount.toFixed(2) : '');
@@ -776,38 +794,78 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                 <p className="text-xs text-gray-400 italic">Cargando historial...</p>
                                                             ) : (
                                                                 <div className="space-y-2">
-                                                                    {timeline.map((entry, i) => (
-                                                                        <div key={i} className="flex gap-2.5 items-start">
-                                                                            <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-300 shrink-0" />
-                                                                            <div className="min-w-0">
-                                                                                <p className="text-xs font-semibold text-gray-700 leading-tight">{entry.label}</p>
-                                                                                <p className="text-[10px] text-gray-400 mt-0.5">
-                                                                                    {new Date(entry.timestamp).toLocaleString()}
-                                                                                    {entry.actor && <span className="ml-1 font-bold">· {entry.actor}</span>}
-                                                                                </p>
+                                                                    {timeline.map((entry, i) => {
+                                                                        const hasAmount = entry.amount !== undefined && entry.amount !== null;
+                                                                        const isOutflow = entry.type === 'refund';
+                                                                        return (
+                                                                            <div key={i} className="flex gap-2.5 items-start">
+                                                                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-300 shrink-0" />
+                                                                                <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="text-xs font-semibold text-gray-700 leading-tight">{entry.label}</p>
+                                                                                        <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                                            {new Date(entry.timestamp).toLocaleString()}
+                                                                                            {entry.actor && <span className="ml-1 font-bold">· {entry.actor}</span>}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    {hasAmount && (
+                                                                                        <span className={`text-xs font-black shrink-0 ${isOutflow ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                                                            {isOutflow ? '-' : '+'}${Number(entry.amount).toFixed(2)}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             )}
                                                         </div>
                                                     )}
 
-                                                    {paymentTransaction?.status === 'succeeded' && (
+                                                    {paymentTransaction && ['succeeded', 'partially_refunded', 'refunded'].includes(paymentTransaction.status) && (
                                                         <div className="border-t border-gray-100 pt-3 space-y-2.5">
                                                             <div className="flex items-center justify-between flex-wrap gap-2">
-                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Reembolsos</p>
-                                                                <p className="text-[10px] font-bold text-gray-500">
-                                                                    Disponible: <span className="text-gray-700">${refundableAmount.toFixed(2)}</span> de ${Number(paymentTransaction.amount).toFixed(2)}
-                                                                </p>
+                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Resumen Financiero</p>
+                                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${PAYMENT_TRANSACTION_STATUS_BADGE[paymentTransaction.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                    {PAYMENT_TRANSACTION_STATUS_LABELS[paymentTransaction.status] || paymentTransaction.status}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Todos los importes vienen del backend (PaymentTransaction::$appends) —
+                                                                nunca se recalculan aquí, para que nunca puedan desincronizarse de lo
+                                                                que el servidor usará para validar el próximo reembolso. */}
+                                                            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                                                                <span className="text-gray-500">Total pagado</span>
+                                                                <span className="text-right font-bold text-gray-800">${Number(paymentTransaction.gross_paid_amount).toFixed(2)}</span>
+
+                                                                <span className="text-gray-500">Total reembolsado</span>
+                                                                <span className="text-right font-bold text-red-600">
+                                                                    {Number(paymentTransaction.successful_refunded_amount) > 0 ? '-' : ''}${Number(paymentTransaction.successful_refunded_amount).toFixed(2)}
+                                                                </span>
+
+                                                                {paymentTransaction.pending_refund_amount > 0 && (
+                                                                    <>
+                                                                        <span className="text-gray-500">Reembolso en proceso</span>
+                                                                        <span className="text-right font-bold text-amber-600">${Number(paymentTransaction.pending_refund_amount).toFixed(2)}</span>
+                                                                    </>
+                                                                )}
+
+                                                                <span className="text-gray-500 font-bold border-t border-gray-200 pt-1 mt-0.5">Neto cobrado</span>
+                                                                <span className="text-right font-black text-gray-900 border-t border-gray-200 pt-1 mt-0.5">${Number(paymentTransaction.net_collected_amount).toFixed(2)}</span>
+
+                                                                <span className="text-gray-500">Disponible para reembolsar</span>
+                                                                <span className="text-right font-bold text-gray-700">${Number(refundableAmount).toFixed(2)}</span>
                                                             </div>
 
                                                             {(paymentTransaction.refunds || []).length > 0 && (
                                                                 <div className="space-y-1.5">
+                                                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Historial de Reembolsos</p>
                                                                     {(paymentTransaction.refunds || []).map((r: PaymentRefund) => (
                                                                         <div key={r.id} className="flex items-center justify-between text-xs bg-white border border-gray-100 rounded-lg px-3 py-2 gap-2">
                                                                             <div className="min-w-0">
-                                                                                <span className="font-bold text-gray-700">${Number(r.amount).toFixed(2)}</span>
+                                                                                <span className={`font-bold ${r.status === 'succeeded' ? 'text-red-600' : (r.status === 'pending' || r.status === 'requires_action') ? 'text-amber-600' : 'text-gray-400'}`}>
+                                                                                    {r.status === 'succeeded' ? '-' : ''}${Number(r.amount).toFixed(2)}
+                                                                                </span>
                                                                                 {r.reason && <span className="text-gray-400 ml-2 italic truncate">"{r.reason}"</span>}
                                                                             </div>
                                                                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${PAYMENT_REFUND_STATUS_BADGE[r.status] || 'bg-gray-100 text-gray-600'}`}>
