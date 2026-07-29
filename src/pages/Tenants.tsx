@@ -147,8 +147,19 @@ const Tenants: React.FC = () => {
         fetchTenants();
     };
 
-    const handleEdited = () => {
+    /**
+     * Fired after EVERY successful section save inside TenantFormModal (identity, profile,
+     * sales, or payment settings) — merges the real backend response into the list row
+     * immediately, without a full re-fetch or app reload, so the edited row never shows stale
+     * data. The modal stays open; the user may keep editing other sections.
+     */
+    const handleTenantUpdated = (updated: Tenant) => {
+        setTenants((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
+    };
+
+    const handleEditClosed = () => {
         setEditTenant(null);
+        // Safety-net full refresh on close — cheap background list re-fetch, not a page reload.
         fetchTenants();
     };
 
@@ -276,9 +287,10 @@ const Tenants: React.FC = () => {
 
             {editTenant && (
                 <TenantFormModal
+                    key={editTenant.id}
                     tenant={editTenant}
-                    onClose={() => setEditTenant(null)}
-                    onSaved={handleEdited}
+                    onClose={handleEditClosed}
+                    onTenantUpdated={handleTenantUpdated}
                 />
             )}
 

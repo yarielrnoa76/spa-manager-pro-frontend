@@ -109,6 +109,15 @@ async function request<T>(
      * it only suppresses attaching it to this one request.
      */
     skipTenantHeader?: boolean;
+    /**
+     * Sends X-Tenant-ID as this explicit value for this ONE request instead of reading
+     * localStorage's current_tenant_id — for SuperAdmin actions on a specific tenant chosen
+     * from a list (e.g. editing that tenant's business profile) that must not depend on, or
+     * mutate, the globally-selected tenant context. Never writes to localStorage, never
+     * changes what any OTHER request sends, and never affects Authorization. Ignored when
+     * skipTenantHeader is true.
+     */
+    tenantIdOverride?: number | string;
   } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
@@ -124,7 +133,10 @@ async function request<T>(
 
     // === MULTI-TENANT: Add X-Tenant-ID header (unless this request opted out) ===
     if (!skipTenantHeader) {
-      const tenantId = localStorage.getItem("current_tenant_id");
+      const tenantId =
+        options.tenantIdOverride !== undefined
+          ? String(options.tenantIdOverride)
+          : localStorage.getItem("current_tenant_id");
       if (tenantId) {
         headers["X-Tenant-ID"] = tenantId;
       }
@@ -279,8 +291,20 @@ export const api = {
     });
   },
 
+  /**
+   * PUT /api/tenants/{tenant} is wrapped in the 'tenant' middleware (routes/api.php), which
+   * requires SOME valid X-Tenant-ID header for a SuperAdmin request — it does not have to
+   * match {tenant} (the route param may target any tenant), but it must be present. Always
+   * overriding it to the tenant actually being edited means this call never depends on, or is
+   * blocked by, whatever tenant (if any) happens to be globally selected in localStorage.
+   */
   async updateTenant(tenantId: number, payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants/${tenantId}`, { method: "PUT", body: payload, auth: true });
+    return request<Tenant>(`/api/tenants/${tenantId}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
   async deleteTenant(tenantId: number, confirmName: string, confirmPhrase: string) {
@@ -301,21 +325,45 @@ export const api = {
     return data;
   },
 
-  // --- Tenant self-service profile (current tenant only — tenant-scoped, X-Tenant-ID kept) ---
-  async getTenantProfile() {
-    return request<Tenant>(`/api/tenant/profile`, { method: "GET", auth: true });
+  /**
+   * --- Tenant self-service profile ---
+   * Default behavior (tenantId omitted): reads/writes whatever tenant is currently selected
+   * (X-Tenant-ID from localStorage), exactly as before Fase 3D.
+   *
+   * Passing tenantId lets a SuperAdmin act on a SPECIFIC tenant chosen from the tenant list
+   * (e.g. TenantFormModal editing a tenant that may not be the globally-selected one) without
+   * switching the active tenant context — request()'s tenantIdOverride sends X-Tenant-ID for
+   * this call only and never touches localStorage/current_tenant_id.
+   */
+  async getTenantProfile(tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, { method: "GET", auth: true, tenantIdOverride: tenantId });
   },
 
-  async updateTenantProfile(payload: UpdateTenantProfilePayload) {
-    return request<Tenant>(`/api/tenant/profile`, { method: "PATCH", body: payload, auth: true });
+  async updateTenantProfile(payload: UpdateTenantProfilePayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
-  async updateTenantSalesSettings(payload: UpdateTenantSalesSettingsPayload) {
-    return request<Tenant>(`/api/tenant/sales-settings`, { method: "PATCH", body: payload, auth: true });
+  async updateTenantSalesSettings(payload: UpdateTenantSalesSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/sales-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
-  async updateTenantPaymentSettings(payload: UpdateTenantPaymentSettingsPayload) {
-    return request<Tenant>(`/api/tenant/payment-settings`, { method: "PATCH", body: payload, auth: true });
+  async updateTenantPaymentSettings(payload: UpdateTenantPaymentSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/payment-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
   async listUsers(opts?: { include_global?: boolean }) {

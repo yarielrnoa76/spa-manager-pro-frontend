@@ -203,9 +203,11 @@ export interface UpdateTenantContactPayload {
 /**
  * PATCH /api/tenant/profile (permission: edit_tenant_profile). Every top-level field: omitted =
  * untouched. legal_name/business_email/billing_email/business_phone/website/locale are
- * nullable (explicit null clears them); trade_name/timezone/country_code are NOT nullable
- * (present-but-required-shape when sent — the backend rejects an explicit null for these
- * three). Deliberately excludes name, slug, status, currency, tenant_api_token, the n8n and
+ * nullable (explicit null clears them); trade_name/timezone/currency/country_code are NOT
+ * nullable (present-but-required-shape when sent — the backend rejects an explicit null for
+ * these four). `currency` is editable here (added for the complete-tenant-edit fix — Fase 2B
+ * originally excluded it, but every creation-time profile field must stay editable
+ * afterwards). Deliberately excludes name, slug, status, tenant_api_token, the n8n and
  * chatwoot integration fields, the logo fields, role_id/roles/permissions, and
  * sales_mode/payment_policy/down_payment_type/down_payment_value — all explicitly prohibited
  * by UpdateTenantProfileRequest.
@@ -218,6 +220,7 @@ export interface UpdateTenantProfilePayload {
   business_phone?: string | null;
   website?: string | null;
   timezone?: string;
+  currency?: string;
   locale?: string | null;
   country_code?: string;
   address?: UpdateTenantAddressPayload | null;
