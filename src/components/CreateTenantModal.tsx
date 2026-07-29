@@ -3,15 +3,14 @@ import { api, ApiError } from "../services/api";
 import {
   Tenant,
   CreateTenantPayload,
-  CreateTenantAddressPayload,
   TenantSalesMode,
   TenantPaymentPolicy,
   DownPaymentType,
   TenantStatus,
 } from "../types";
 import { Building2, X, Globe, User, MapPin, Settings2 } from "lucide-react";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { SectionHeader, TextField } from "./tenant/TenantFormFields";
+import { EMAIL_RE, buildAddressPayload } from "./tenant/tenantPayloadHelpers";
 
 /** Browser timezone, falling back to America/New_York if unavailable or empty. */
 function resolveDefaultTimezone(): string {
@@ -23,80 +22,7 @@ function resolveDefaultTimezone(): string {
   }
 }
 
-interface AddressFormValues {
-  address_line_1: string;
-  address_line_2: string;
-  city: string;
-  state: string;
-  postal_code: string;
-  country_code: string;
-}
-
-/**
- * Only includes the address block when the user entered real location data (line 1/2, city,
- * state, or postal code — after trimming whitespace). A country code alone, default or
- * user-entered, is never sufficient by itself to trigger inclusion — mirrors the backend's own
- * creation guard (TenantService::createTenant()), which treats an all-null/empty address block
- * as absent rather than creating a placeholder TenantAddress row.
- */
-function buildAddressPayload(values: AddressFormValues): CreateTenantAddressPayload | undefined {
-  const line1 = values.address_line_1.trim();
-  const line2 = values.address_line_2.trim();
-  const city = values.city.trim();
-  const state = values.state.trim();
-  const postalCode = values.postal_code.trim();
-  const countryCode = values.country_code.trim().toUpperCase();
-
-  const hasLocationData = line1 !== "" || line2 !== "" || city !== "" || state !== "" || postalCode !== "";
-  if (!hasLocationData) return undefined;
-
-  return {
-    address_line_1: line1 || null,
-    address_line_2: line2 || null,
-    city: city || null,
-    state: state || null,
-    postal_code: postalCode || null,
-    country_code: countryCode || null,
-  };
-}
-
 type FieldErrors = Record<string, string>;
-
-const SectionHeader: React.FC<{ icon: React.ElementType; title: string }> = ({ icon: Icon, title }) => (
-  <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2 pb-2 border-b border-gray-100">
-    <Icon size={16} className="text-indigo-600" /> {title}
-  </h3>
-);
-
-const TextField: React.FC<{
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  required?: boolean;
-  type?: string;
-  placeholder?: string;
-  maxLength?: number;
-}> = ({ label, value, onChange, error, required, type = "text", placeholder, maxLength }) => (
-  <div>
-    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-      {label}
-      {required && " *"}
-    </label>
-    <input
-      type={type}
-      value={value}
-      required={required}
-      maxLength={maxLength}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={`w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm ${
-        error ? "border-red-400" : "border-gray-300"
-      }`}
-    />
-    {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-  </div>
-);
 
 const CreateTenantModal: React.FC<{
   onClose: () => void;
