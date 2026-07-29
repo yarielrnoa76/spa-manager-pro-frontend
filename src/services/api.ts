@@ -9,6 +9,7 @@ import {
   Appointment,
   Tenant,
   ProfessionalPerson,
+  CreateTenantPayload,
   UpdateTenantProfilePayload,
   UpdateTenantSalesSettingsPayload,
   UpdateTenantPaymentSettingsPayload,
@@ -266,21 +267,10 @@ export const api = {
    * POST /api/tenants — global SuperAdmin operation (creates a brand-new tenant; there is no
    * "current tenant" context to be scoped to). skipTenantHeader:true is required here — see
    * request()'s doc-comment. Does NOT auto-select the newly-created tenant as current;
-   * callers decide that explicitly (e.g. a future "Select and configure Tenant" prompt),
-   * matching the approved UX.
-   *
-   * Signature deliberately kept as `Partial<Tenant>` for now, NOT the fully-typed
-   * `CreateTenantPayload` (already defined in types.ts, ready for Fase 3C): switching this
-   * parameter to `CreateTenantPayload` breaks the build today (confirmed via `tsc -b` —
-   * TenantFormModal.tsx's existing call site casts its payload `as unknown as Partial<Tenant>`,
-   * and `Partial<Tenant>` is not assignable to `CreateTenantPayload` since `name`/`trade_name`/
-   * `timezone`/`currency`/`country_code`/`contact`/`settings` aren't optional there). Fixing
-   * that requires touching TenantFormModal.tsx, which is out of scope for Fase 3B — see the
-   * Fase 3B report's "incompatibilidad" section. Fase 3C's CreateTenantModal should call this
-   * endpoint with `CreateTenantPayload` directly and, at that point, update this signature
-   * together with retiring TenantFormModal's creation path (decisions #6/#7).
+   * callers decide that explicitly (see CreateTenantModal's post-creation "Select and configure
+   * Tenant" prompt in Tenants.tsx).
    */
-  async createTenant(payload: Partial<Tenant>) {
+  async createTenant(payload: CreateTenantPayload) {
     return request<Tenant>(`/api/tenants`, {
       method: "POST",
       body: payload,

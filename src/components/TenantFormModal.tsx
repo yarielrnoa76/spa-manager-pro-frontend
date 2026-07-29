@@ -7,28 +7,27 @@ import { Building2, X, Shield, CheckCircle, RefreshCw, Copy, MessageSquare, Link
 type Tab = "n8n" | "chatwoot";
 
 const TenantFormModal: React.FC<{
-  tenant?: Tenant | null;
+  tenant: Tenant;
   onClose: () => void;
   onSaved: () => void;
 }> = ({ tenant, onClose, onSaved }) => {
-  const isEdit = !!tenant;
   const [activeTab, setActiveTab] = useState<Tab>("n8n");
 
   // Common fields
-  const [name, setName] = useState(tenant?.name || "");
-  const [slug, setSlug] = useState(tenant?.slug || "");
-  const [status, setStatus] = useState(tenant?.status || "active");
+  const [name, setName] = useState(tenant.name || "");
+  const [slug, setSlug] = useState(tenant.slug || "");
+  const [status, setStatus] = useState(tenant.status || "active");
 
   // N8N fields
-  const [tenantApiToken, setTenantApiToken] = useState(tenant?.tenant_api_token || "");
-  const [n8nApiKey, setN8nApiKey] = useState(tenant?.n8n_api_key || "");
-  const [n8nWebhookUrl, setN8nWebhookUrl] = useState(tenant?.n8n_webhook_url || "");
+  const [tenantApiToken, setTenantApiToken] = useState(tenant.tenant_api_token || "");
+  const [n8nApiKey, setN8nApiKey] = useState(tenant.n8n_api_key || "");
+  const [n8nWebhookUrl, setN8nWebhookUrl] = useState(tenant.n8n_webhook_url || "");
 
   // Chatwoot fields
-  const [chatwootBaseUrl, setChatwootBaseUrl] = useState(tenant?.chatwoot_base_url || "");
-  const [chatwootApiToken, setChatwootApiToken] = useState(tenant?.chatwoot_api_token || "");
-  const [chatwootAccountId, setChatwootAccountId] = useState(tenant?.chatwoot_account_id || "");
-  const [chatwootInboxId, setChatwootInboxId] = useState(tenant?.chatwoot_inbox_id || "");
+  const [chatwootBaseUrl, setChatwootBaseUrl] = useState(tenant.chatwoot_base_url || "");
+  const [chatwootApiToken, setChatwootApiToken] = useState(tenant.chatwoot_api_token || "");
+  const [chatwootAccountId, setChatwootAccountId] = useState(tenant.chatwoot_account_id || "");
+  const [chatwootInboxId, setChatwootInboxId] = useState(tenant.chatwoot_inbox_id || "");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +37,7 @@ const TenantFormModal: React.FC<{
     setSaving(true);
     setError(null);
     try {
-      const payload = {
+      const payload: Partial<Tenant> = {
         name, slug: slug || undefined, status,
         tenant_api_token: tenantApiToken || undefined,
         n8n_api_key: n8nApiKey || undefined,
@@ -48,11 +47,7 @@ const TenantFormModal: React.FC<{
         chatwoot_account_id: chatwootAccountId || undefined,
         chatwoot_inbox_id: chatwootInboxId || undefined,
       };
-      if (isEdit && tenant) {
-        await api.updateTenant(tenant.id, payload as unknown as Partial<Tenant>);
-      } else {
-        await api.createTenant(payload as unknown as Partial<Tenant>);
-      }
+      await api.updateTenant(tenant.id, payload);
       onSaved();
     } catch (err: unknown) {
       const e = err as Error & { message?: string };
@@ -115,7 +110,7 @@ const TenantFormModal: React.FC<{
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50/80 flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <Building2 size={22} className="text-indigo-600" />
-            {isEdit ? "Editar Tenant" : "Crear Tenant"}
+            Editar Tenant
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1 rounded-full hover:bg-gray-200"><X size={20} /></button>
         </div>
@@ -178,7 +173,7 @@ const TenantFormModal: React.FC<{
                   onApiTokenChange={setChatwootApiToken}
                   onAccountIdChange={setChatwootAccountId}
                   onInboxIdChange={setChatwootInboxId}
-                  isEdit={isEdit}
+                  isEdit={true}
                 />
               )}
             </div>
@@ -190,7 +185,7 @@ const TenantFormModal: React.FC<{
             <div className="flex gap-3">
               <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-semibold hover:bg-gray-50 transition">Cancelar</button>
               <button type="submit" disabled={saving || !name.trim()} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed transition">
-                {saving ? "Guardando…" : isEdit ? "Guardar Cambios" : "Crear Tenant"}
+                {saving ? "Guardando…" : "Guardar Cambios"}
               </button>
             </div>
           </div>
