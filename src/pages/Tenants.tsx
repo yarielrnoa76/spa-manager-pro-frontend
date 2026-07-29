@@ -8,6 +8,7 @@ import {
     Trash2,
     X,
     AlertTriangle,
+    CheckCircle,
 } from "lucide-react";
 
 /* ─────────────────────── DELETE CONFIRMATION MODAL ─────────────────────── */
@@ -112,15 +113,17 @@ const DeleteTenantModal: React.FC<{
 };
 
 import TenantFormModal from "../components/TenantFormModal";
+import CreateTenantModal from "../components/CreateTenantModal";
 
 
 /* ─────────────────────── MAIN TENANTS PAGE ─────────────────────── */
 const Tenants: React.FC = () => {
     const [tenants, setTenants] = useState<Tenant[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
     const [editTenant, setEditTenant] = useState<Tenant | null>(null);
     const [deleteTenant, setDeleteTenant] = useState<Tenant | null>(null);
+    const [justCreatedTenant, setJustCreatedTenant] = useState<Tenant | null>(null);
 
     const fetchTenants = useCallback(async () => {
         setLoading(true);
@@ -138,8 +141,13 @@ const Tenants: React.FC = () => {
         fetchTenants();
     }, [fetchTenants]);
 
-    const handleSaved = () => {
-        setShowForm(false);
+    const handleCreated = (tenant: Tenant) => {
+        setShowCreateModal(false);
+        setJustCreatedTenant(tenant);
+        fetchTenants();
+    };
+
+    const handleEdited = () => {
         setEditTenant(null);
         fetchTenants();
     };
@@ -147,6 +155,18 @@ const Tenants: React.FC = () => {
     const handleDeleted = () => {
         setDeleteTenant(null);
         fetchTenants();
+    };
+
+    /**
+     * Voluntary "Select and configure Tenant" action offered after creation — never triggered
+     * automatically. Reuses the exact same mechanism App.tsx's TenantSelector already uses
+     * (api.setCurrentTenantId() + a full reload to re-derive all state from the new context),
+     * rather than writing to localStorage directly or introducing a second tenant-context
+     * mechanism.
+     */
+    const handleSelectAndConfigure = (tenantId: number) => {
+        api.setCurrentTenantId(tenantId);
+        window.location.reload();
     };
 
     return (
@@ -158,16 +178,40 @@ const Tenants: React.FC = () => {
                     </h3>
                 </div>
                 <button
-                    onClick={() => {
-                        setEditTenant(null);
-                        setShowForm(true);
-                    }}
+                    onClick={() => setShowCreateModal(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
                 >
                     <Plus size={18} />
                     Crear Tenant
                 </button>
             </div>
+
+            {/* Post-creation confirmation — voluntary, non-blocking; never auto-selects the tenant */}
+            {justCreatedTenant && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-emerald-800 text-sm">
+                        <CheckCircle size={18} className="flex-shrink-0" />
+                        <span>
+                            Tenant <strong>"{justCreatedTenant.name}"</strong> creado correctamente.
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                            onClick={() => handleSelectAndConfigure(justCreatedTenant.id)}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+                        >
+                            Seleccionar y configurar Tenant
+                        </button>
+                        <button
+                            onClick={() => setJustCreatedTenant(null)}
+                            className="text-emerald-700/60 hover:text-emerald-800 p-1 rounded-full hover:bg-emerald-100 transition"
+                            title="Cerrar"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Tenant list */}
             {loading ? (
@@ -205,10 +249,7 @@ const Tenants: React.FC = () => {
 
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => {
-                                        setEditTenant(t);
-                                        setShowForm(true);
-                                    }}
+                                    onClick={() => setEditTenant(t)}
                                     className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition"
                                 >
                                     <Edit3 size={14} /> Edit
@@ -226,14 +267,18 @@ const Tenants: React.FC = () => {
             )}
 
             {/* Modals */}
-            {showForm && (
+            {showCreateModal && (
+                <CreateTenantModal
+                    onClose={() => setShowCreateModal(false)}
+                    onCreated={handleCreated}
+                />
+            )}
+
+            {editTenant && (
                 <TenantFormModal
                     tenant={editTenant}
-                    onClose={() => {
-                        setShowForm(false);
-                        setEditTenant(null);
-                    }}
-                    onSaved={handleSaved}
+                    onClose={() => setEditTenant(null)}
+                    onSaved={handleEdited}
                 />
             )}
 

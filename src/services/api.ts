@@ -9,6 +9,10 @@ import {
   Appointment,
   Tenant,
   ProfessionalPerson,
+  CreateTenantPayload,
+  UpdateTenantProfilePayload,
+  UpdateTenantSalesSettingsPayload,
+  UpdateTenantPaymentSettingsPayload,
 } from "../types";
 
 export interface ActivityLog {
@@ -51,14 +55,14 @@ if (!API_URL) {
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-type ApiErrorPayload = {
+export type ApiErrorPayload = {
   ok?: boolean;
   code?: string;
   message?: string;
   errors?: Record<string, string[]>;
 };
 
-class ApiError extends Error {
+export class ApiError extends Error {
   code?: string;
   status?: number;
   errors?: Record<string, string[]>;
@@ -92,10 +96,24 @@ function safeJsonParse(text: string): ApiErrorPayload {
 
 async function request<T>(
   path: string,
-  options: { method?: HttpMethod; body?: unknown; auth?: boolean } = {},
+  options: {
+    method?: HttpMethod;
+    body?: unknown;
+    auth?: boolean;
+    /**
+     * Opts a single request out of the X-Tenant-ID header — for global operations that are
+     * authenticated but not scoped to any tenant context (e.g. POST /api/tenants, which creates
+     * a brand-new tenant and must never carry an unrelated, already-selected tenant's id).
+     * Defaults to false: every other call keeps today's behavior exactly. Never affects
+     * Authorization or any other header, and never changes how currentTenantId is resolved —
+     * it only suppresses attaching it to this one request.
+     */
+    skipTenantHeader?: boolean;
+  } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
   const auth = options.auth ?? true;
+  const skipTenantHeader = options.skipTenantHeader ?? false;
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET") headers["Content-Type"] = "application/json";
@@ -104,10 +122,12 @@ async function request<T>(
     const token = localStorage.getItem("auth_token");
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    // === MULTI-TENANT: Add X-Tenant-ID header ===
-    const tenantId = localStorage.getItem("current_tenant_id");
-    if (tenantId) {
-      headers["X-Tenant-ID"] = tenantId;
+    // === MULTI-TENANT: Add X-Tenant-ID header (unless this request opted out) ===
+    if (!skipTenantHeader) {
+      const tenantId = localStorage.getItem("current_tenant_id");
+      if (tenantId) {
+        headers["X-Tenant-ID"] = tenantId;
+      }
     }
   }
 
@@ -243,8 +263,20 @@ export const api = {
     return request<Tenant[]>(`/api/tenants`, { method: "GET", auth: true });
   },
 
-  async createTenant(payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants`, { method: "POST", body: payload, auth: true });
+  /**
+   * POST /api/tenants — global SuperAdmin operation (creates a brand-new tenant; there is no
+   * "current tenant" context to be scoped to). skipTenantHeader:true is required here — see
+   * request()'s doc-comment. Does NOT auto-select the newly-created tenant as current;
+   * callers decide that explicitly (see CreateTenantModal's post-creation "Select and configure
+   * Tenant" prompt in Tenants.tsx).
+   */
+  async createTenant(payload: CreateTenantPayload) {
+    return request<Tenant>(`/api/tenants`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
   },
 
   async updateTenant(tenantId: number, payload: Partial<Tenant>) {
@@ -267,6 +299,23 @@ export const api = {
     });
     this.setCurrentTenantId(tenantId);
     return data;
+  },
+
+  // --- Tenant self-service profile (current tenant only — tenant-scoped, X-Tenant-ID kept) ---
+  async getTenantProfile() {
+    return request<Tenant>(`/api/tenant/profile`, { method: "GET", auth: true });
+  },
+
+  async updateTenantProfile(payload: UpdateTenantProfilePayload) {
+    return request<Tenant>(`/api/tenant/profile`, { method: "PATCH", body: payload, auth: true });
+  },
+
+  async updateTenantSalesSettings(payload: UpdateTenantSalesSettingsPayload) {
+    return request<Tenant>(`/api/tenant/sales-settings`, { method: "PATCH", body: payload, auth: true });
+  },
+
+  async updateTenantPaymentSettings(payload: UpdateTenantPaymentSettingsPayload) {
+    return request<Tenant>(`/api/tenant/payment-settings`, { method: "PATCH", body: payload, auth: true });
   },
 
   async listUsers(opts?: { include_global?: boolean }) {
