@@ -3,6 +3,23 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CreateSaleModal from '../CreateSaleModal';
 import { api } from '../../services/api';
+import type { Tenant, TenantSalesMode } from '../../types';
+import type { CreateSaleGroupResponse } from '../../types/payments';
+
+/** Minimal fixtures cast through `unknown` (not `any`) — these tests only exercise the fields
+ * CreateSaleModal actually reads; the full Tenant/SaleGroup shape isn't relevant here. */
+function mockTenantProfile(salesMode: TenantSalesMode): Tenant {
+    return { settings: { sales_mode: salesMode } } as unknown as Tenant;
+}
+
+function mockCreateSaleGroupResponse(): CreateSaleGroupResponse {
+    return { type: 'group', sale_group: { id: 1, lines: [] } } as unknown as CreateSaleGroupResponse;
+}
+
+interface SalePayload {
+    items?: Array<{ product_id?: string | number }>;
+    product_id?: string | number;
+}
 
 vi.mock('../../services/api', () => ({
     api: {
@@ -67,11 +84,11 @@ describe('CreateSaleModal — sales_mode controlled submission', () => {
         vi.mocked(api.listPaymentMethods).mockResolvedValue([{ id: 1, name: 'Efectivo' }]);
         vi.mocked(api.listUsers).mockResolvedValue([]);
         vi.mocked(api.listProfessionals).mockResolvedValue([]);
-        vi.mocked(api.createSale).mockResolvedValue({ type: 'group', sale_group: { id: 1, lines: [] } } as any);
+        vi.mocked(api.createSale).mockResolvedValue(mockCreateSaleGroupResponse());
     });
 
     it('sends a single request with an items array when the tenant is grouped_sale', async () => {
-        vi.mocked(api.getTenantProfile).mockResolvedValue({ settings: { sales_mode: 'grouped_sale' } } as any);
+        vi.mocked(api.getTenantProfile).mockResolvedValue(mockTenantProfile('grouped_sale'));
         const user = userEvent.setup();
         const onSuccess = vi.fn();
 
@@ -82,15 +99,15 @@ describe('CreateSaleModal — sales_mode controlled submission', () => {
 
         await waitFor(() => expect(api.createSale).toHaveBeenCalledTimes(1));
 
-        const payload = vi.mocked(api.createSale).mock.calls[0][0] as any;
+        const payload = vi.mocked(api.createSale).mock.calls[0][0] as SalePayload;
         expect(Array.isArray(payload.items)).toBe(true);
         expect(payload.items).toHaveLength(2);
-        expect(payload.items.map((i: any) => String(i.product_id))).toEqual(['10', '11']);
+        expect(payload.items?.map(i => String(i.product_id))).toEqual(['10', '11']);
         expect(onSuccess).toHaveBeenCalledTimes(1);
     });
 
     it('still issues one independent request per cart item when the tenant is independent_sales', async () => {
-        vi.mocked(api.getTenantProfile).mockResolvedValue({ settings: { sales_mode: 'independent_sales' } } as any);
+        vi.mocked(api.getTenantProfile).mockResolvedValue(mockTenantProfile('independent_sales'));
         const user = userEvent.setup();
 
         render(<CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={ADMIN_USER} />);
@@ -100,8 +117,8 @@ describe('CreateSaleModal — sales_mode controlled submission', () => {
 
         await waitFor(() => expect(api.createSale).toHaveBeenCalledTimes(2));
 
-        const firstPayload = vi.mocked(api.createSale).mock.calls[0][0] as any;
-        const secondPayload = vi.mocked(api.createSale).mock.calls[1][0] as any;
+        const firstPayload = vi.mocked(api.createSale).mock.calls[0][0] as SalePayload;
+        const secondPayload = vi.mocked(api.createSale).mock.calls[1][0] as SalePayload;
         expect(firstPayload.items).toBeUndefined();
         expect(secondPayload.items).toBeUndefined();
         expect([String(firstPayload.product_id), String(secondPayload.product_id)]).toEqual(['10', '11']);

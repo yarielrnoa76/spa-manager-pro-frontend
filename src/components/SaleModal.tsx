@@ -316,13 +316,15 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     }, [sale?.sale_group_id, loadSaleGroup]);
 
     // Queried by sale_group_id for a grouped line, by sale_id otherwise — exactly one of the
-    // two is ever set on a PaymentRequest (ADR-027), never both.
-    const loadPaymentRequest = useCallback(async (currentSale: any) => {
+    // two is ever set on a PaymentRequest (ADR-027), never both. Takes the two primitive fields
+    // it actually needs (not the whole `sale` object) so callers/effects can depend on just
+    // those fields instead of the whole object reference.
+    const loadPaymentRequest = useCallback(async (saleId: string, saleGroupId?: number | null) => {
         setPaymentRequestLoading(true);
         try {
-            const query = currentSale?.sale_group_id
-                ? `sale_group_id=${currentSale.sale_group_id}`
-                : `sale_id=${currentSale.id}`;
+            const query = saleGroupId
+                ? `sale_group_id=${saleGroupId}`
+                : `sale_id=${saleId}`;
             const res = await api.get<{ data: PaymentRequest[] }>(`/payment-requests?${query}&per_page=1`);
             setPaymentRequest(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
         } catch (err) {
@@ -335,7 +337,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
     useEffect(() => {
         if (sale?.payment_provider === 'stripe' && sale?.id) {
-            loadPaymentRequest(sale);
+            loadPaymentRequest(sale.id, sale.sale_group_id);
         } else {
             setPaymentRequest(null);
         }
@@ -347,7 +349,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const refetchPaymentStatus = useCallback(() => {
         if (!sale) return;
         refreshSale();
-        loadPaymentRequest(sale);
+        loadPaymentRequest(sale.id, sale.sale_group_id);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sale, loadPaymentRequest]);
 
@@ -470,7 +472,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             setPaymentActionError(getPaymentErrorMessage(err));
         } finally {
             await refreshSale();
-            await loadPaymentRequest(sale);
+            if (sale) await loadPaymentRequest(sale.id, sale.sale_group_id);
             setPaymentActionBusy(null);
         }
     };

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SaleModal from '../SaleModal';
 import { api } from '../../services/api';
+import type { PaymentRequest } from '../../types/payments';
 
 vi.mock('../../services/api', () => ({
     api: {
@@ -64,7 +65,7 @@ const GROUPED_SALE_LINE = {
     created_at: '2026-07-30T00:00:00Z',
 };
 
-function mockGetRoutes(paymentRequests: any[]) {
+function mockGetRoutes(paymentRequests: PaymentRequest[]) {
     vi.mocked(api.get).mockImplementation((path: string) => {
         if (path.includes('/payment-requests?')) {
             return Promise.resolve({ data: paymentRequests });
@@ -113,7 +114,7 @@ describe('SaleModal — grouped sale (ADR-027) rendering', () => {
 
         // Once the Payment Request is created, a subsequent GET (loadPaymentRequest, called in
         // handleGeneratePaymentRequest's finally block) must see it too — mirrors a real backend.
-        let createdPaymentRequest: any = null;
+        let createdPaymentRequest: PaymentRequest | null = null;
         vi.mocked(api.get).mockImplementation((path: string) => {
             if (path.includes('/payment-requests?')) {
                 return Promise.resolve({ data: createdPaymentRequest ? [createdPaymentRequest] : [] });
@@ -127,6 +128,8 @@ describe('SaleModal — grouped sale (ADR-027) rendering', () => {
             return Promise.resolve({ data: [] });
         });
         vi.mocked(api.post).mockImplementation(async () => {
+            // Cast through `unknown` rather than filling every PaymentRequest field this test
+            // doesn't assert on (lead_id, appointment_id, timestamps, etc.).
             createdPaymentRequest = {
                 id: 900,
                 sale_group_id: 1,
@@ -135,7 +138,7 @@ describe('SaleModal — grouped sale (ADR-027) rendering', () => {
                 payment_url: paymentUrl,
                 amount: 39.5,
                 currency: 'usd',
-            };
+            } as unknown as PaymentRequest;
             return createdPaymentRequest;
         });
 

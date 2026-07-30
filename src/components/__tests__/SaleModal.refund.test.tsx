@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SaleModal from '../SaleModal';
 import { api } from '../../services/api';
+import type { PaymentTransaction } from '../../types/payments';
 
 vi.mock('../../services/api', () => ({
     api: {
@@ -48,13 +49,17 @@ const PAYMENT_REQUEST = {
     currency: 'usd',
 };
 
-function buildTransaction(overrides: Partial<any> = {}) {
+function buildTransaction(overrides: Partial<PaymentTransaction> = {}): PaymentTransaction {
     return {
         id: 700,
         sale_id: 300,
+        sale_group_id: null,
         payment_request_id: 800,
         stripe_payment_intent_id: 'pi_refund_test',
+        stripe_charge_id: null,
         amount: 50,
+        fee_amount: null,
+        net_amount: null,
         currency: 'usd',
         status: 'succeeded',
         failure_reason: null,
@@ -95,7 +100,7 @@ describe('SaleModal — visible partial and full refund flow', () => {
             if (path.includes('/timeline')) return Promise.resolve([]);
             return Promise.resolve({ data: [] });
         });
-        vi.mocked(api.post).mockImplementation(async (path: string, body: any) => {
+        vi.mocked(api.post).mockImplementation(async (path: string, body: unknown) => {
             expect(path).toBe('/payment-refunds');
             expect(body).toMatchObject({ payment_transaction_id: 700, amount: 20 });
             transaction = buildTransaction({
@@ -136,7 +141,7 @@ describe('SaleModal — visible partial and full refund flow', () => {
             if (path.includes('/timeline')) return Promise.resolve([]);
             return Promise.resolve({ data: [] });
         });
-        vi.mocked(api.post).mockImplementation(async (path: string, body: any) => {
+        vi.mocked(api.post).mockImplementation(async (path: string, body: unknown) => {
             expect(body).toMatchObject({ payment_transaction_id: 700, amount: 50 });
             transaction = buildTransaction({
                 status: 'refunded',
