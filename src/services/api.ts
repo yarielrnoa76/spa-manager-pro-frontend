@@ -14,6 +14,7 @@ import {
   UpdateTenantSalesSettingsPayload,
   UpdateTenantPaymentSettingsPayload,
 } from "../types";
+import { SaleGroup, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
 export interface ActivityLog {
   id: number;
@@ -583,7 +584,11 @@ export const api = {
   },
 
   async createSale(payload: unknown) {
-    return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+    return request<DailyLog | CreateSaleGroupResponse | CreateSaleBatchResponse>(`/api/sales`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
   },
   async cancelSale(saleId: string | number) {
     return request(`/api/sales/${encodeURIComponent(String(saleId))}/cancel`, {
@@ -601,6 +606,21 @@ export const api = {
     return request<any>(`/api/sales/${encodeURIComponent(String(saleId))}`, {
       method: "PUT",
       body: payload,
+      auth: true,
+    });
+  },
+
+  // Grouped sales (ADR-027) — header/lines detail + group-level cancel. Creation always goes
+  // through createSale() above (an `items` array); there is no separate create endpoint here.
+  async getSaleGroup(saleGroupId: string | number) {
+    return request<SaleGroup>(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+  async cancelSaleGroup(saleGroupId: string | number) {
+    return request(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}/cancel`, {
+      method: "POST",
       auth: true,
     });
   },

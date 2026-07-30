@@ -4,7 +4,8 @@ import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
-import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund } from "../types/payments";
+import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund, SaleGroup } from "../types/payments";
+import { usePaymentStatusPolling } from "../hooks/usePaymentStatusPolling";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -162,6 +163,13 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | 'reconcile' | null>(null);
     const [paymentActionError, setPaymentActionError] = useState<string | null>(null);
 
+    // Grouped sale (ADR-027) — populated only when the loaded sale line has a non-null
+    // sale_group_id. Reuses the same Payment Request/Payment Transaction/refund UI below,
+    // just pointed at sale_group_id instead of sale_id.
+    const [saleGroup, setSaleGroup] = useState<SaleGroup | null>(null);
+    const [saleGroupLoading, setSaleGroupLoading] = useState(false);
+    const [selectedRefundLineIds, setSelectedRefundLineIds] = useState<number[]>([]);
+
     // Payment Timeline state
     const [timeline, setTimeline] = useState<PaymentTimelineEntry[]>([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
@@ -286,10 +294,36 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         }
     };
 
-    const loadPaymentRequest = useCallback(async (currentSaleId: number | string) => {
+    const loadSaleGroup = useCallback(async (groupId: number | string) => {
+        setSaleGroupLoading(true);
+        try {
+            const data = await api.getSaleGroup(groupId);
+            setSaleGroup(data);
+        } catch (err) {
+            console.error("Error loading sale group", err);
+            setSaleGroup(null);
+        } finally {
+            setSaleGroupLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (sale?.sale_group_id) {
+            loadSaleGroup(sale.sale_group_id);
+        } else {
+            setSaleGroup(null);
+        }
+    }, [sale?.sale_group_id, loadSaleGroup]);
+
+    // Queried by sale_group_id for a grouped line, by sale_id otherwise — exactly one of the
+    // two is ever set on a PaymentRequest (ADR-027), never both.
+    const loadPaymentRequest = useCallback(async (currentSale: any) => {
         setPaymentRequestLoading(true);
         try {
-            const res = await api.get<{ data: PaymentRequest[] }>(`/payment-requests?sale_id=${currentSaleId}&per_page=1`);
+            const query = currentSale?.sale_group_id
+                ? `sale_group_id=${currentSale.sale_group_id}`
+                : `sale_id=${currentSale.id}`;
+            const res = await api.get<{ data: PaymentRequest[] }>(`/payment-requests?${query}&per_page=1`);
             setPaymentRequest(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
         } catch (err) {
             console.error("Error loading payment request", err);
@@ -301,11 +335,23 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
     useEffect(() => {
         if (sale?.payment_provider === 'stripe' && sale?.id) {
-            loadPaymentRequest(sale.id);
+            loadPaymentRequest(sale);
         } else {
             setPaymentRequest(null);
         }
-    }, [sale?.id, sale?.payment_provider, loadPaymentRequest]);
+    }, [sale?.id, sale?.payment_provider, sale?.sale_group_id, loadPaymentRequest]);
+
+    // Automatic status refresh (grouped and independent sales alike): polls while a Checkout
+    // link is outstanding, refetches on tab focus, stops on any terminal status. The webhook
+    // remains the sole authoritative writer — this only re-fetches already-computed state.
+    const refetchPaymentStatus = useCallback(() => {
+        if (!sale) return;
+        refreshSale();
+        loadPaymentRequest(sale);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sale, loadPaymentRequest]);
+
+    usePaymentStatusPolling(paymentRequest?.status, refetchPaymentStatus);
 
     const loadPaymentTransaction = useCallback(async (paymentRequestId: number) => {
         setPaymentTransactionLoading(true);
@@ -338,7 +384,14 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         setRefundAmount(refundableAmount > 0 ? refundableAmount.toFixed(2) : '');
         setRefundReason('');
         setRefundError(null);
+        setSelectedRefundLineIds([]);
         setShowRefundForm(true);
+    };
+
+    const handleToggleRefundLine = (lineId: number) => {
+        setSelectedRefundLineIds(prev =>
+            prev.includes(lineId) ? prev.filter(id => id !== lineId) : [...prev, lineId]
+        );
     };
 
     const handleSubmitRefund = async (e: React.FormEvent) => {
@@ -354,6 +407,21 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         const ok = window.confirm(`¿Reembolsar $${amountNum.toFixed(2)} al cliente vía Stripe? Esta acción no se puede deshacer.`);
         if (!ok) return;
 
+        // Optional, only for grouped sales: attribute the refund to the specific lines staff
+        // selected, for audit purposes only — the backend validates this always sums to the
+        // requested amount. Evenly split (remainder on the last line) since this UI collects one
+        // total amount, not a per-line amount editor.
+        let lines: { daily_log_id: number; amount: number }[] | undefined;
+        if (saleGroup && selectedRefundLineIds.length > 0) {
+            const perLine = Math.floor((amountNum / selectedRefundLineIds.length) * 100) / 100;
+            lines = selectedRefundLineIds.map((id, idx) => ({
+                daily_log_id: id,
+                amount: idx === selectedRefundLineIds.length - 1
+                    ? Math.round((amountNum - perLine * (selectedRefundLineIds.length - 1)) * 100) / 100
+                    : perLine,
+            }));
+        }
+
         setRefundSubmitting(true);
         setRefundError(null);
         try {
@@ -361,6 +429,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                 payment_transaction_id: paymentTransaction.id,
                 amount: amountNum,
                 reason: refundReason || undefined,
+                ...(lines ? { lines } : {}),
             });
             setShowRefundForm(false);
             onSuccess();
@@ -391,14 +460,17 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         setPaymentActionBusy('generate');
         setPaymentActionError(null);
         try {
-            const pr = await api.post<PaymentRequest>('/payment-requests', { sale_id: sale.id });
+            const payload = sale.sale_group_id
+                ? { sale_group_id: sale.sale_group_id }
+                : { sale_id: sale.id };
+            const pr = await api.post<PaymentRequest>('/payment-requests', payload);
             setPaymentRequest(pr);
             onSuccess();
         } catch (err: any) {
             setPaymentActionError(getPaymentErrorMessage(err));
         } finally {
             await refreshSale();
-            await loadPaymentRequest(sale.id);
+            await loadPaymentRequest(sale);
             setPaymentActionBusy(null);
         }
     };
@@ -703,6 +775,31 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                 )}
                                             </div>
 
+                                            {saleGroup && (
+                                                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+                                                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">
+                                                        Venta Agrupada #{saleGroup.id} — {saleGroup.lines.length} producto{saleGroup.lines.length !== 1 ? 's' : ''}
+                                                    </p>
+                                                    {saleGroupLoading ? (
+                                                        <p className="text-xs text-gray-400 italic">Cargando líneas...</p>
+                                                    ) : (
+                                                        <div className="space-y-1.5">
+                                                            {saleGroup.lines.map(line => (
+                                                                <div key={line.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-xs border border-indigo-50">
+                                                                    <span className="font-bold text-gray-700">{line.service_rendered}</span>
+                                                                    <span className="text-gray-400">{line.quantity} x ${Number(line.unit_price).toFixed(2)}</span>
+                                                                    <span className="font-black text-gray-800">${Number(line.amount).toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex justify-between items-center border-t border-indigo-100 pt-2">
+                                                        <span className="text-xs font-black text-gray-600 uppercase">Total Consolidado</span>
+                                                        <span className="text-lg font-black text-indigo-600">${Number(saleGroup.total_amount).toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {paymentActionError && (
                                                 <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-lg p-3">
                                                     {paymentActionError}
@@ -911,6 +1008,27 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                                 />
                                                                             </div>
                                                                         </div>
+
+                                                                        {saleGroup && (
+                                                                            <div className="border-t border-gray-100 pt-2.5">
+                                                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1.5">
+                                                                                    Atribuir a líneas específicas (opcional)
+                                                                                </p>
+                                                                                <div className="space-y-1">
+                                                                                    {saleGroup.lines.map(line => (
+                                                                                        <label key={line.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                checked={selectedRefundLineIds.includes(line.id)}
+                                                                                                onChange={() => handleToggleRefundLine(line.id)}
+                                                                                            />
+                                                                                            <span>{line.service_rendered} (${Number(line.amount).toFixed(2)})</span>
+                                                                                        </label>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
                                                                         <div className="flex justify-end gap-2">
                                                                             <button
                                                                                 type="button"
