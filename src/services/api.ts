@@ -508,6 +508,7 @@ export const api = {
       to: number | null;
       total_amount: number;
       valid_count: number;
+      products_sold_count: number;
       cancelled_count: number;
       cancelled_amount: number;
     }>(`/api/sales${q}`, {

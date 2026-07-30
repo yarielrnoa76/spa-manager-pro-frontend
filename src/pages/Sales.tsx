@@ -236,6 +236,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalFilteredAmount, setTotalFilteredAmount] = useState(0);
   const [validCount, setValidCount] = useState(0);
+  // Products/lines sold — deliberately distinct from validCount (sale operations): a grouped
+  // sale's N lines each count here, never collapsed into 1. Backend-authoritative
+  // (products_sold_count from GET /api/sales), never derived from the paginated `data` array.
+  const [productsSoldCount, setProductsSoldCount] = useState(0);
   const [cancelledCount, setCancelledCount] = useState(0);
   const [cancelledAmount, setCancelledAmount] = useState(0);
   const [lastPage, setLastPage] = useState(1);
@@ -389,6 +393,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       setTotalRecords(paginatedResult?.total ?? 0);
       setTotalFilteredAmount(paginatedResult?.total_amount ?? 0);
       setValidCount(paginatedResult?.valid_count ?? 0);
+      setProductsSoldCount(paginatedResult?.products_sold_count ?? 0);
       setCancelledCount(paginatedResult?.cancelled_count ?? 0);
       setCancelledAmount(paginatedResult?.cancelled_amount ?? 0);
       setLastPage(paginatedResult?.last_page ?? 1);
@@ -903,6 +908,18 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
               {dateGranularity === "month" ? "Ventas del Mes" : dateGranularity === "week" ? "Ventas de la Semana" : "Ventas del Día"}
             </p>
             <p className="text-lg md:text-xl font-black text-indigo-900">{stats.count}</p>
+          </div>
+        </div>
+
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-sky-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-sky-500">
+          <div className="p-2 md:p-3 bg-sky-50 text-sky-600 rounded-lg">
+            <Package className="w-5 h-5 md:w-6 md:h-6" />
+          </div>
+          <div>
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              {dateGranularity === "month" ? "Productos Vendidos Este Mes" : dateGranularity === "week" ? "Productos Vendidos Esta Semana" : "Productos Vendidos Hoy"}
+            </p>
+            <p className="text-lg md:text-xl font-black text-sky-900">{productsSoldCount}</p>
           </div>
         </div>
 

@@ -72,11 +72,12 @@ const INDEPENDENT_ITEM: SalesListIndependentItem = {
 };
 
 function mockListSalesResponse(data: (SalesListGroupItem | SalesListIndependentItem)[]) {
+    const productsSoldCount = data.reduce((acc, i) => acc + (i.type === 'group' ? i.lines.length : 1), 0);
     vi.mocked(api.listSales).mockResolvedValue({
         data,
         current_page: 1, last_page: 1, per_page: 400, total: data.length, from: data.length > 0 ? 1 : null, to: data.length,
         total_amount: data.reduce((acc, i) => acc + Number(i.type === 'group' ? i.total_amount : i.amount), 0),
-        valid_count: data.length, cancelled_count: 0, cancelled_amount: 0,
+        valid_count: data.length, products_sold_count: productsSoldCount, cancelled_count: 0, cancelled_amount: 0,
     });
 }
 
