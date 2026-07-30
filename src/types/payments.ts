@@ -1,3 +1,5 @@
+import type { DailyLog } from "../types";
+
 export type StripeConnectionType =
   | "express_created_by_platform"
   | "standard_oauth_authorized_by_owner"
@@ -172,6 +174,7 @@ export interface SaleGroupLine {
   tax_amount: number | string;
   amount: number | string;
   professional_id: number | null;
+  professional?: { id: number; fname: string; lname: string; title?: string } | null;
   sale_status?: string;
   payment_status?: string;
 }
@@ -183,6 +186,9 @@ export interface SaleGroup {
   branch_id: number;
   lead_id: number | null;
   seller_id: number | null;
+  /** Mirrors DailyLog.seller_name — present when the `seller` relation was eager-loaded
+   *  (always true for Sales list items; may be absent on other endpoints). */
+  seller_name?: string | null;
   client_name: string;
   date: string;
   payment_method: string;
@@ -198,8 +204,34 @@ export interface SaleGroup {
   cancelled_at: string | null;
   notes?: string | null;
   created_at: string;
+  /** Present (non-null) when the group was cancelled via SaleGroupController::cancel() (soft
+   *  delete) — only populated by endpoints that explicitly request trashed rows. */
+  deleted_at?: string | null;
   lines: SaleGroupLine[];
 }
+
+/**
+ * GET /api/sales's `data` items (Sales.tsx list): each represents ONE sale operation, never one
+ * per product/line. A grouped sale (sales_mode = grouped_sale) is a `SalesListGroupItem` — the
+ * SaleGroup header itself, with `lines` nested for the UI's expand toggle; every field a group
+ * needs (id, date, client_name, total_amount, sale_status/payment_status, ...) already exists on
+ * `SaleGroup` above. An independent/historical sale (no sale_group_id) is a
+ * `SalesListIndependentItem` — the exact same `DailyLog` shape the list has always rendered,
+ * completely unchanged. Discriminate on `type`, never on ad-hoc field presence.
+ */
+export interface SalesListGroupItem extends SaleGroup {
+  type: "group";
+  /** Always equal to `id` — included for symmetry with PaymentRequest/PaymentTransaction's own
+   *  `sale_group_id` field, so the same key name works across all three response shapes. */
+  sale_group_id: number;
+  lines_count: number;
+}
+
+export interface SalesListIndependentItem extends DailyLog {
+  type: "independent";
+}
+
+export type SalesListItem = SalesListGroupItem | SalesListIndependentItem;
 
 /** One cart item as sent in POST /api/sales's `items` array. */
 export interface SaleCartItem {

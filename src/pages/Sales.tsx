@@ -4,7 +4,8 @@ import LeadModal from "../components/LeadModal";
 import CreateSaleModal from "../components/CreateSaleModal";
 import SaleModal from "../components/SaleModal";
 import ImportSalesModal from "../components/ImportSalesModal";
-import { DailyLog, Branch, Product } from "../types";
+import { Branch, Product } from "../types";
+import { SalesListItem } from "../types/payments";
 import {
   Plus,
   Download,
@@ -166,6 +167,12 @@ function isSaleCancelled(sale: any) {
   );
 }
 
+/** True narrowing helper for the `SalesListItem` discriminated union — avoids `any` at every
+ *  call site that needs to branch on whether a row is a consolidated grouped sale. */
+function isGroupItem(item: SalesListItem): item is Extract<SalesListItem, { type: "group" }> {
+  return item.type === "group";
+}
+
 type SalesProps = { user?: any };
 
 const Sales: React.FC<SalesProps> = ({ user }) => {
@@ -179,7 +186,20 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const canImport = isSuperAdmin || perms.includes("import_sales");
   const canExport = isSuperAdmin || perms.includes("export_sales");
   const canViewMySalesOnly = perms.includes("view_my_sales_only") && !canViewAllSales;
-  const [sales, setSales] = useState<DailyLog[]>([]);
+  const [sales, setSales] = useState<SalesListItem[]>([]);
+  // Which grouped-sale rows currently show their nested line-items table below the main row.
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<number>>(new Set());
+  const toggleGroupExpanded = (groupId: number) => {
+    setExpandedGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
   const [branches, setBranches] = useState<Branch[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
@@ -216,6 +236,10 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalFilteredAmount, setTotalFilteredAmount] = useState(0);
   const [validCount, setValidCount] = useState(0);
+  // Products/lines sold — deliberately distinct from validCount (sale operations): a grouped
+  // sale's N lines each count here, never collapsed into 1. Backend-authoritative
+  // (products_sold_count from GET /api/sales), never derived from the paginated `data` array.
+  const [productsSoldCount, setProductsSoldCount] = useState(0);
   const [cancelledCount, setCancelledCount] = useState(0);
   const [cancelledAmount, setCancelledAmount] = useState(0);
   const [lastPage, setLastPage] = useState(1);
@@ -369,6 +393,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
       setTotalRecords(paginatedResult?.total ?? 0);
       setTotalFilteredAmount(paginatedResult?.total_amount ?? 0);
       setValidCount(paginatedResult?.valid_count ?? 0);
+      setProductsSoldCount(paginatedResult?.products_sold_count ?? 0);
       setCancelledCount(paginatedResult?.cancelled_count ?? 0);
       setCancelledAmount(paginatedResult?.cancelled_amount ?? 0);
       setLastPage(paginatedResult?.last_page ?? 1);
@@ -545,19 +570,33 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
     }));
   };
 
-  const handleCancelSale = async (sale: any) => {
+  const handleCancelSale = async (item: SalesListItem) => {
     try {
-      if (!sale?.id) return;
+      if (isGroupItem(item)) {
+        const ok = window.confirm(
+          `¿Seguro que deseas CANCELAR esta venta agrupada?\n\nCliente: ${item.client_name || "—"
+          }\nProductos: ${item.lines_count}\nTotal: $${money(toNumber(String(item.total_amount)))
+          }\n\nEsto hará soft-delete de la venta y sus líneas, y restaurará inventario.`,
+        );
+        if (!ok) return;
+
+        setLoading(true);
+        await api.cancelSaleGroup(item.id);
+        await fetchData();
+        return;
+      }
+
+      if (!item?.id) return;
 
       const ok = window.confirm(
-        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${sale?.client_name || "—"
-        }\nProducto/Servicio: ${sale?.service_rendered || "—"}\nCantidad: ${sale?.quantity || "—"
+        `¿Seguro que deseas CANCELAR esta venta?\n\nCliente: ${item?.client_name || "—"
+        }\nProducto/Servicio: ${item?.service_rendered || "—"}\nCantidad: ${item?.quantity || "—"
         }\n\nEsto hará soft-delete y restaurará inventario.`,
       );
       if (!ok) return;
 
       setLoading(true);
-      await api.cancelSale(sale.id);
+      await api.cancelSale(item.id);
       await fetchData();
     } catch (err: any) {
       alert(err?.message || "Error al cancelar la venta");
@@ -872,6 +911,18 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
           </div>
         </div>
 
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-sky-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-sky-500">
+          <div className="p-2 md:p-3 bg-sky-50 text-sky-600 rounded-lg">
+            <Package className="w-5 h-5 md:w-6 md:h-6" />
+          </div>
+          <div>
+            <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
+              {dateGranularity === "month" ? "Productos Vendidos Este Mes" : dateGranularity === "week" ? "Productos Vendidos Esta Semana" : "Productos Vendidos Hoy"}
+            </p>
+            <p className="text-lg md:text-xl font-black text-sky-900">{productsSoldCount}</p>
+          </div>
+        </div>
+
         <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-green-600">
           <div className="p-2 md:p-3 bg-green-50 text-green-600 rounded-lg">
             <DollarSign className="w-5 h-5 md:w-6 md:h-6" />
@@ -1161,109 +1212,174 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                   </td>
                 </tr>
               ) : (
-                visibleSales.map((sale: any) => (
-                  <tr
-                    key={sale.id}
-                    className={`hover:bg-gray-50 cursor-pointer ${isSaleCancelled(sale) ? "opacity-60" : ""
-                      }`}
-                    onClick={() => {
-                      if (!isSaleCancelled(sale)) {
-                        setSelectedSaleId(sale.id);
-                        setIsSaleModalOpen(true);
-                      }
-                    }}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatSaleDateTime(sale)}
-                    </td>
+                visibleSales.map((item) => {
+                  const cancelled = isSaleCancelled(item);
+                  const rowKey = item.type === "group" ? `group-${item.id}` : `sale-${item.id}`;
+                  const isExpanded = item.type === "group" && expandedGroupIds.has(item.id);
 
-                    {/* ✅ Vendedor(a) */}
-                    <td className="px-6 py-4">
-                      <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold">
-                        {sale?.seller_name || "—"}
-                      </span>
-                    </td>
+                  return (
+                    <React.Fragment key={rowKey}>
+                      <tr
+                        className={`hover:bg-gray-50 cursor-pointer ${cancelled ? "opacity-60" : ""}`}
+                        onClick={() => {
+                          if (cancelled) return;
+                          if (item.type === "group") {
+                            const firstLineId = item.lines?.[0]?.id;
+                            if (firstLineId == null) return;
+                            setSelectedSaleId(firstLineId);
+                          } else {
+                            setSelectedSaleId(item.id);
+                          }
+                          setIsSaleModalOpen(true);
+                        }}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {formatSaleDateTime(item)}
+                        </td>
 
-                    <td className="px-6 py-4">
-                      <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
-                        {branches.find(
-                          (b) => String(b.id) === String(sale.branch_id),
-                        )?.name || "—"}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 font-medium">
-                      {sale.client_name}
-                    </td>
-
-                    <td className="px-6 py-4 flex items-center gap-2">
-                      {sale.product_id && (
-                        <Package size={14} className="text-gray-400" />
-                      )}
-                      {sale.service_rendered}
-                      {sale.sale_group_id && (
-                        <span
-                          className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600"
-                          title={`Parte de la venta agrupada #${sale.sale_group_id}`}
-                        >
-                          Agrupada
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      {sale.professional_name || sale.professional?.full_name || <span className="text-gray-400 font-normal italic">—</span>}
-                    </td>
-
-                    <td className="px-6 py-4 text-right text-gray-700">
-                      {toNumber(sale?.unit_price ?? 0) > 0
-                        ? `$${money(toNumber(sale?.unit_price ?? 0))}`
-                        : "—"}
-                    </td>
-
-                    <td className="px-6 py-4 text-right font-bold text-gray-700">
-                      {Number(sale?.quantity ?? 0) || 0}
-                    </td>
-
-                    <td className="px-6 py-4 text-right font-bold text-gray-900">
-                      ${money(saleAmount(sale))}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <span>{sale.payment_method}</span>
-                        {sale.payment_provider === "stripe" && (
-                          <span
-                            className={`inline-block w-fit text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${STRIPE_STATUS_BADGE[sale.sale_status || ""] || "bg-gray-100 text-gray-600"
-                              }`}
-                          >
-                            Stripe: {STRIPE_STATUS_LABELS[sale.sale_status || ""] || sale.sale_status || "—"}
+                        {/* ✅ Vendedor(a) */}
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[10px] font-bold">
+                            {item.seller_name || "—"}
                           </span>
-                        )}
-                      </div>
-                    </td>
+                        </td>
 
-                    <td className="px-6 py-4 text-right">
-                      {isSaleCancelled(sale) ? (
-                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600">
-                          Cancelada
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCancelSale(sale);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50"
-                          title="Cancelar (soft delete) y restaurar inventario"
-                        >
-                          Cancelar
-                        </button>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-[10px] font-bold">
+                            {branches.find(
+                              (b) => String(b.id) === String(item.branch_id),
+                            )?.name || "—"}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 font-medium">
+                          {item.client_name}
+                        </td>
+
+                        {item.type === "group" ? (
+                          <td className="px-6 py-4">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleGroupExpanded(item.id);
+                              }}
+                              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+                              title={`Venta agrupada #${item.id} — ver productos`}
+                            >
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              <Package size={14} />
+                              <span className="text-xs font-bold">
+                                {item.lines_count} producto{item.lines_count !== 1 ? "s" : ""}
+                              </span>
+                            </button>
+                          </td>
+                        ) : (
+                          <td className="px-6 py-4 flex items-center gap-2">
+                            {item.product_id && (
+                              <Package size={14} className="text-gray-400" />
+                            )}
+                            {item.service_rendered}
+                          </td>
+                        )}
+
+                        <td className="px-6 py-4">
+                          {item.type === "group"
+                            ? <span className="text-gray-400 font-normal italic">Varios</span>
+                            : (item.professional_name || item.professional?.full_name || <span className="text-gray-400 font-normal italic">—</span>)}
+                        </td>
+
+                        <td className="px-6 py-4 text-right text-gray-700">
+                          {item.type === "group"
+                            ? "—"
+                            : (toNumber(String(item?.unit_price ?? 0)) > 0
+                              ? `$${money(toNumber(String(item?.unit_price ?? 0)))}`
+                              : "—")}
+                        </td>
+
+                        <td className="px-6 py-4 text-right font-bold text-gray-700">
+                          {item.type === "group" ? item.lines_count : (Number(item?.quantity ?? 0) || 0)}
+                        </td>
+
+                        <td className="px-6 py-4 text-right font-bold text-gray-900">
+                          ${money(item.type === "group" ? toNumber(String(item.total_amount)) : saleAmount(item))}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span>{item.payment_method}</span>
+                            {item.payment_provider === "stripe" && (
+                              <span
+                                className={`inline-block w-fit text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${STRIPE_STATUS_BADGE[item.sale_status || ""] || "bg-gray-100 text-gray-600"
+                                  }`}
+                              >
+                                Stripe: {STRIPE_STATUS_LABELS[item.sale_status || ""] || item.sale_status || "—"}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+                          {cancelled ? (
+                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600">
+                              Cancelada
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelSale(item);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50"
+                              title="Cancelar (soft delete) y restaurar inventario"
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Secondary, read-only listing of a grouped sale's own lines — no total,
+                          status, Payment Link, or action is ever duplicated here; those all live
+                          exclusively on the header row above (see docs/architecture/
+                          payment-platform.md, ADR-027 presentation addendum). */}
+                      {isExpanded && item.type === "group" && (
+                        <tr className="bg-indigo-50/30">
+                          <td colSpan={11} className="px-6 py-3">
+                            <table className="w-full text-xs">
+                              <thead className="text-[9px] uppercase font-bold text-gray-400">
+                                <tr>
+                                  <th className="text-left pb-1">Producto/Servicio</th>
+                                  <th className="text-left pb-1">Profesional</th>
+                                  <th className="text-right pb-1">Precio</th>
+                                  <th className="text-right pb-1">Cantidad</th>
+                                  <th className="text-right pb-1">Monto</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-indigo-100">
+                                {item.lines.map((line) => (
+                                  <tr key={line.id}>
+                                    <td className="py-1.5 flex items-center gap-1.5">
+                                      {line.product_id && <Package size={12} className="text-gray-400" />}
+                                      {line.service_rendered}
+                                    </td>
+                                    <td className="py-1.5 text-gray-500">
+                                      {line.professional ? `${line.professional.fname} ${line.professional.lname}` : "—"}
+                                    </td>
+                                    <td className="py-1.5 text-right">${money(toNumber(String(line.unit_price)))}</td>
+                                    <td className="py-1.5 text-right font-bold">{line.quantity}</td>
+                                    <td className="py-1.5 text-right font-bold">${money(toNumber(String(line.amount)))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))
+                    </React.Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

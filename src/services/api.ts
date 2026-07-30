@@ -14,7 +14,7 @@ import {
   UpdateTenantSalesSettingsPayload,
   UpdateTenantPaymentSettingsPayload,
 } from "../types";
-import { SaleGroup, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
+import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
 export interface ActivityLog {
   id: number;
@@ -499,7 +499,7 @@ export const api = {
     const q = params.toString() ? `?${params.toString()}` : "";
 
     return request<{
-      data: DailyLog[];
+      data: SalesListItem[];
       current_page: number;
       last_page: number;
       per_page: number;
@@ -508,6 +508,7 @@ export const api = {
       to: number | null;
       total_amount: number;
       valid_count: number;
+      products_sold_count: number;
       cancelled_count: number;
       cancelled_amount: number;
     }>(`/api/sales${q}`, {

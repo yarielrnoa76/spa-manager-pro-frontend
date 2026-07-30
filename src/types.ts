@@ -331,6 +331,7 @@ export interface DailyLog {
   sale_group_id?: number | null;
   discount_amount?: number;
   tax_amount?: number;
+  deleted_at?: string | null;
 }
 
 export interface ProfessionalPerson {
