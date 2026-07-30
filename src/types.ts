@@ -310,6 +310,8 @@ export interface DailyLog {
   professional_id?: number | null;
   client_name: string;
   service_rendered: string;
+  quantity?: number;
+  unit_price?: number;
   amount: number;
   payment_method: string;
   notes?: string;
@@ -324,6 +326,11 @@ export interface DailyLog {
   payment_provider?: string | null;
   paid_at?: string | null;
   cancelled_at?: string | null;
+  // Grouped sales (ADR-027) — null for independent_sales/historical rows. Present only when
+  // this line belongs to a SaleGroup header (see src/types/payments.ts).
+  sale_group_id?: number | null;
+  discount_amount?: number;
+  tax_amount?: number;
 }
 
 export interface ProfessionalPerson {

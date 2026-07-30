@@ -60,7 +60,12 @@ export interface PaymentTimelineEntry {
 
 export interface PaymentRequest {
   id: number;
-  sale_id: number;
+  // Grouped sales (ADR-027): exactly one of sale_id/sale_group_id is ever set, never both.
+  // independent_sales/historical requests: sale_id set, sale_group_id null. grouped_sale
+  // requests: sale_group_id set, sale_id null.
+  sale_id: number | null;
+  sale_group_id: number | null;
+  sale_group?: SaleGroup | null;
   lead_id: number | null;
   appointment_id: number | null;
   amount: number | string;
@@ -84,6 +89,18 @@ export type PaymentTransactionStatus =
 
 export type PaymentRefundStatus = "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
 
+/**
+ * Optional, additive per-line allocation (ADR-027): only ever populated when staff attributed a
+ * grouped-sale partial refund to specific lines. Audit only — the refund's own `amount` is
+ * always the authoritative figure Stripe actually processed.
+ */
+export interface PaymentRefundLine {
+  id: number;
+  payment_refund_id: number;
+  daily_log_id: number;
+  amount: number | string;
+}
+
 export interface PaymentRefund {
   id: number;
   payment_transaction_id: number;
@@ -96,11 +113,14 @@ export interface PaymentRefund {
   requested_by: number | null;
   processed_at: string | null;
   created_at: string;
+  lines?: PaymentRefundLine[];
 }
 
 export interface PaymentTransaction {
   id: number;
-  sale_id: number;
+  // Same exactly-one-of rule as PaymentRequest above (ADR-027).
+  sale_id: number | null;
+  sale_group_id: number | null;
   payment_request_id: number;
   stripe_payment_intent_id: string | null;
   stripe_charge_id: string | null;
@@ -133,4 +153,79 @@ export interface SaleFinancialSummary {
   net_collected_amount: number;
   remaining_refundable_amount: number;
   transaction_count: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grouped sales (ADR-027) — TenantSetting.sales_mode = 'grouped_sale'. Purely additive: an
+// independent_sales sale never has a SaleGroup and never appears in these types.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One line of a grouped sale — structurally a DailyLog row sharing one sale_group_id. */
+export interface SaleGroupLine {
+  id: number;
+  sale_group_id: number;
+  product_id: number | null;
+  service_rendered: string;
+  quantity: number;
+  unit_price: number | string;
+  discount_amount: number | string;
+  tax_amount: number | string;
+  amount: number | string;
+  professional_id: number | null;
+  sale_status?: string;
+  payment_status?: string;
+}
+
+/** GET /api/sale-groups/{id} — the header, with every line it owns. */
+export interface SaleGroup {
+  id: number;
+  tenant_id: number;
+  branch_id: number;
+  lead_id: number | null;
+  seller_id: number | null;
+  client_name: string;
+  date: string;
+  payment_method: string;
+  currency: string;
+  subtotal_amount: number | string;
+  discount_amount: number | string;
+  tax_amount: number | string;
+  total_amount: number | string;
+  sale_status: string;
+  payment_status: string;
+  payment_provider: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  notes?: string | null;
+  created_at: string;
+  lines: SaleGroupLine[];
+}
+
+/** One cart item as sent in POST /api/sales's `items` array. */
+export interface SaleCartItem {
+  product_id?: number | string | null;
+  quantity: number;
+  service_rendered: string;
+  unit_price: number;
+  amount?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  professional_id?: number | string | null;
+}
+
+/**
+ * POST /api/sales's response is discriminated by the tenant's OWN persisted sales_mode, never by
+ * what the client sent: `items` array + grouped_sale -> {type:'group'}; `items` array +
+ * independent_sales -> {type:'batch'} (N independent sales, same as today's per-item loop, just
+ * one round-trip); legacy single-item payload -> the bare DailyLog, unchanged from before this
+ * feature existed.
+ */
+export interface CreateSaleGroupResponse {
+  type: 'group';
+  sale_group: SaleGroup;
+}
+
+export interface CreateSaleBatchResponse {
+  type: 'batch';
+  sales: unknown[];
 }

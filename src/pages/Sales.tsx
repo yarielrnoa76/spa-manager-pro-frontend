@@ -1201,6 +1201,14 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                         <Package size={14} className="text-gray-400" />
                       )}
                       {sale.service_rendered}
+                      {sale.sale_group_id && (
+                        <span
+                          className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600"
+                          title={`Parte de la venta agrupada #${sale.sale_group_id}`}
+                        >
+                          Agrupada
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4">
