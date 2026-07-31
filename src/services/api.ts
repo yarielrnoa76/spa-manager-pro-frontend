@@ -9,7 +9,12 @@ import {
   Appointment,
   Tenant,
   ProfessionalPerson,
+  CreateTenantPayload,
+  UpdateTenantProfilePayload,
+  UpdateTenantSalesSettingsPayload,
+  UpdateTenantPaymentSettingsPayload,
 } from "../types";
+import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
 export interface ActivityLog {
   id: number;
@@ -37,6 +42,10 @@ export type DashboardStats = {
   recentLeads: Array<Lead>;
   salesCount: number;
   lowStockCount: number;
+  // Revenue system — snake_case, payment_status driven
+  revenue_paid?: number;
+  revenue_pending?: number;
+  revenue_refunded?: number;
 };
 
 if (!API_URL) {
@@ -47,14 +56,14 @@ if (!API_URL) {
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-type ApiErrorPayload = {
+export type ApiErrorPayload = {
   ok?: boolean;
   code?: string;
   message?: string;
   errors?: Record<string, string[]>;
 };
 
-class ApiError extends Error {
+export class ApiError extends Error {
   code?: string;
   status?: number;
   errors?: Record<string, string[]>;
@@ -88,10 +97,33 @@ function safeJsonParse(text: string): ApiErrorPayload {
 
 async function request<T>(
   path: string,
-  options: { method?: HttpMethod; body?: unknown; auth?: boolean } = {},
+  options: {
+    method?: HttpMethod;
+    body?: unknown;
+    auth?: boolean;
+    /**
+     * Opts a single request out of the X-Tenant-ID header — for global operations that are
+     * authenticated but not scoped to any tenant context (e.g. POST /api/tenants, which creates
+     * a brand-new tenant and must never carry an unrelated, already-selected tenant's id).
+     * Defaults to false: every other call keeps today's behavior exactly. Never affects
+     * Authorization or any other header, and never changes how currentTenantId is resolved —
+     * it only suppresses attaching it to this one request.
+     */
+    skipTenantHeader?: boolean;
+    /**
+     * Sends X-Tenant-ID as this explicit value for this ONE request instead of reading
+     * localStorage's current_tenant_id — for SuperAdmin actions on a specific tenant chosen
+     * from a list (e.g. editing that tenant's business profile) that must not depend on, or
+     * mutate, the globally-selected tenant context. Never writes to localStorage, never
+     * changes what any OTHER request sends, and never affects Authorization. Ignored when
+     * skipTenantHeader is true.
+     */
+    tenantIdOverride?: number | string;
+  } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
   const auth = options.auth ?? true;
+  const skipTenantHeader = options.skipTenantHeader ?? false;
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET") headers["Content-Type"] = "application/json";
@@ -100,10 +132,15 @@ async function request<T>(
     const token = localStorage.getItem("auth_token");
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    // === MULTI-TENANT: Add X-Tenant-ID header ===
-    const tenantId = localStorage.getItem("current_tenant_id");
-    if (tenantId) {
-      headers["X-Tenant-ID"] = tenantId;
+    // === MULTI-TENANT: Add X-Tenant-ID header (unless this request opted out) ===
+    if (!skipTenantHeader) {
+      const tenantId =
+        options.tenantIdOverride !== undefined
+          ? String(options.tenantIdOverride)
+          : localStorage.getItem("current_tenant_id");
+      if (tenantId) {
+        headers["X-Tenant-ID"] = tenantId;
+      }
     }
   }
 
@@ -239,12 +276,36 @@ export const api = {
     return request<Tenant[]>(`/api/tenants`, { method: "GET", auth: true });
   },
 
-  async createTenant(payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants`, { method: "POST", body: payload, auth: true });
+  /**
+   * POST /api/tenants — global SuperAdmin operation (creates a brand-new tenant; there is no
+   * "current tenant" context to be scoped to). skipTenantHeader:true is required here — see
+   * request()'s doc-comment. Does NOT auto-select the newly-created tenant as current;
+   * callers decide that explicitly (see CreateTenantModal's post-creation "Select and configure
+   * Tenant" prompt in Tenants.tsx).
+   */
+  async createTenant(payload: CreateTenantPayload) {
+    return request<Tenant>(`/api/tenants`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
   },
 
+  /**
+   * PUT /api/tenants/{tenant} is wrapped in the 'tenant' middleware (routes/api.php), which
+   * requires SOME valid X-Tenant-ID header for a SuperAdmin request — it does not have to
+   * match {tenant} (the route param may target any tenant), but it must be present. Always
+   * overriding it to the tenant actually being edited means this call never depends on, or is
+   * blocked by, whatever tenant (if any) happens to be globally selected in localStorage.
+   */
   async updateTenant(tenantId: number, payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants/${tenantId}`, { method: "PUT", body: payload, auth: true });
+    return request<Tenant>(`/api/tenants/${tenantId}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
   async deleteTenant(tenantId: number, confirmName: string, confirmPhrase: string) {
@@ -265,16 +326,62 @@ export const api = {
     return data;
   },
 
+  /**
+   * --- Tenant self-service profile ---
+   * Default behavior (tenantId omitted): reads/writes whatever tenant is currently selected
+   * (X-Tenant-ID from localStorage), exactly as before Fase 3D.
+   *
+   * Passing tenantId lets a SuperAdmin act on a SPECIFIC tenant chosen from the tenant list
+   * (e.g. TenantFormModal editing a tenant that may not be the globally-selected one) without
+   * switching the active tenant context — request()'s tenantIdOverride sends X-Tenant-ID for
+   * this call only and never touches localStorage/current_tenant_id.
+   */
+  async getTenantProfile(tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, { method: "GET", auth: true, tenantIdOverride: tenantId });
+  },
+
+  async updateTenantProfile(payload: UpdateTenantProfilePayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
+  },
+
+  async updateTenantSalesSettings(payload: UpdateTenantSalesSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/sales-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
+  },
+
+  async updateTenantPaymentSettings(payload: UpdateTenantPaymentSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/payment-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
+  },
+
   async listUsers(opts?: { include_global?: boolean }) {
     const q = opts?.include_global ? `?include_global=1` : "";
     return request<any[]>(`/api/users${q}`, { method: "GET", auth: true });
   },
 
   // --- Dashboard ---
-  async getDashboardStats(branch_id: string | number = "all") {
-    const q = branch_id && branch_id !== "all"
-      ? `?branch_id=${encodeURIComponent(String(branch_id))}`
-      : "";
+  async getDashboardStats(
+    branch_id: string | number = "all",
+    opts?: { from?: string; to?: string },
+  ) {
+    const params = new URLSearchParams();
+    if (branch_id && branch_id !== "all") params.set("branch_id", String(branch_id));
+    if (opts?.from) params.set("from", opts.from);
+    if (opts?.to) params.set("to", opts.to);
+    const q = params.toString() ? `?${params.toString()}` : "";
     return request(`/api/dashboard/stats${q}`, { method: "GET", auth: true });
   },
 
@@ -365,6 +472,7 @@ export const api = {
       per_page?: number;
       search?: string;
       date?: string;
+      date_week?: string;
       date_month?: string;
       seller_id?: string | number;
     },
@@ -384,13 +492,14 @@ export const api = {
     if (opts?.per_page) params.set("per_page", String(opts.per_page));
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_week) params.set("date_week", opts.date_week);
     if (opts?.date_month) params.set("date_month", opts.date_month);
     if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
     const q = params.toString() ? `?${params.toString()}` : "";
 
     return request<{
-      data: DailyLog[];
+      data: SalesListItem[];
       current_page: number;
       last_page: number;
       per_page: number;
@@ -398,6 +507,10 @@ export const api = {
       from: number | null;
       to: number | null;
       total_amount: number;
+      valid_count: number;
+      products_sold_count: number;
+      cancelled_count: number;
+      cancelled_amount: number;
     }>(`/api/sales${q}`, {
       method: "GET",
       auth: true,
@@ -411,6 +524,7 @@ export const api = {
       only_cancelled?: boolean;
       search?: string;
       date?: string;
+      date_week?: string;
       date_month?: string;
       seller_id?: string | number;
     },
@@ -428,6 +542,7 @@ export const api = {
 
     if (opts?.search) params.set("search", opts.search);
     if (opts?.date) params.set("date", opts.date);
+    if (opts?.date_week) params.set("date_week", opts.date_week);
     if (opts?.date_month) params.set("date_month", opts.date_month);
     if (opts?.seller_id && opts.seller_id !== "all") params.set("seller_id", String(opts.seller_id));
 
@@ -462,6 +577,7 @@ export const api = {
       days_worked: number;
       total_working_days: number;
       projection: number;
+      refunded_day: number;
     }>(`/api/sales/stats${q}`, {
       method: "GET",
       auth: true,
@@ -469,7 +585,11 @@ export const api = {
   },
 
   async createSale(payload: unknown) {
-    return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+    return request<DailyLog | CreateSaleGroupResponse | CreateSaleBatchResponse>(`/api/sales`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
   },
   async cancelSale(saleId: string | number) {
     return request(`/api/sales/${encodeURIComponent(String(saleId))}/cancel`, {
@@ -487,6 +607,21 @@ export const api = {
     return request<any>(`/api/sales/${encodeURIComponent(String(saleId))}`, {
       method: "PUT",
       body: payload,
+      auth: true,
+    });
+  },
+
+  // Grouped sales (ADR-027) — header/lines detail + group-level cancel. Creation always goes
+  // through createSale() above (an `items` array); there is no separate create endpoint here.
+  async getSaleGroup(saleGroupId: string | number) {
+    return request<SaleGroup>(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+  async cancelSaleGroup(saleGroupId: string | number) {
+    return request(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}/cancel`, {
+      method: "POST",
       auth: true,
     });
   },
@@ -644,6 +779,14 @@ export const api = {
   async put<T = unknown>(path: string, body?: unknown, opts?: { auth?: boolean }) {
     return request<T>(normalizeApiPath(path), {
       method: "PUT",
+      body,
+      auth: opts?.auth ?? true,
+    });
+  },
+
+  async patch<T = unknown>(path: string, body?: unknown, opts?: { auth?: boolean }) {
+    return request<T>(normalizeApiPath(path), {
+      method: "PATCH",
       body,
       auth: opts?.auth ?? true,
     });

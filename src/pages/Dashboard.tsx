@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import RevenueTab from "../components/revenue/RevenueTab";
 import {
   BarChart as ReBarChart,
   Bar,
@@ -18,9 +19,11 @@ import {
   Building2,
   X,
   Download,
+  Ban,
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
+import { SalesListItem } from "../types/payments";
 
 type Branch = { id: number; name: string };
 
@@ -37,6 +40,10 @@ type DashboardStats = {
   recentLeads: Lead[];
   salesCount: number;
   lowStockCount: number;
+  // Revenue system — snake_case, payment_status driven
+  revenue_paid?: number;
+  revenue_pending?: number;
+  revenue_refunded?: number;
 };
 
 type Product = {
@@ -45,9 +52,9 @@ type Product = {
   salesprice: number;
 };
 
-// Ventas (DailyLog) — tipado “suave”
+// Ventas (DailyLog, or a SaleGroup collapsed to one operation) — tipado "blando"
 type Sale = {
-  id: number;
+  id: number | string;
   date: string;
   branch_id?: number | string;
   seller_id?: number | string | null;
@@ -67,6 +74,8 @@ type Sale = {
   is_deleted?: boolean | null;
   isDeleted?: boolean | null;
   status?: string | null;
+  sale_status?: string | null;
+  payment_status?: string | null;
 };
 
 function normalizeArray<T = any>(payload: unknown): T[] {
@@ -100,12 +109,74 @@ function isSaleCancelled(sale: any) {
     sale?.is_deleted ||
     sale?.isDeleted ||
     String(sale?.status || "").toLowerCase() === "cancelled" ||
-    String(sale?.status || "").toLowerCase() === "canceled",
+    String(sale?.status || "").toLowerCase() === "canceled" ||
+    String(sale?.sale_status || "").toLowerCase() === "cancelled" ||
+    String(sale?.payment_status || "").toLowerCase() === "cancelled",
   );
 }
 
 function toISODate(dt: Date) {
   return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Single, centralized rule for every "cantidad de ventas"/"ventas por X" metric on this page:
+ * a SaleGroup (grouped_sale) is ONE sale operation regardless of its product/line count; an
+ * independent DailyLog line is one operation on its own — mirrors
+ * App\Services\SaleOperationsMetricsService on the backend exactly, just applied client-side to
+ * the already-fetched, backend-authoritative `SalesListItem[]` (each item's `type`/`sale_group_id`
+ * are backend facts, not inferred here). Every count-of-sales figure below (the "Cant. Ventas" KPI,
+ * the day/month/seller breakdown charts, the weekly breakdown) is derived from this SAME list, so
+ * none of them can drift into a different formula from one another.
+ */
+function toOperations(items: SalesListItem[]): Sale[] {
+  return items.map((item) => item.type === "group"
+    ? {
+      id: item.id,
+      date: item.date,
+      branch_id: item.branch_id,
+      seller_id: item.seller_id,
+      seller_name: item.seller_name,
+      quantity: item.lines_count,
+      amount: item.total_amount,
+      deleted_at: item.deleted_at,
+      sale_status: item.sale_status,
+      payment_status: item.payment_status,
+    }
+    : item);
+}
+
+/**
+ * The line/product-level counterpart of toOperations() above: every metric that genuinely
+ * measures products/services sold (not sale operations) — quantity totals, per-product
+ * breakdowns, per-line profit — needs one entry per DailyLog line, including every line inside a
+ * SaleGroup. Never used for a "cantidad de ventas" figure; see toOperations() for that.
+ */
+function flattenToLines(items: SalesListItem[]): Sale[] {
+  const lines: Sale[] = [];
+  for (const item of items) {
+    if (item.type === "group") {
+      for (const line of item.lines) {
+        lines.push({
+          id: line.id,
+          date: item.date,
+          branch_id: item.branch_id,
+          seller_id: item.seller_id,
+          seller_name: item.seller_name,
+          product_id: line.product_id,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          amount: line.amount,
+          deleted_at: item.deleted_at,
+          sale_status: item.sale_status,
+          payment_status: item.payment_status,
+        });
+      }
+    } else {
+      lines.push(item);
+    }
+  }
+  return lines;
 }
 
 function toNum(v: any) {
@@ -138,16 +209,21 @@ const Dashboard: React.FC = () => {
   const nowInit = new Date();
   const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(nowInit.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(nowInit.getFullYear());
-  const [activeTab, setActiveTab] = useState<"summary" | "annual">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "annual" | "revenue">("summary");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<SalesListItem[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [refunds, setRefunds] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+
+  // Revenue Tab state — lazy loaded only when tab is active
+  const [revenueStats, setRevenueStats] = useState<DashboardStats | null>(null);
+  const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+  const [revenueLoading, setRevenueLoading] = useState(false);
 
   const [user, setUser] = useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -176,7 +252,7 @@ const Dashboard: React.FC = () => {
         if (cancelled) return;
         setStats(statsRes as DashboardStats);
         setBranches(normalizeArray<Branch>(branchesRes));
-        setSales(normalizeArray<Sale>(salesRes));
+        setSales(normalizeArray<SalesListItem>(salesRes));
         setProducts(normalizeArray<Product>(productsRes));
         setRefunds(normalizeArray<any>(refundsRes));
         setExpenses(normalizeArray<any>(expensesRes));
@@ -201,6 +277,58 @@ const Dashboard: React.FC = () => {
       setSelectedBranch(String(userBranchId));
     }
   }, [user]);
+
+  // Revenue Tab — lazy fetch: fires only when the tab is active.
+  // Fetches period-aware dashboard stats (with from/to) + payment requests.
+  // Date range is computed here directly (same logic as the period useMemo below)
+  // to avoid a temporal dead zone reference inside the useEffect.
+  useEffect(() => {
+    if (activeTab !== "revenue") return;
+    let cancelled = false;
+
+    const now = new Date();
+    const isCurrentYear = now.getFullYear() === selectedYear;
+    let fromStr: string;
+    let toStr: string;
+    if (selectedMonth === "all") {
+      const start = new Date(selectedYear, 0, 1);
+      const end = isCurrentYear ? now : new Date(selectedYear, 11, 31);
+      fromStr = toISODate(start);
+      toStr = toISODate(end);
+    } else {
+      const start = new Date(selectedYear, (selectedMonth as number) - 1, 1);
+      const endOfMonth = new Date(selectedYear, selectedMonth as number, 0);
+      const isCurrentMonth = isCurrentYear && now.getMonth() + 1 === selectedMonth;
+      const end = isCurrentMonth ? now : endOfMonth;
+      fromStr = toISODate(start);
+      toStr = toISODate(end);
+    }
+
+    const fetchRevenue = async () => {
+      setRevenueLoading(true);
+      try {
+        const [statsRes, prRes] = await Promise.all([
+          api.getDashboardStats(selectedBranch, { from: fromStr, to: toStr }),
+          api.get<any>(`/api/payment-requests?per_page=50${selectedBranch !== "all" ? `&branch_id=${selectedBranch}` : ""}`),
+        ]);
+        if (cancelled) return;
+        setRevenueStats(statsRes as DashboardStats);
+        const prList = Array.isArray(prRes)
+          ? prRes
+          : Array.isArray((prRes as any)?.data)
+          ? (prRes as any).data
+          : [];
+        setPaymentRequests(prList);
+      } catch {
+        // Silently degrade — revenue tab shows zeros, not an error screen
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    };
+
+    fetchRevenue();
+    return () => { cancelled = true; };
+  }, [activeTab, selectedBranch, selectedMonth, selectedYear]);
 
   const userBranchId = user?.branch_id || user?.branch?.id;
   const isBranchRestricted = userBranchId && !user?.is_super_admin && !user?.permissions?.includes("view_all_sales");
@@ -236,21 +364,59 @@ const Dashboard: React.FC = () => {
     };
   }, [selectedMonth, selectedYear]);
 
-  const periodSales = useMemo(() => {
-    return (sales || []).filter((s) => {
+  // Operations (toOperations() — one entry per SaleGroup + one per independent line): every
+  // "cantidad de ventas"/"ventas por X" metric on this page (the Cant. Ventas KPI, the day/month/
+  // seller breakdown charts, the weekly breakdown) reads from this, never from raw sales/lines.
+  const operations = useMemo(() => toOperations(sales), [sales]);
+  // Lines (flattenToLines() — one entry per product/line, including every line inside a group):
+  // only the genuinely product/line-level metrics (productsSold, productBreakdown, profit) read
+  // from this instead.
+  const lines = useMemo(() => flattenToLines(sales), [sales]);
+
+  const filterByPeriodAndBranch = useCallback((rows: Sale[]) => rows.filter((s) => {
+    const d = normalizeDate(s.date);
+    if (!d || d < period.startStr || d > period.endStr) return false;
+    if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
+    return !isSaleCancelled(s);
+  }), [selectedBranch, period.startStr, period.endStr]);
+
+  const periodSales = useMemo(
+    () => filterByPeriodAndBranch(operations),
+    [operations, filterByPeriodAndBranch],
+  );
+  const periodLines = useMemo(
+    () => filterByPeriodAndBranch(lines),
+    [lines, filterByPeriodAndBranch],
+  );
+
+  const kpi = useMemo(() => {
+    // totalSales/salesCount: sale-operations concepts (a group's total_amount counted once) —
+    // read from periodSales (toOperations()). productsSold: a genuine product/line concept — read
+    // from periodLines (flattenToLines()), so a 3-product grouped sale still counts as 3 products
+    // sold, never conflated with the "3 sales" miscount this fix corrects.
+    const totalSales = periodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
+    const salesCount = periodSales.length;
+    const productsSold = periodLines.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
+    return { totalSales, salesCount, productsSold };
+  }, [periodSales, periodLines]);
+
+  // Control-only cancellation summary — same period/branch filters as periodSales, inverted to
+  // select cancelled OPERATIONS instead of excluding them (a cancelled 3-product group is 1
+  // cancelled sale, not 3). Never mixed into `kpi` above (see docs/architecture/
+  // payment-platform.md).
+  const cancelledPeriodSales = useMemo(() => {
+    return operations.filter((s) => {
       const d = normalizeDate(s.date);
       if (!d || d < period.startStr || d > period.endStr) return false;
       if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
-      return !isSaleCancelled(s);
+      return isSaleCancelled(s);
     });
-  }, [sales, selectedBranch, period.startStr, period.endStr]);
+  }, [operations, selectedBranch, period.startStr, period.endStr]);
 
-  const kpi = useMemo(() => {
-    const totalSales = periodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
-    const salesCount = periodSales.length;
-    const productsSold = periodSales.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
-    return { totalSales, salesCount, productsSold };
-  }, [periodSales]);
+  const cancelledKpi = useMemo(() => {
+    const amount = cancelledPeriodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
+    return { count: cancelledPeriodSales.length, amount };
+  }, [cancelledPeriodSales]);
 
   const periodLabel = useMemo(() => {
     if (selectedMonth === "all") return `Año ${selectedYear}`;
@@ -259,8 +425,11 @@ const Dashboard: React.FC = () => {
   }, [selectedMonth, selectedYear]);
 
   const profitDisplay = useMemo(() => {
+    // Cost basis is a per-product/line concept — computed over periodLines (flattenToLines()),
+    // never periodSales, so a grouped sale's profit is the sum of its own lines' margins, not a
+    // single blended figure keyed off the header.
     let totalProfit = 0;
-    periodSales.forEach((s) => {
+    periodLines.forEach((s) => {
       let cost = 0;
       if (s.product_id != null) {
         const prod = products.find(p => String(p.id) === String(s.product_id));
@@ -271,7 +440,7 @@ const Dashboard: React.FC = () => {
       totalProfit += (toNum(s.amount) - cost);
     });
     return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-  }, [periodSales, products]);
+  }, [periodLines, products]);
 
   const salesByDayChartData = useMemo(() => {
     if (period.mode !== "month") return [];
@@ -381,13 +550,15 @@ const Dashboard: React.FC = () => {
   }, [periodSales]);
 
   const topProducts = useMemo(() => {
+    // Quantity sold per product is a line-level concept — periodLines (flattenToLines()), never
+    // periodSales, so a group's individual products are each counted under their own name.
     const map = new Map<string, number>();
-    periodSales.forEach((s) => {
+    periodLines.forEach((s) => {
       const name = s?.product?.name || s?.product_name || productNameById.get(String(s.product_id)) || "Producto sin nombre";
       map.set(name, (map.get(name) || 0) + Math.max(1, toNum(s.quantity)));
     });
     return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 10);
-  }, [periodSales, productNameById]);
+  }, [periodLines, productNameById]);
 
   const weeklyBreakdown = useMemo(() => {
     if (period.mode !== "month") return [];
@@ -408,7 +579,12 @@ const Dashboard: React.FC = () => {
   }, [period, periodSales]);
 
   const annualSummary = useMemo(() => {
-    const yearSales = sales.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
+    // Revenue/"visits" closing report — a per-line concept (a free-visit service line, or a
+    // product's own revenue), same as productBreakdown/profitDisplay above — reads from the
+    // flattened `lines`, not raw `sales`, preserving the exact historical per-line semantics this
+    // report always had (dollar sums are unaffected either way; only counts like visitsYTD would
+    // have diverged).
+    const yearSales = lines.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
     const yearRefunds = refunds.filter(r => normalizeDate(r.date || r.created_at).startsWith(String(selectedYear)));
     const yearExpenses = expenses.filter(e => normalizeDate(e.date || e.created_at).startsWith(String(selectedYear)));
 
@@ -489,7 +665,7 @@ const Dashboard: React.FC = () => {
     });
 
     return { branches: data, ...totals };
-  }, [sales, branches, selectedYear, refunds, expenses, products]);
+  }, [lines, branches, selectedYear, refunds, expenses, products]);
 
   if (loading) return <div className="p-8 font-semibold">Cargando panel...</div>;
   if (!stats) return <div className="p-8 text-red-600 font-bold">{errorMsg || "Error al cargar datos"}</div>;
@@ -531,9 +707,23 @@ const Dashboard: React.FC = () => {
           Resumen Anual y Cierre
           {activeTab === 'annual' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
         </button>
+        <button onClick={() => setActiveTab("revenue")} className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'revenue' ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          Revenue
+          {activeTab === 'revenue' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-600 rounded-t-full" />}
+        </button>
       </div>
 
-      {activeTab === "summary" ? (
+      {activeTab === "revenue" ? (
+        <RevenueTab
+          revenuePaid={revenueStats?.revenue_paid ?? 0}
+          revenuePending={revenueStats?.revenue_pending ?? 0}
+          revenueRefunded={revenueStats?.revenue_refunded ?? 0}
+          periodSales={periodSales}
+          paymentRequests={paymentRequests}
+          periodLabel={periodLabel}
+          revenueLoading={revenueLoading}
+        />
+      ) : activeTab === "summary" ? (
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6">
             <StatCard title={`Ventas (${periodLabel})`} value={`$${kpi.totalSales.toLocaleString()}`} icon={DollarSign} color="bg-indigo-600" />
@@ -541,6 +731,21 @@ const Dashboard: React.FC = () => {
             <StatCard title="Cant. Ventas" value={kpi.salesCount} icon={Users} color="bg-amber-500" />
             <StatCard title="Productos" value={kpi.productsSold} icon={ShoppingBag} color="bg-rose-500" />
           </div>
+
+          {/* CONTROL: VENTAS CANCELADAS — informativo, no es revenue ni venta vigente.
+              Deliberadamente fuera del grid de KPIs de arriba para no mezclarse con los
+              totales principales (ver docs/architecture/payment-platform.md). */}
+          {(cancelledKpi.count > 0 || cancelledKpi.amount > 0) && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-500">
+              <Ban size={16} className="text-gray-400 shrink-0" />
+              <p className="text-xs font-medium">
+                <span className="font-bold text-gray-600">Control — Ventas Canceladas:</span>{" "}
+                {cancelledKpi.count} {cancelledKpi.count === 1 ? "venta" : "ventas"} · $
+                {cancelledKpi.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                <span className="text-gray-400"> (no incluido en los totales de arriba, solo auditoría)</span>
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -605,6 +810,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       ) : (
+        /* activeTab === "annual" */
         <div className="space-y-8 animate-in fade-in duration-500">
           {/* TABLA 1: Acumulado Anual por Sucursal */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

@@ -10,6 +10,19 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// Stripe redirige a una ruta real del navegador (fuera del hash) tras el
+// onboarding de Express o el callback de OAuth. Se reescribe al hash antes
+// de montar el HashRouter para que la ruta y los query params no se pierdan.
+if (window.location.pathname === "/settings/payments/stripe" && window.location.search) {
+  window.history.replaceState(null, "", `/#/settings${window.location.search}`);
+}
+
+// Stripe Checkout también redirige a una ruta real (success_url/cancel_url
+// apuntan a /pay/:id) fuera del hash. Mismo workaround que arriba.
+if (!window.location.hash && window.location.pathname.startsWith("/pay/")) {
+  window.history.replaceState(null, "", `/#${window.location.pathname}${window.location.search}`);
+}
+
 import { GoogleOAuthProvider } from "@react-oauth/google";
 
 createRoot(rootElement).render(

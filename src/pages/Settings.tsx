@@ -4,10 +4,11 @@ import UsersSettings from "../settings/UsersSettings";
 import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import NotificationsSettings from "../settings/NotificationsSettings";
+import PaymentsSettings from "../settings/PaymentsSettings";
 import Tenants from "./Tenants";
 import { UserData } from "../App";
 
-type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments";
 
 const TabButton = ({
   active,
@@ -32,17 +33,32 @@ const TabButton = ({
 const SettingsPage: React.FC<{
   isSuperAdmin?: boolean;
   currentTenantName?: string;
+  currentTenantId?: number | null;
   user?: UserData | null;
-}> = ({ isSuperAdmin, currentTenantName, user }) => {
+}> = ({ isSuperAdmin, currentTenantName, currentTenantId, user }) => {
   const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
   const isAdmin = isSuperAdmin;
   const hasPerm = (p: string) => perms.includes(p) || isAdmin;
 
+  // A SuperAdmin with no tenant selected has no authorized tenant context at all — every tab
+  // that reads/writes tenant-owned data (branches, users, roles, professionals, payments,
+  // notifications) must stay unreachable until one is picked. "Tenants" is the only
+  // genuinely global, non-tenant-owned screen, so it's the sole exemption.
+  //
+  // superAdminMissingTenant matches the exact condition requested: true only for a SuperAdmin
+  // with no currentTenantId. A normal user is never blocked (their own tenant_id is always
+  // used server-side regardless of this UI gate). tenantContextOk is its negation — the flag
+  // actually consumed below, so the "gate satisfied" reading stays unambiguous at each call site.
+  const superAdminMissingTenant = !!isSuperAdmin && !currentTenantId;
+  const tenantContextOk = !superAdminMissingTenant;
+
   const canManageSettings = hasPerm("manage_settings");
-  const canSeeBranches = canManageSettings || hasPerm("view_branch") || hasPerm("create_branch") || hasPerm("edit_branch") || hasPerm("delete_branch");
-  const canSeeUsers = canManageSettings || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user");
-  const canSeeRbac = canManageSettings || hasPerm("view_roles") || hasPerm("manage_roles");
-  const canSeeProfessionals = canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional");
+  const canSeeBranches = tenantContextOk && (canManageSettings || hasPerm("view_branch") || hasPerm("create_branch") || hasPerm("edit_branch") || hasPerm("delete_branch"));
+  const canSeeUsers = tenantContextOk && (canManageSettings || hasPerm("view_users") || hasPerm("create_user") || hasPerm("edit_user") || hasPerm("delete_user"));
+  const canSeeRbac = tenantContextOk && (canManageSettings || hasPerm("view_roles") || hasPerm("manage_roles"));
+  const canSeeProfessionals = tenantContextOk && (canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional"));
+  const canSeePayments = tenantContextOk && (!!isSuperAdmin || user?.role?.name === "admin");
+  const canSeeNotifications = tenantContextOk && !!isSuperAdmin;
 
   const [tab, setTab] = useState<TabKey>(() => {
     if (isSuperAdmin) return "tenants";
@@ -58,6 +74,7 @@ const SettingsPage: React.FC<{
     if (tab === "users") return "Usuarios";
     if (tab === "professionals") return "Profesionales";
     if (tab === "tenants") return "Tenants";
+    if (tab === "payments") return "Pagos (Stripe)";
     return "Roles y permisos";
   }, [tab]);
 
@@ -89,7 +106,7 @@ const SettingsPage: React.FC<{
             Tenants
           </TabButton>
         )}
-        {isSuperAdmin && (
+        {canSeeNotifications && (
           <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
             Notificaciones
           </TabButton>
@@ -112,6 +129,11 @@ const SettingsPage: React.FC<{
         {canSeeProfessionals && (
           <TabButton active={tab === "professionals"} onClick={() => setTab("professionals")}>
             Profesionales
+          </TabButton>
+        )}
+        {canSeePayments && (
+          <TabButton active={tab === "payments"} onClick={() => setTab("payments")}>
+            Pagos (Stripe)
           </TabButton>
         )}
       </div>
@@ -147,7 +169,8 @@ const SettingsPage: React.FC<{
           />
         )}
         {tab === "tenants" && isSuperAdmin && <Tenants />}
-        {tab === "notifications" && isSuperAdmin && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "notifications" && canSeeNotifications && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "payments" && canSeePayments && <PaymentsSettings isSuperAdmin={isSuperAdmin} user={user} />}
       </div>
     </div>
   );

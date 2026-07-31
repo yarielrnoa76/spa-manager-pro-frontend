@@ -51,6 +51,7 @@ import CommunicationCenter from "./pages/CommunicationCenter";
 import ChatAdmin from "./pages/ChatAdmin";
 import Expenses from "./pages/Expenses";
 import Refunds from "./pages/Refunds";
+import PaymentResult from "./pages/PaymentResult";
 
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 console.log("=== DEPLOYMENT HEARTBEAT: V-24.03-EXPENSES-DEPLOYED ===");
@@ -286,6 +287,17 @@ const App: React.FC = () => {
   }, [user, isSuperAdmin, loadTenants]);
 
   const isLoginRoute = location.pathname === "/login";
+  const isPaymentResultRoute = location.pathname.startsWith("/pay/");
+
+  // Public, unauthenticated route: the paying customer lands here from
+  // Stripe Checkout's success_url/cancel_url and never has a session.
+  if (isPaymentResultRoute) {
+    return (
+      <Routes>
+        <Route path="/pay/:paymentRequestId" element={<PaymentResult />} />
+      </Routes>
+    );
+  }
 
   if (booting) return <FullScreenLoading text="Checking session..." />;
 
@@ -432,6 +444,7 @@ const App: React.FC = () => {
                     <SettingsPage
                       isSuperAdmin={isSuperAdmin}
                       currentTenantName={currentTenantName}
+                      currentTenantId={currentTenantId}
                       user={user}
                     />
                   ) : (
@@ -478,6 +491,7 @@ const App: React.FC = () => {
                     <SettingsPage
                       isSuperAdmin={isSuperAdmin}
                       currentTenantName={currentTenantName}
+                      currentTenantId={currentTenantId}
                       user={user}
                     />
                   ) : (

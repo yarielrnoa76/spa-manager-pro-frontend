@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare } from "lucide-react";
+import { X, Calendar, Ticket as TicketIcon, ShoppingBag, Phone, Mail, User, Pencil, Save, XCircle, MessageSquare, CreditCard, Copy, ExternalLink, Clock } from "lucide-react";
 import { api } from "../services/api";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
+import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund, SaleGroup } from "../types/payments";
+import { usePaymentStatusPolling } from "../hooks/usePaymentStatusPolling";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -12,6 +14,117 @@ type SaleModalProps = {
     user: any;
     onSuccess: () => void;
 };
+
+const SALE_STATUS_LABELS: Record<string, string> = {
+    draft: "Borrador",
+    pending_payment: "Pendiente de Pago",
+    payment_link_sent: "Link de Pago Enviado",
+    paid: "Pagado",
+    payment_failed: "Pago Fallido",
+    cancelled: "Cancelada",
+    refunded: "Reembolsada",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const SALE_STATUS_BADGE: Record<string, string> = {
+    draft: "bg-gray-100 text-gray-600",
+    pending_payment: "bg-amber-100 text-amber-700",
+    payment_link_sent: "bg-blue-100 text-blue-700",
+    paid: "bg-green-100 text-green-700",
+    payment_failed: "bg-red-100 text-red-700",
+    cancelled: "bg-gray-200 text-gray-600",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+    unpaid: "Sin Pagar",
+    pending: "Pendiente",
+    paid: "Pagado",
+    failed: "Fallido",
+    cancelled: "Cancelado",
+    refunded: "Reembolsado",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const PAYMENT_STATUS_BADGE: Record<string, string> = {
+    unpaid: "bg-gray-100 text-gray-600",
+    pending: "bg-amber-100 text-amber-700",
+    paid: "bg-green-100 text-green-700",
+    failed: "bg-red-100 text-red-700",
+    cancelled: "bg-gray-200 text-gray-600",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+const PAYMENT_REQUEST_STATUS_LABELS: Record<string, string> = {
+    pending: "Pendiente",
+    link_generated: "Link Generado",
+    paid: "Pagado",
+    failed: "Fallido",
+    expired: "Expirado",
+    cancelled: "Cancelado",
+    refunded: "Reembolsado",
+    partially_refunded: "Reembolso Parcial",
+};
+
+const PAYMENT_REQUEST_STATUS_BADGE: Record<string, string> = {
+    pending: "bg-gray-100 text-gray-600",
+    link_generated: "bg-blue-100 text-blue-700",
+    paid: "bg-green-100 text-green-700",
+    failed: "bg-red-100 text-red-700",
+    expired: "bg-amber-100 text-amber-700",
+    cancelled: "bg-gray-200 text-gray-600",
+    refunded: "bg-purple-100 text-purple-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+};
+
+const PAYMENT_REFUND_STATUS_LABELS: Record<string, string> = {
+    pending: "Pendiente",
+    requires_action: "Requiere Acción",
+    succeeded: "Completado",
+    failed: "Fallido",
+    canceled: "Cancelado",
+};
+
+const PAYMENT_REFUND_STATUS_BADGE: Record<string, string> = {
+    pending: "bg-amber-100 text-amber-700",
+    requires_action: "bg-amber-100 text-amber-700",
+    succeeded: "bg-emerald-100 text-emerald-700",
+    failed: "bg-red-100 text-red-700",
+    canceled: "bg-gray-200 text-gray-600",
+};
+
+// Solo los tres estados de PaymentTransaction relevantes una vez que el pago
+// original tuvo éxito — succeeded/partially_refunded/refunded (nunca processing,
+// failed, etc., que no llegan a mostrar este panel).
+const PAYMENT_TRANSACTION_STATUS_LABELS: Record<string, string> = {
+    succeeded: "Pagado",
+    partially_refunded: "Parcialmente Reembolsado",
+    refunded: "Reembolsado",
+};
+
+const PAYMENT_TRANSACTION_STATUS_BADGE: Record<string, string> = {
+    succeeded: "bg-green-100 text-green-700",
+    partially_refunded: "bg-purple-100 text-purple-700",
+    refunded: "bg-purple-100 text-purple-700",
+};
+
+function getPaymentErrorMessage(e: any): string {
+    const status = e?.status;
+    const errors: Record<string, string[]> | undefined = e?.errors;
+    if (status === 422 && errors) {
+        const firstKey = Object.keys(errors)[0];
+        const firstMsg = firstKey ? errors[firstKey]?.[0] : null;
+        if (firstMsg) return firstMsg;
+    }
+    return e?.message ?? "Ocurrió un error al procesar el cobro.";
+}
+
+function isPaymentRequestExpired(pr: PaymentRequest | null): boolean {
+    if (!pr?.expires_at) return false;
+    return new Date(pr.expires_at).getTime() < Date.now();
+}
 
 const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, onSuccess }) => {
     const [sale, setSale] = useState<any>(null);
@@ -43,6 +156,35 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const [leadForm, setLeadForm] = useState({
         name: '', phone: '', email: '', source: '', message: '', status: '', branch_id: '',
     });
+
+    // Payment Request (Stripe) state
+    const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+    const [paymentRequestLoading, setPaymentRequestLoading] = useState(false);
+    const [paymentActionBusy, setPaymentActionBusy] = useState<'generate' | 'cancel' | 'reconcile' | null>(null);
+    const [paymentActionError, setPaymentActionError] = useState<string | null>(null);
+
+    // Grouped sale (ADR-027) — populated only when the loaded sale line has a non-null
+    // sale_group_id. Reuses the same Payment Request/Payment Transaction/refund UI below,
+    // just pointed at sale_group_id instead of sale_id.
+    const [saleGroup, setSaleGroup] = useState<SaleGroup | null>(null);
+    const [saleGroupLoading, setSaleGroupLoading] = useState(false);
+    const [selectedRefundLineIds, setSelectedRefundLineIds] = useState<number[]>([]);
+
+    // Payment Timeline state
+    const [timeline, setTimeline] = useState<PaymentTimelineEntry[]>([]);
+    const [timelineLoading, setTimelineLoading] = useState(false);
+
+    // Payment methods catalog (for the editable "Método de Pago" select)
+    const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+
+    // Payment Transaction + Refunds (Stripe) state
+    const [paymentTransaction, setPaymentTransaction] = useState<PaymentTransaction | null>(null);
+    const [paymentTransactionLoading, setPaymentTransactionLoading] = useState(false);
+    const [showRefundForm, setShowRefundForm] = useState(false);
+    const [refundAmount, setRefundAmount] = useState('');
+    const [refundReason, setRefundReason] = useState('');
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [refundError, setRefundError] = useState<string | null>(null);
 
     const hasPerm = useCallback((p: string) => {
         const perms = (user?.permissions || []) as string[];
@@ -106,6 +248,9 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             if (hasPerm('edit_sale') || hasPerm('edit_ticket') || hasPerm('view_ticket')) {
                 api.listUsers().then(u => Array.isArray(u) ? setUsers(u) : setUsers([])).catch(console.error);
             }
+            if (hasPerm('edit_sale')) {
+                api.listPaymentMethods().then(pm => Array.isArray(pm) ? setPaymentMethods(pm) : setPaymentMethods([])).catch(() => setPaymentMethods([]));
+            }
             if (hasPerm('view_branch') || hasPerm('edit_lead')) {
                 api.listBranches().then(b => Array.isArray(b) ? setBranches(b) : setBranches([])).catch(console.error);
             }
@@ -135,6 +280,254 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
         } finally {
             setLoading(false);
         }
+    };
+
+    // Re-fetches only the sale (no conversations, no onClose-on-error) so payment
+    // actions can refresh sale_status/payment_status without risking closing the modal.
+    const refreshSale = async () => {
+        if (!saleId) return;
+        try {
+            const data = await api.getSale(saleId);
+            setSale(data);
+        } catch (err) {
+            console.error("Error refreshing sale after payment action", err);
+        }
+    };
+
+    const loadSaleGroup = useCallback(async (groupId: number | string) => {
+        setSaleGroupLoading(true);
+        try {
+            const data = await api.getSaleGroup(groupId);
+            setSaleGroup(data);
+        } catch (err) {
+            console.error("Error loading sale group", err);
+            setSaleGroup(null);
+        } finally {
+            setSaleGroupLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (sale?.sale_group_id) {
+            loadSaleGroup(sale.sale_group_id);
+        } else {
+            setSaleGroup(null);
+        }
+    }, [sale?.sale_group_id, loadSaleGroup]);
+
+    // Queried by sale_group_id for a grouped line, by sale_id otherwise — exactly one of the
+    // two is ever set on a PaymentRequest (ADR-027), never both. Takes the two primitive fields
+    // it actually needs (not the whole `sale` object) so callers/effects can depend on just
+    // those fields instead of the whole object reference.
+    const loadPaymentRequest = useCallback(async (saleId: string, saleGroupId?: number | null) => {
+        setPaymentRequestLoading(true);
+        try {
+            const query = saleGroupId
+                ? `sale_group_id=${saleGroupId}`
+                : `sale_id=${saleId}`;
+            const res = await api.get<{ data: PaymentRequest[] }>(`/payment-requests?${query}&per_page=1`);
+            setPaymentRequest(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
+        } catch (err) {
+            console.error("Error loading payment request", err);
+            setPaymentRequest(null);
+        } finally {
+            setPaymentRequestLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (sale?.payment_provider === 'stripe' && sale?.id) {
+            loadPaymentRequest(sale.id, sale.sale_group_id);
+        } else {
+            setPaymentRequest(null);
+        }
+    }, [sale?.id, sale?.payment_provider, sale?.sale_group_id, loadPaymentRequest]);
+
+    // Automatic status refresh (grouped and independent sales alike): polls while a Checkout
+    // link is outstanding, refetches on tab focus, stops on any terminal status. The webhook
+    // remains the sole authoritative writer — this only re-fetches already-computed state.
+    const refetchPaymentStatus = useCallback(() => {
+        if (!sale) return;
+        refreshSale();
+        loadPaymentRequest(sale.id, sale.sale_group_id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sale, loadPaymentRequest]);
+
+    usePaymentStatusPolling(paymentRequest?.status, refetchPaymentStatus);
+
+    const loadPaymentTransaction = useCallback(async (paymentRequestId: number) => {
+        setPaymentTransactionLoading(true);
+        try {
+            const res = await api.get<{ data: PaymentTransaction[] }>(`/payment-transactions?payment_request_id=${paymentRequestId}&per_page=1`);
+            setPaymentTransaction(Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null);
+        } catch (err) {
+            console.error("Error loading payment transaction", err);
+            setPaymentTransaction(null);
+        } finally {
+            setPaymentTransactionLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (paymentRequest?.id) {
+            loadPaymentTransaction(paymentRequest.id);
+        } else {
+            setPaymentTransaction(null);
+        }
+    }, [paymentRequest?.id, paymentRequest?.status, loadPaymentTransaction]);
+
+    // El saldo reembolsable SIEMPRE viene del backend (PaymentTransaction::
+    // getRemainingRefundableAmountAttribute()) — nunca se recalcula aquí, para que la
+    // UI y la validación del servidor jamás puedan divergir sobre cuánto queda
+    // disponible.
+    const refundableAmount = Number(paymentTransaction?.remaining_refundable_amount ?? 0);
+
+    const handleOpenRefundForm = () => {
+        setRefundAmount(refundableAmount > 0 ? refundableAmount.toFixed(2) : '');
+        setRefundReason('');
+        setRefundError(null);
+        setSelectedRefundLineIds([]);
+        setShowRefundForm(true);
+    };
+
+    const handleToggleRefundLine = (lineId: number) => {
+        setSelectedRefundLineIds(prev =>
+            prev.includes(lineId) ? prev.filter(id => id !== lineId) : [...prev, lineId]
+        );
+    };
+
+    const handleSubmitRefund = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!paymentTransaction?.id || !paymentRequest?.id) return;
+
+        const amountNum = Number(refundAmount);
+        if (!amountNum || amountNum <= 0) {
+            setRefundError("Ingresa un monto válido.");
+            return;
+        }
+
+        const ok = window.confirm(`¿Reembolsar $${amountNum.toFixed(2)} al cliente vía Stripe? Esta acción no se puede deshacer.`);
+        if (!ok) return;
+
+        // Optional, only for grouped sales: attribute the refund to the specific lines staff
+        // selected, for audit purposes only — the backend validates this always sums to the
+        // requested amount. Evenly split (remainder on the last line) since this UI collects one
+        // total amount, not a per-line amount editor.
+        let lines: { daily_log_id: number; amount: number }[] | undefined;
+        if (saleGroup && selectedRefundLineIds.length > 0) {
+            const perLine = Math.floor((amountNum / selectedRefundLineIds.length) * 100) / 100;
+            lines = selectedRefundLineIds.map((id, idx) => ({
+                daily_log_id: id,
+                amount: idx === selectedRefundLineIds.length - 1
+                    ? Math.round((amountNum - perLine * (selectedRefundLineIds.length - 1)) * 100) / 100
+                    : perLine,
+            }));
+        }
+
+        setRefundSubmitting(true);
+        setRefundError(null);
+        try {
+            await api.post('/payment-refunds', {
+                payment_transaction_id: paymentTransaction.id,
+                amount: amountNum,
+                reason: refundReason || undefined,
+                ...(lines ? { lines } : {}),
+            });
+            setShowRefundForm(false);
+            onSuccess();
+        } catch (err: any) {
+            setRefundError(getPaymentErrorMessage(err));
+        } finally {
+            await loadPaymentTransaction(paymentRequest.id);
+            await refreshSale();
+            setRefundSubmitting(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!paymentRequest?.id) {
+            setTimeline([]);
+            setTimelineLoading(false);
+            return;
+        }
+        setTimelineLoading(true);
+        api.get<PaymentTimelineEntry[]>(`/payment-requests/${paymentRequest.id}/timeline`)
+            .then(data => setTimeline(Array.isArray(data) ? data : []))
+            .catch(() => setTimeline([]))
+            .finally(() => setTimelineLoading(false));
+    }, [paymentRequest?.id, paymentRequest?.status]);
+
+    const handleGeneratePaymentRequest = async () => {
+        if (!sale?.id) return;
+        setPaymentActionBusy('generate');
+        setPaymentActionError(null);
+        try {
+            const payload = sale.sale_group_id
+                ? { sale_group_id: sale.sale_group_id }
+                : { sale_id: sale.id };
+            const pr = await api.post<PaymentRequest>('/payment-requests', payload);
+            setPaymentRequest(pr);
+            onSuccess();
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            if (sale) await loadPaymentRequest(sale.id, sale.sale_group_id);
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleCancelPaymentRequest = async () => {
+        if (!paymentRequest?.id) return;
+        const ok = window.confirm("¿Cancelar este Payment Request? El cliente ya no podrá pagar con este link.");
+        if (!ok) return;
+
+        setPaymentActionBusy('cancel');
+        setPaymentActionError(null);
+        try {
+            const pr = await api.post<PaymentRequest>(`/payment-requests/${paymentRequest.id}/cancel`);
+            setPaymentRequest(pr);
+            onSuccess();
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleReconcilePaymentRequest = async () => {
+        if (!paymentRequest?.id) return;
+        const ok = window.confirm(
+            "¿Consultar directamente en Stripe si este pago ya se completó?\n\nSolo úsalo si el pago se hizo en Stripe pero la venta sigue pendiente aquí (ej. por una falla temporal de webhooks)."
+        );
+        if (!ok) return;
+
+        setPaymentActionBusy('reconcile');
+        setPaymentActionError(null);
+        try {
+            const res = await api.post<{ reconciled: boolean; payment_request: PaymentRequest }>(
+                `/payment-requests/${paymentRequest.id}/reconcile`
+            );
+            setPaymentRequest(res.payment_request);
+            if (res.reconciled) {
+                alert("Stripe confirmó el pago — la venta quedó marcada como pagada.");
+                onSuccess();
+            } else {
+                alert("Stripe confirma que este pago todavía no se ha completado. No se hizo ningún cambio.");
+            }
+        } catch (err: any) {
+            setPaymentActionError(getPaymentErrorMessage(err));
+        } finally {
+            await refreshSale();
+            setPaymentActionBusy(null);
+        }
+    };
+
+    const handleCopyPaymentLink = () => {
+        if (!paymentRequest?.payment_url) return;
+        navigator.clipboard.writeText(paymentRequest.payment_url);
+        alert("Copiado");
     };
 
     const handleUpdate = async (e: React.FormEvent) => {
@@ -366,6 +759,337 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                         </div>
                                     )}
 
+                                    {sale.payment_provider === 'stripe' && (
+                                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+                                            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <CreditCard size={14} /> Cobro con Stripe
+                                            </h4>
+
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${SALE_STATUS_BADGE[sale.sale_status || ''] || 'bg-gray-100 text-gray-600'}`}>
+                                                    Venta: {SALE_STATUS_LABELS[sale.sale_status || ''] || sale.sale_status || '—'}
+                                                </span>
+                                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${PAYMENT_STATUS_BADGE[sale.payment_status || ''] || 'bg-gray-100 text-gray-600'}`}>
+                                                    Pago: {PAYMENT_STATUS_LABELS[sale.payment_status || ''] || sale.payment_status || '—'}
+                                                </span>
+                                                {sale.paid_at && (
+                                                    <span className="text-[10px] font-bold text-gray-400">Pagado el {new Date(sale.paid_at).toLocaleString()}</span>
+                                                )}
+                                            </div>
+
+                                            {saleGroup && (
+                                                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+                                                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">
+                                                        Venta Agrupada #{saleGroup.id} — {saleGroup.lines.length} producto{saleGroup.lines.length !== 1 ? 's' : ''}
+                                                    </p>
+                                                    {saleGroupLoading ? (
+                                                        <p className="text-xs text-gray-400 italic">Cargando líneas...</p>
+                                                    ) : (
+                                                        <div className="space-y-1.5">
+                                                            {saleGroup.lines.map(line => (
+                                                                <div key={line.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-xs border border-indigo-50">
+                                                                    <span className="font-bold text-gray-700">{line.service_rendered}</span>
+                                                                    <span className="text-gray-400">{line.quantity} x ${Number(line.unit_price).toFixed(2)}</span>
+                                                                    <span className="font-black text-gray-800">${Number(line.amount).toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex justify-between items-center border-t border-indigo-100 pt-2">
+                                                        <span className="text-xs font-black text-gray-600 uppercase">Total Consolidado</span>
+                                                        <span className="text-lg font-black text-indigo-600">${Number(saleGroup.total_amount).toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {paymentActionError && (
+                                                <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-lg p-3">
+                                                    {paymentActionError}
+                                                </div>
+                                            )}
+
+                                            {paymentRequestLoading ? (
+                                                <p className="text-xs text-gray-400 italic">Cargando estado del cobro...</p>
+                                            ) : paymentRequest ? (
+                                                <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+                                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                                        <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${PAYMENT_REQUEST_STATUS_BADGE[paymentRequest.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                            Payment Request: {PAYMENT_REQUEST_STATUS_LABELS[paymentRequest.status] || paymentRequest.status}
+                                                        </span>
+                                                        {paymentRequest.status === 'link_generated' && isPaymentRequestExpired(paymentRequest) && (
+                                                            <span className="text-[10px] font-black uppercase px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                                                                Link Vencido
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {paymentRequest.payment_url && (
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                readOnly
+                                                                value={paymentRequest.payment_url}
+                                                                className="flex-1 text-xs font-mono text-gray-600 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none"
+                                                                onFocus={(e) => e.target.select()}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleCopyPaymentLink}
+                                                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                title="Copiar link"
+                                                            >
+                                                                <Copy size={16} />
+                                                            </button>
+                                                            <a
+                                                                href={paymentRequest.payment_url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                title="Abrir link"
+                                                            >
+                                                                <ExternalLink size={16} />
+                                                            </a>
+                                                        </div>
+                                                    )}
+
+                                                    {paymentRequest.expires_at && (
+                                                        <p className="text-[10px] text-gray-400">Expira: {new Date(paymentRequest.expires_at).toLocaleString()}</p>
+                                                    )}
+
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {hasPerm('edit_sale') && ['pending', 'link_generated'].includes(paymentRequest.status) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleCancelPaymentRequest}
+                                                                disabled={paymentActionBusy !== null}
+                                                                className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50 transition-all"
+                                                            >
+                                                                {paymentActionBusy === 'cancel' ? 'Cancelando...' : 'Cancelar Payment Request'}
+                                                            </button>
+                                                        )}
+
+                                                        {/* SuperAdmin only — escape hatch para pagos confirmados en Stripe que
+                                                            se quedaron pending localmente por una falla de webhook (ver
+                                                            docs/architecture/payment-platform.md ADR-021/022). */}
+                                                        {user?.is_super_admin && paymentRequest.status === 'link_generated' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleReconcilePaymentRequest}
+                                                                disabled={paymentActionBusy !== null}
+                                                                className="text-xs font-bold text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50 disabled:opacity-50 transition-all"
+                                                                title="Consulta directamente en Stripe si este pago ya se completó"
+                                                            >
+                                                                {paymentActionBusy === 'reconcile' ? 'Consultando Stripe...' : 'Reconciliar con Stripe'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {(timelineLoading || timeline.length > 0) && (
+                                                        <div className="border-t border-gray-100 pt-3">
+                                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                                                <Clock size={10} /> Historial de Cobro
+                                                            </p>
+                                                            {timelineLoading ? (
+                                                                <p className="text-xs text-gray-400 italic">Cargando historial...</p>
+                                                            ) : (
+                                                                <div className="space-y-2">
+                                                                    {timeline.map((entry, i) => {
+                                                                        const hasAmount = entry.amount !== undefined && entry.amount !== null;
+                                                                        const isOutflow = entry.type === 'refund';
+                                                                        return (
+                                                                            <div key={i} className="flex gap-2.5 items-start">
+                                                                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-300 shrink-0" />
+                                                                                <div className="min-w-0 flex-1 flex items-start justify-between gap-2">
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="text-xs font-semibold text-gray-700 leading-tight">{entry.label}</p>
+                                                                                        <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                                            {new Date(entry.timestamp).toLocaleString()}
+                                                                                            {entry.actor && <span className="ml-1 font-bold">· {entry.actor}</span>}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    {hasAmount && (
+                                                                                        <span className={`text-xs font-black shrink-0 ${isOutflow ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                                                            {isOutflow ? '-' : '+'}${Number(entry.amount).toFixed(2)}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {paymentTransaction && ['succeeded', 'partially_refunded', 'refunded'].includes(paymentTransaction.status) && (
+                                                        <div className="border-t border-gray-100 pt-3 space-y-2.5">
+                                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Resumen Financiero</p>
+                                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${PAYMENT_TRANSACTION_STATUS_BADGE[paymentTransaction.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                    {PAYMENT_TRANSACTION_STATUS_LABELS[paymentTransaction.status] || paymentTransaction.status}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Todos los importes vienen del backend (PaymentTransaction::$appends) —
+                                                                nunca se recalculan aquí, para que nunca puedan desincronizarse de lo
+                                                                que el servidor usará para validar el próximo reembolso. */}
+                                                            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                                                                <span className="text-gray-500">Total pagado</span>
+                                                                <span className="text-right font-bold text-gray-800">${Number(paymentTransaction.gross_paid_amount).toFixed(2)}</span>
+
+                                                                <span className="text-gray-500">Total reembolsado</span>
+                                                                <span className="text-right font-bold text-red-600">
+                                                                    {Number(paymentTransaction.successful_refunded_amount) > 0 ? '-' : ''}${Number(paymentTransaction.successful_refunded_amount).toFixed(2)}
+                                                                </span>
+
+                                                                {paymentTransaction.pending_refund_amount > 0 && (
+                                                                    <>
+                                                                        <span className="text-gray-500">Reembolso en proceso</span>
+                                                                        <span className="text-right font-bold text-amber-600">${Number(paymentTransaction.pending_refund_amount).toFixed(2)}</span>
+                                                                    </>
+                                                                )}
+
+                                                                <span className="text-gray-500 font-bold border-t border-gray-200 pt-1 mt-0.5">Neto cobrado</span>
+                                                                <span className="text-right font-black text-gray-900 border-t border-gray-200 pt-1 mt-0.5">${Number(paymentTransaction.net_collected_amount).toFixed(2)}</span>
+
+                                                                <span className="text-gray-500">Disponible para reembolsar</span>
+                                                                <span className="text-right font-bold text-gray-700">${Number(refundableAmount).toFixed(2)}</span>
+                                                            </div>
+
+                                                            {(paymentTransaction.refunds || []).length > 0 && (
+                                                                <div className="space-y-1.5">
+                                                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Historial de Reembolsos</p>
+                                                                    {(paymentTransaction.refunds || []).map((r: PaymentRefund) => (
+                                                                        <div key={r.id} className="flex items-center justify-between text-xs bg-white border border-gray-100 rounded-lg px-3 py-2 gap-2">
+                                                                            <div className="min-w-0">
+                                                                                <span className={`font-bold ${r.status === 'succeeded' ? 'text-red-600' : (r.status === 'pending' || r.status === 'requires_action') ? 'text-amber-600' : 'text-gray-400'}`}>
+                                                                                    {r.status === 'succeeded' ? '-' : ''}${Number(r.amount).toFixed(2)}
+                                                                                </span>
+                                                                                {r.reason && <span className="text-gray-400 ml-2 italic truncate">"{r.reason}"</span>}
+                                                                            </div>
+                                                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${PAYMENT_REFUND_STATUS_BADGE[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                                                {PAYMENT_REFUND_STATUS_LABELS[r.status] || r.status}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {refundError && (
+                                                                <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-lg p-2.5">
+                                                                    {refundError}
+                                                                </div>
+                                                            )}
+
+                                                            {hasPerm('refund_payments') && (
+                                                                showRefundForm ? (
+                                                                    <form onSubmit={handleSubmitRefund} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2.5">
+                                                                        <div className="grid grid-cols-2 gap-2.5">
+                                                                            <div>
+                                                                                <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Monto a reembolsar</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.01"
+                                                                                    min="0.01"
+                                                                                    max={refundableAmount}
+                                                                                    required
+                                                                                    className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 outline-none focus:ring-2 focus:ring-red-400"
+                                                                                    value={refundAmount}
+                                                                                    onChange={(e) => setRefundAmount(e.target.value)}
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Motivo (opcional)</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    maxLength={255}
+                                                                                    className="w-full text-sm font-medium text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 outline-none focus:ring-2 focus:ring-red-400"
+                                                                                    value={refundReason}
+                                                                                    onChange={(e) => setRefundReason(e.target.value)}
+                                                                                    placeholder="Ej: cliente insatisfecho"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {saleGroup && (
+                                                                            <div className="border-t border-gray-100 pt-2.5">
+                                                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1.5">
+                                                                                    Atribuir a líneas específicas (opcional)
+                                                                                </p>
+                                                                                <div className="space-y-1">
+                                                                                    {saleGroup.lines.map(line => (
+                                                                                        <label key={line.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                checked={selectedRefundLineIds.includes(line.id)}
+                                                                                                onChange={() => handleToggleRefundLine(line.id)}
+                                                                                            />
+                                                                                            <span>{line.service_rendered} (${Number(line.amount).toFixed(2)})</span>
+                                                                                        </label>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setShowRefundForm(false)}
+                                                                                disabled={refundSubmitting}
+                                                                                className="px-3 py-1.5 rounded-lg text-xs font-black uppercase text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                                                                            >
+                                                                                Cancelar
+                                                                            </button>
+                                                                            <button
+                                                                                type="submit"
+                                                                                disabled={refundSubmitting}
+                                                                                className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase text-white transition-all ${refundSubmitting ? 'bg-gray-300' : 'bg-red-600 hover:bg-red-700 active:scale-95'}`}
+                                                                            >
+                                                                                {refundSubmitting ? 'Procesando...' : 'Confirmar Reembolso'}
+                                                                            </button>
+                                                                        </div>
+                                                                    </form>
+                                                                ) : (
+                                                                    refundableAmount > 0.009 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handleOpenRefundForm}
+                                                                            className="text-xs font-bold text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-all"
+                                                                        >
+                                                                            Reembolsar
+                                                                        </button>
+                                                                    )
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {paymentTransactionLoading && (
+                                                        <p className="text-xs text-gray-400 italic">Cargando datos del cobro...</p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-gray-400 italic">Todavía no se ha generado un Payment Request para esta venta.</p>
+                                            )}
+
+                                            {hasPerm('edit_sale') &&
+                                                ['pending_payment', 'payment_link_sent', 'payment_failed'].includes(sale.sale_status || '') &&
+                                                ['pending', 'unpaid', 'failed'].includes(sale.payment_status || '') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleGeneratePaymentRequest}
+                                                        disabled={paymentActionBusy !== null}
+                                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-white transition-all shadow-md ${paymentActionBusy !== null ? 'bg-gray-300' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
+                                                    >
+                                                        {paymentActionBusy === 'generate'
+                                                            ? 'Generando...'
+                                                            : sale.sale_status === 'payment_failed'
+                                                                ? 'Reintentar Cobro Stripe'
+                                                                : 'Generar Payment Request'}
+                                                    </button>
+                                                )}
+                                        </div>
+                                    )}
+
                                     {hasPerm('edit_sale') ? (
                                         <form onSubmit={handleUpdate} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-6">
                                             <div className="grid grid-cols-2 gap-6">
@@ -422,17 +1146,36 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div>
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Método de Pago</label>
-                                                    <select
-                                                        className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                                        value={formData.payment_method}
-                                                        onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                                                    >
-                                                        <option value="Zelle">Zelle</option>
-                                                        <option value="Efectivo">Efectivo</option>
-                                                        <option value="Transferencia">Transferencia</option>
-                                                        <option value="Tarjeta">Tarjeta</option>
-                                                    </select>
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                        <span>Método de Pago</span>
+                                                        {sale.payment_provider === 'stripe' && (
+                                                            <span className="bg-gray-200 text-gray-500 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">No editable</span>
+                                                        )}
+                                                    </label>
+                                                    {sale.payment_provider === 'stripe' ? (
+                                                        <div className="text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2.5 rounded-xl border border-gray-100 italic cursor-not-allowed">
+                                                            {sale.payment_method}
+                                                        </div>
+                                                    ) : (
+                                                        <select
+                                                            className="w-full text-sm font-bold text-gray-700 bg-gray-50 px-4 py-2.5 rounded-xl border border-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                                            value={formData.payment_method}
+                                                            onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                                                        >
+                                                            {paymentMethods.length > 0 ? (
+                                                                paymentMethods
+                                                                    .filter(pm => pm.name !== 'Stripe')
+                                                                    .map(pm => <option key={pm.id} value={pm.name}>{pm.name}</option>)
+                                                            ) : (
+                                                                <>
+                                                                    <option value="Zelle">Zelle</option>
+                                                                    <option value="Efectivo">Efectivo</option>
+                                                                    <option value="Transferencia">Transferencia</option>
+                                                                    <option value="Tarjeta">Tarjeta</option>
+                                                                </>
+                                                            )}
+                                                        </select>
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Monto Total (No editable)</label>
