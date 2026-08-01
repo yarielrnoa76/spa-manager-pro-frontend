@@ -166,6 +166,19 @@ export interface CreateTenantPayload {
   address?: CreateTenantAddressPayload;
   contact: CreateTenantContactPayload;
   settings: CreateTenantSettingsPayload;
+  owner: CreateTenantOwnerPayload;
+}
+
+/**
+ * The tenant's principal/owner user — a real, immediately-usable login (backend creates a
+ * `users` row assigned to this tenant's own `admin` role), never merely a contact record.
+ * password_confirmation is required by the backend's `confirmed` rule and is never persisted.
+ */
+export interface CreateTenantOwnerPayload {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
 }
 
 /**
