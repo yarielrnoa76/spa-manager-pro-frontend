@@ -8,7 +8,7 @@ import {
   DownPaymentType,
   TenantStatus,
 } from "../types";
-import { Building2, X, Globe, User, MapPin, Settings2 } from "lucide-react";
+import { Building2, X, Globe, User, MapPin, Settings2, KeyRound } from "lucide-react";
 import { SectionHeader, TextField } from "./tenant/TenantFormFields";
 import { EMAIL_RE, buildAddressPayload } from "./tenant/tenantPayloadHelpers";
 
@@ -44,6 +44,14 @@ const CreateTenantModal: React.FC<{
   const [currency, setCurrency] = useState("USD");
   const [locale, setLocale] = useState("");
   const [countryCode, setCountryCode] = useState("US");
+
+  // Usuario principal (propietario/admin inicial del tenant — credenciales reales, distinto
+  // del contacto comercial de abajo, que es solo información, no una cuenta de acceso)
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerPasswordConfirmation, setOwnerPasswordConfirmation] = useState("");
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
 
   // Contacto principal
   const [contactFirstName, setContactFirstName] = useState("");
@@ -85,6 +93,20 @@ const CreateTenantModal: React.FC<{
 
     if (!name.trim()) errors["name"] = "El nombre es obligatorio.";
     if (!tradeName.trim()) errors["trade_name"] = "El nombre comercial es obligatorio.";
+
+    if (!ownerName.trim()) errors["owner.name"] = "El nombre del usuario principal es obligatorio.";
+    if (!ownerEmail.trim()) {
+      errors["owner.email"] = "El email del usuario principal es obligatorio.";
+    } else if (!EMAIL_RE.test(ownerEmail.trim())) {
+      errors["owner.email"] = "Formato de email inválido.";
+    }
+    if (!ownerPassword) {
+      errors["owner.password"] = "La contraseña es obligatoria.";
+    } else if (ownerPassword.length < 8) {
+      errors["owner.password"] = "Debe tener al menos 8 caracteres.";
+    } else if (ownerPassword !== ownerPasswordConfirmation) {
+      errors["owner.password"] = "Las contraseñas no coinciden.";
+    }
     if (!timezone.trim()) errors["timezone"] = "La zona horaria es obligatoria.";
     if (!currency.trim()) errors["currency"] = "La moneda es obligatoria.";
     if (countryCode.trim().length !== 2) errors["country_code"] = "Debe tener exactamente 2 caracteres (ISO).";
@@ -159,6 +181,12 @@ const CreateTenantModal: React.FC<{
       locale: locale.trim() || null,
       country_code: countryCode.trim().toUpperCase(),
       ...(address ? { address } : {}),
+      owner: {
+        name: ownerName.trim(),
+        email: ownerEmail.trim(),
+        password: ownerPassword,
+        password_confirmation: ownerPasswordConfirmation,
+      },
       contact: {
         first_name: contactFirstName.trim(),
         last_name: contactLastName.trim(),
@@ -334,6 +362,72 @@ const CreateTenantModal: React.FC<{
                   maxLength={2}
                 />
               </div>
+            </div>
+
+            {/* Usuario principal — credenciales reales de acceso, distinto del contacto */}
+            <div className="space-y-3">
+              <SectionHeader icon={KeyRound} title="Usuario principal" />
+              <p className="text-xs text-gray-400 -mt-1">
+                Este usuario será el administrador inicial del tenant: podrá iniciar sesión de
+                inmediato con estas credenciales y administrar el negocio con el rol Admin.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TextField
+                  label="Nombre completo"
+                  required
+                  value={ownerName}
+                  onChange={(v) => {
+                    setOwnerName(v);
+                    clearFieldError("owner.name");
+                  }}
+                  error={fieldErrors["owner.name"]}
+                  placeholder="Ada Lovelace"
+                />
+                <TextField
+                  label="Email"
+                  required
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(v) => {
+                    setOwnerEmail(v);
+                    clearFieldError("owner.email");
+                  }}
+                  error={fieldErrors["owner.email"]}
+                  placeholder="ada@negocio.com"
+                />
+                <TextField
+                  label="Contraseña"
+                  required
+                  type={showOwnerPassword ? "text" : "password"}
+                  value={ownerPassword}
+                  onChange={(v) => {
+                    setOwnerPassword(v);
+                    clearFieldError("owner.password");
+                  }}
+                  error={fieldErrors["owner.password"]}
+                  placeholder="Mínimo 8 caracteres"
+                />
+                <TextField
+                  label="Confirmar contraseña"
+                  required
+                  type={showOwnerPassword ? "text" : "password"}
+                  value={ownerPasswordConfirmation}
+                  onChange={(v) => {
+                    setOwnerPasswordConfirmation(v);
+                    clearFieldError("owner.password");
+                  }}
+                  placeholder="Repite la contraseña"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showOwnerPassword}
+                  onChange={(e) => setShowOwnerPassword(e.target.checked)}
+                  className="w-3.5 h-3.5"
+                />
+                Mostrar contraseña
+              </label>
             </div>
 
             {/* Contacto principal */}

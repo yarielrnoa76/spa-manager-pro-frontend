@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { api } from "../services/api";
 import { ArrowUpDown, ArrowUp, ArrowDown, Plus, Search, X, RefreshCw, Eye, EyeOff } from "lucide-react";
 
-type Role = { id: number; name: string };
+type Role = { id: number; name: string; tenant_id: number | null };
 type Branch = { id: number; name: string };
 
 type Tenant = { id: number; name: string };
@@ -373,7 +373,11 @@ export default function UsersSettings({
                   onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}
                 >
                   <option value="">Selecciona rol...</option>
-                  {roles.map((r) => (
+                  {/* The global platform role (tenant_id = null) is never assignable to a
+                      tenant user from here — the backend independently enforces the same
+                      rule (role_id must belong to the active tenant), this filter is only
+                      to avoid offering an option the API would reject. */}
+                  {roles.filter((r) => r.tenant_id !== null).map((r) => (
                     <option key={r.id} value={String(r.id)}>
                       {r.name}
                     </option>
