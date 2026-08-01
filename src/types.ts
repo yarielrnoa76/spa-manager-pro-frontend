@@ -96,6 +96,7 @@ export interface Tenant {
   address?: TenantAddress | null;
   contact?: TenantContact | null;
   settings?: TenantSettings | null;
+  owner?: { id?: number; name: string; email: string } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +136,18 @@ export interface CreateTenantSettingsPayload {
 }
 
 /**
+ * The tenant's principal/owner user — a real, immediately-usable login (backend creates a
+ * `users` row assigned to this tenant's own `admin` role), never merely a contact record.
+ * password_confirmation is required by the backend's `confirmed` rule and is never persisted.
+ */
+export interface CreateTenantOwnerPayload {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+}
+
+/**
  * POST /api/tenants (SuperAdmin, global — see api.createTenant()). Matches
  * StoreTenantRequest + TenantProfileRules::forCreate() + TenantAddressRules::forCreate() +
  * TenantContactRules::forCreate() + TenantSettingsRules::forCreate() exactly. No `logo` field —
@@ -170,18 +183,6 @@ export interface CreateTenantPayload {
 }
 
 /**
- * The tenant's principal/owner user — a real, immediately-usable login (backend creates a
- * `users` row assigned to this tenant's own `admin` role), never merely a contact record.
- * password_confirmation is required by the backend's `confirmed` rule and is never persisted.
- */
-export interface CreateTenantOwnerPayload {
-  name: string;
-  email: string;
-  password: string;
-  password_confirmation: string;
-}
-
-/**
  * PATCH /api/tenant/profile — nested address block. Every field: omitted = untouched,
  * explicit null = cleared (all address fields are nullable backend-side). `address` itself may
  * be omitted (untouched) or sent as `null` (treated as a no-op by the backend, same as
@@ -213,6 +214,13 @@ export interface UpdateTenantContactPayload {
   phone_extension?: string | null;
 }
 
+export interface UpdateTenantOwnerPayload {
+  name?: string;
+  email?: string;
+  password?: string;
+  password_confirmation?: string;
+}
+
 /**
  * PATCH /api/tenant/profile (permission: edit_tenant_profile). Every top-level field: omitted =
  * untouched. legal_name/business_email/billing_email/business_phone/website/locale are
@@ -238,6 +246,7 @@ export interface UpdateTenantProfilePayload {
   country_code?: string;
   address?: UpdateTenantAddressPayload | null;
   contact?: UpdateTenantContactPayload;
+  owner?: UpdateTenantOwnerPayload;
 }
 
 /**

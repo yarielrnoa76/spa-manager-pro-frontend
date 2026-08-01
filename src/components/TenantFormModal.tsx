@@ -21,6 +21,7 @@ import {
   User as UserIcon,
   Settings2,
   AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 import { SectionHeader, TextField, SelectField, MaskedInput } from "./tenant/TenantFormFields";
 import { EMAIL_RE, buildAddressPayload, normalizeWebsiteUrl } from "./tenant/tenantPayloadHelpers";
@@ -106,6 +107,12 @@ const TenantFormModal: React.FC<{
   const [contactPhone, setContactPhone] = useState("");
   const [contactPhoneExtension, setContactPhoneExtension] = useState("");
 
+  const [ownerName, setOwnerName] = useState(tenant.owner?.name ?? "");
+  const [ownerEmail, setOwnerEmail] = useState(tenant.owner?.email ?? "");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerPasswordConfirmation, setOwnerPasswordConfirmation] = useState("");
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
+
   const [salesMode, setSalesMode] = useState<TenantSalesMode>("grouped_sale");
   const [paymentPolicy, setPaymentPolicy] = useState<TenantPaymentPolicy>("full_balance");
   const [downPaymentType, setDownPaymentType] = useState<DownPaymentType>("percentage");
@@ -154,6 +161,9 @@ const TenantFormModal: React.FC<{
         setContactEmail(full.contact?.email ?? "");
         setContactPhone(full.contact?.phone ?? "");
         setContactPhoneExtension(full.contact?.phone_extension ?? "");
+
+        setOwnerName(full.owner?.name ?? "");
+        setOwnerEmail(full.owner?.email ?? "");
 
         setSalesMode(full.settings?.sales_mode ?? "grouped_sale");
         setPaymentPolicy(full.settings?.payment_policy ?? "full_balance");
@@ -258,6 +268,23 @@ const TenantFormModal: React.FC<{
     } else if (!EMAIL_RE.test(contactEmail.trim())) {
       errors["contact.email"] = "Formato de email inválido.";
     }
+
+    if (ownerName.trim() || ownerEmail.trim() || ownerPassword.trim()) {
+      if (!ownerName.trim()) errors["owner.name"] = "El nombre del usuario principal es obligatorio.";
+      if (!ownerEmail.trim()) {
+        errors["owner.email"] = "El email del usuario principal es obligatorio.";
+      } else if (!EMAIL_RE.test(ownerEmail.trim())) {
+        errors["owner.email"] = "Formato de email inválido.";
+      }
+      if (ownerPassword) {
+        if (ownerPassword.length < 8) {
+          errors["owner.password"] = "Debe tener al menos 8 caracteres.";
+        } else if (ownerPassword !== ownerPasswordConfirmation) {
+          errors["owner.password"] = "Las contraseñas no coinciden.";
+        }
+      }
+    }
+
     return errors;
   };
 
@@ -282,6 +309,12 @@ const TenantFormModal: React.FC<{
       country_code: addressCountryCode,
     });
 
+    const ownerPayload = (ownerName.trim() || ownerEmail.trim() || ownerPassword.trim()) ? {
+      name: ownerName.trim(),
+      email: ownerEmail.trim(),
+      ...(ownerPassword.trim() ? { password: ownerPassword, password_confirmation: ownerPasswordConfirmation } : {}),
+    } : undefined;
+
     const payload: UpdateTenantProfilePayload = {
       legal_name: legalName.trim() || null,
       trade_name: tradeName.trim(),
@@ -302,6 +335,7 @@ const TenantFormModal: React.FC<{
         phone: contactPhone.trim() || null,
         phone_extension: contactPhoneExtension.trim() || null,
       },
+      ...(ownerPayload ? { owner: ownerPayload } : {}),
     };
 
     try {
@@ -328,6 +362,12 @@ const TenantFormModal: React.FC<{
       setContactEmail(updated.contact?.email ?? "");
       setContactPhone(updated.contact?.phone ?? "");
       setContactPhoneExtension(updated.contact?.phone_extension ?? "");
+      if (updated.owner) {
+        setOwnerName(updated.owner.name ?? "");
+        setOwnerEmail(updated.owner.email ?? "");
+        setOwnerPassword("");
+        setOwnerPasswordConfirmation("");
+      }
       onTenantUpdated(updated);
     } catch (err: unknown) {
       applySectionError(err, setProfileFieldErrors, setProfileGeneralError);
@@ -578,6 +618,54 @@ const TenantFormModal: React.FC<{
                           maxLength={2}
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <SectionHeader icon={KeyRound} title="Usuario principal" />
+                      <p className="text-xs text-gray-400 -mt-1">
+                        Administrador principal del tenant. Deja la contraseña en blanco si no deseas cambiarla.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <TextField
+                          label="Nombre completo"
+                          required
+                          value={ownerName}
+                          onChange={(v) => { setOwnerName(v); clearProfileFieldError("owner.name"); }}
+                          error={profileFieldErrors["owner.name"]}
+                        />
+                        <TextField
+                          label="Email"
+                          required
+                          type="email"
+                          value={ownerEmail}
+                          onChange={(v) => { setOwnerEmail(v); clearProfileFieldError("owner.email"); }}
+                          error={profileFieldErrors["owner.email"]}
+                        />
+                        <TextField
+                          label="Nueva contraseña (opcional)"
+                          type={showOwnerPassword ? "text" : "password"}
+                          value={ownerPassword}
+                          onChange={(v) => { setOwnerPassword(v); clearProfileFieldError("owner.password"); }}
+                          error={profileFieldErrors["owner.password"]}
+                          placeholder="Mínimo 8 caracteres"
+                        />
+                        <TextField
+                          label="Confirmar contraseña"
+                          type={showOwnerPassword ? "text" : "password"}
+                          value={ownerPasswordConfirmation}
+                          onChange={(v) => { setOwnerPasswordConfirmation(v); clearProfileFieldError("owner.password"); }}
+                          placeholder="Repite la clave"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={showOwnerPassword}
+                          onChange={(e) => setShowOwnerPassword(e.target.checked)}
+                          className="w-3.5 h-3.5"
+                        />
+                        Mostrar contraseña
+                      </label>
                     </div>
 
                     <div className="space-y-3">
