@@ -10,7 +10,7 @@ import {
 } from "../types";
 import { Building2, X, Globe, User, MapPin, Settings2, KeyRound } from "lucide-react";
 import { SectionHeader, TextField } from "./tenant/TenantFormFields";
-import { EMAIL_RE, buildAddressPayload } from "./tenant/tenantPayloadHelpers";
+import { EMAIL_RE, buildAddressPayload, normalizeWebsiteUrl } from "./tenant/tenantPayloadHelpers";
 
 /** Browser timezone, falling back to America/New_York if unavailable or empty. */
 function resolveDefaultTimezone(): string {
@@ -86,6 +86,26 @@ const CreateTenantModal: React.FC<{
       delete next[key];
       return next;
     });
+  };
+
+  /**
+   * One-time copy, not a live sync: the Contacto principal has fields (cargo, teléfono) with
+   * no equivalent on Usuario principal, so keeping them permanently linked would be awkward.
+   * Splits the owner's full name naively (first word = nombre, resto = apellido) — good enough
+   * for the common "es la misma persona" case this button exists for; the user can still
+   * adjust either field afterward.
+   */
+  const copyContactFromOwner = () => {
+    const parts = ownerName.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts[0] ?? "";
+    const lastName = parts.slice(1).join(" ");
+
+    setContactFirstName(firstName);
+    setContactLastName(lastName);
+    setContactEmail(ownerEmail.trim());
+    clearFieldError("contact.first_name");
+    clearFieldError("contact.last_name");
+    clearFieldError("contact.email");
   };
 
   const validate = (): FieldErrors => {
@@ -175,7 +195,7 @@ const CreateTenantModal: React.FC<{
       business_email: businessEmail.trim() || null,
       billing_email: billingEmail.trim() || null,
       business_phone: businessPhone.trim() || null,
-      website: website.trim() || null,
+      website: normalizeWebsiteUrl(website),
       timezone: timezone.trim(),
       currency: currency.trim(),
       locale: locale.trim() || null,
@@ -432,7 +452,18 @@ const CreateTenantModal: React.FC<{
 
             {/* Contacto principal */}
             <div className="space-y-3">
-              <SectionHeader icon={User} title="Contacto principal" />
+              <div className="flex items-center justify-between gap-3">
+                <SectionHeader icon={User} title="Contacto principal" />
+                <button
+                  type="button"
+                  onClick={copyContactFromOwner}
+                  disabled={!ownerName.trim() && !ownerEmail.trim()}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed whitespace-nowrap"
+                  title="Copia nombre y email del Usuario Principal — puedes ajustar cargo/teléfono después"
+                >
+                  Es la misma persona que el Usuario Principal
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TextField
                   label="Nombre"
