@@ -2,6 +2,19 @@ import { CreateTenantAddressPayload, UpdateTenantAddressPayload } from "../../ty
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * TenantProfileRules' `website` rule is Laravel's `url` validator, which requires a scheme —
+ * a bare "www.negocio.com" fails it outright (422: "The website field must be a valid URL").
+ * Prepends "http://" when the user omitted one, so a real, otherwise-valid site never fails
+ * validation over a detail the UI can safely fix up itself. Shared by CreateTenantModal and
+ * TenantFormModal (both send `website` through the same backend rule).
+ */
+export function normalizeWebsiteUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
 export interface AddressFormValues {
   address_line_1: string;
   address_line_2: string;

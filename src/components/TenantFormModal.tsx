@@ -23,7 +23,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { SectionHeader, TextField, SelectField, MaskedInput } from "./tenant/TenantFormFields";
-import { EMAIL_RE, buildAddressPayload } from "./tenant/tenantPayloadHelpers";
+import { EMAIL_RE, buildAddressPayload, normalizeWebsiteUrl } from "./tenant/tenantPayloadHelpers";
 
 type Tab = "profile" | "sales" | "payment" | "n8n" | "chatwoot";
 
@@ -288,7 +288,7 @@ const TenantFormModal: React.FC<{
       business_email: businessEmail.trim() || null,
       billing_email: billingEmail.trim() || null,
       business_phone: businessPhone.trim() || null,
-      website: website.trim() || null,
+      website: normalizeWebsiteUrl(website),
       timezone: timezone.trim(),
       currency: currency.trim().toUpperCase(),
       locale: locale.trim() || null,
@@ -534,7 +534,7 @@ const TenantFormModal: React.FC<{
                           error={profileFieldErrors["billing_email"]}
                         />
                         <TextField label="Teléfono" value={businessPhone} onChange={setBusinessPhone} />
-                        <TextField label="Sitio web" type="url" value={website} onChange={setWebsite} />
+                        <TextField label="Sitio web" type="url" value={website} onChange={setWebsite} placeholder="https://negocio.com" />
                         <TextField
                           label="Zona horaria"
                           required

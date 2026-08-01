@@ -897,98 +897,100 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         );
       })()}
 
-      {/* RESUMEN */}
-      <div className="flex overflow-x-auto lg:grid lg:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4 pb-2 snap-x shrink-0">
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-indigo-500">
-          <div className="p-2 md:p-3 bg-indigo-50 text-indigo-600 rounded-lg">
-            <ShoppingBag className="w-5 h-5 md:w-6 md:h-6" />
+      {/* RESUMEN — 7 tarjetas, todas en una sola fila desde `lg` (antes 3/6 columnas dejaban
+          la 7ª ("Proyección Mes") huérfana en una segunda fila); tamaños reducidos
+          (padding/ícono/fuente) para que las 7 quepan sin sentirse apretadas. */}
+      <div className="flex overflow-x-auto lg:grid lg:grid-cols-7 gap-2 lg:gap-2.5 pb-2 snap-x shrink-0">
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-indigo-500">
+          <div className="p-1.5 md:p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+            <ShoppingBag className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               {dateGranularity === "month" ? "Ventas del Mes" : dateGranularity === "week" ? "Ventas de la Semana" : "Ventas del Día"}
             </p>
-            <p className="text-lg md:text-xl font-black text-indigo-900">{stats.count}</p>
+            <p className="text-base md:text-lg font-black text-indigo-900">{stats.count}</p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-sky-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-sky-500">
-          <div className="p-2 md:p-3 bg-sky-50 text-sky-600 rounded-lg">
-            <Package className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-sky-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-sky-500">
+          <div className="p-1.5 md:p-2 bg-sky-50 text-sky-600 rounded-lg">
+            <Package className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               {dateGranularity === "month" ? "Productos Vendidos Este Mes" : dateGranularity === "week" ? "Productos Vendidos Esta Semana" : "Productos Vendidos Hoy"}
             </p>
-            <p className="text-lg md:text-xl font-black text-sky-900">{productsSoldCount}</p>
+            <p className="text-base md:text-lg font-black text-sky-900">{productsSoldCount}</p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-green-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-green-600">
-          <div className="p-2 md:p-3 bg-green-50 text-green-600 rounded-lg">
-            <DollarSign className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-green-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-green-600">
+          <div className="p-1.5 md:p-2 bg-green-50 text-green-600 rounded-lg">
+            <DollarSign className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Importe Filtrado
             </p>
-            <p className="text-lg md:text-xl font-black text-green-900">
+            <p className="text-base md:text-lg font-black text-green-900">
               ${formatMoney(stats.total)}
             </p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-indigo-500">
-          <div className="p-2 md:p-3 bg-indigo-50 text-indigo-700 rounded-lg">
-            <Package className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-indigo-500">
+          <div className="p-1.5 md:p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+            <Package className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Acumulado Mes
             </p>
-            <p className="text-lg md:text-xl font-black text-indigo-900">
+            <p className="text-base md:text-lg font-black text-indigo-900">
               ${formatMoney(stats.monthlyTotal)}
             </p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-red-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-red-500">
-          <div className="p-2 md:p-3 bg-red-50 text-red-600 rounded-lg">
-            <Undo2 className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-red-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-red-500">
+          <div className="p-1.5 md:p-2 bg-red-50 text-red-600 rounded-lg">
+            <Undo2 className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Reembolsado del Día
             </p>
-            <p className="text-lg md:text-xl font-black text-red-700">
+            <p className="text-base md:text-lg font-black text-red-700">
               ${formatMoney(stats.refundedDay)}
             </p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-amber-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-amber-500">
-          <div className="p-2 md:p-3 bg-amber-50 text-amber-700 rounded-lg">
-            <ChevronRight className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-amber-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-amber-500">
+          <div className="p-1.5 md:p-2 bg-amber-50 text-amber-700 rounded-lg">
+            <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Días Trabajados
             </p>
-            <p className="text-lg md:text-xl font-black text-amber-900">
+            <p className="text-base md:text-lg font-black text-amber-900">
               {stats.daysWorked} <span className="text-[8px] md:text-[10px] text-gray-400 font-normal">días</span>
             </p>
           </div>
         </div>
 
-        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-3 md:p-4 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-3 md:gap-4 border-l-4 border-l-emerald-500">
-          <div className="p-2 md:p-3 bg-emerald-50 text-emerald-700 rounded-lg">
-            <DollarSign className="w-5 h-5 md:w-6 md:h-6" />
+        <div className="min-w-[160px] md:min-w-[240px] lg:min-w-0 snap-start bg-white p-2 md:p-3 rounded-xl border border-emerald-100 shadow-sm flex items-center gap-2 md:gap-3 border-l-4 border-l-emerald-500">
+          <div className="p-1.5 md:p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+            <DollarSign className="w-4 h-4 md:w-5 md:h-5" />
           </div>
           <div>
             <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase leading-tight">
               Proyección Mes
             </p>
             <div className="flex flex-col">
-              <p className="text-lg md:text-xl font-black text-emerald-900">
+              <p className="text-base md:text-lg font-black text-emerald-900">
                 ${formatMoney(stats.projection)}
               </p>
               <p className="text-[8px] md:text-[9px] text-gray-400 font-medium">
