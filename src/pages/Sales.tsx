@@ -102,13 +102,53 @@ function normalizeDateOnly(d: any): string {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-// ✅ muestra "YYYY-MM-DD HH:mm" usando 'date' como fecha principal
+// ✅ Muestra fecha+hora en formato 12h, hora del Este (America/New_York), sin importar si
+// el backend envía 'YYYY-MM-DD HH:mm:ss' (DailyLog, ya en hora de pared del Este) o ISO
+// con Z (SaleGroup, instante UTC real) — ambos casos deben renderizar igual.
 function formatSaleDateTime(sale: any): string {
   const dateStr = String(sale?.date ?? "").trim();
   if (!dateStr) return "—";
 
-  // The backend now sends 'YYYY-MM-DD HH:mm:ss', so we just display it nicely
-  return dateStr;
+  const isUtcInstant = dateStr.includes("T") || dateStr.endsWith("Z");
+
+  let year: number, month: number, day: number, hour: number, minute: number;
+
+  if (isUtcInstant) {
+    const dt = new Date(dateStr);
+    if (isNaN(dt.getTime())) return dateStr;
+
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(dt);
+
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+    year = get("year");
+    month = get("month");
+    day = get("day");
+    hour = get("hour");
+    minute = get("minute");
+  } else {
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!match) return dateStr;
+
+    year = Number(match[1]);
+    month = Number(match[2]);
+    day = Number(match[3]);
+    hour = Number(match[4]);
+    minute = Number(match[5]);
+  }
+
+  const period = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return `${year}-${pad(month)}-${pad(day)} ${pad(hour12)}:${pad(minute)} ${period}`;
 }
 
 // ✅ fecha LOCAL (evita UTC que te pone "mañana")
