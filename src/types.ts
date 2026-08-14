@@ -99,6 +99,50 @@ export interface Tenant {
   owner?: { id?: number; name: string; email: string } | null;
 }
 
+/**
+ * Configuration -> Integrations -> n8n (SuperAdmin only, global — not tenant-scoped).
+ * api_key is always the masked placeholder ("••••••••") when configured, or null — the real
+ * Management/Public REST API key is never returned by the backend after it's saved. This is
+ * a DIFFERENT credential class than Tenant.n8n_api_key/n8n_webhook_url (the legacy per-tenant
+ * SPA -> n8n webhook secret) — never conflate the two.
+ */
+export interface N8nConnection {
+  id: number;
+  name: string;
+  base_url: string;
+  api_key: string | null; // "••••••••" when configured, otherwise null — never a real secret
+  active: boolean;
+  is_default: boolean;
+  last_tested_at: string | null;
+  last_test_status: "passed" | "failed" | null;
+  assigned_tenants_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateN8nConnectionPayload {
+  name: string;
+  base_url: string;
+  api_key: string;
+  active?: boolean;
+  is_default?: boolean;
+}
+
+/** api_key omitted (or the masked placeholder) means "keep the currently stored key". */
+export interface UpdateN8nConnectionPayload {
+  name?: string;
+  base_url?: string;
+  api_key?: string;
+  active?: boolean;
+  is_default?: boolean;
+}
+
+export interface N8nConnectionTestResult {
+  ok: boolean;
+  message: string;
+  connection?: N8nConnection;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Payloads — one explicit shape per endpoint (never a blanket Partial<Tenant>).
 // ─────────────────────────────────────────────────────────────────────────────

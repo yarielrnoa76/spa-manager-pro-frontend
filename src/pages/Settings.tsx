@@ -5,10 +5,11 @@ import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import NotificationsSettings from "../settings/NotificationsSettings";
 import PaymentsSettings from "../settings/PaymentsSettings";
+import IntegrationsSettings from "../settings/IntegrationsSettings";
 import Tenants from "./Tenants";
 import { UserData } from "../App";
 
-type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments" | "integrations";
 
 const TabButton = ({
   active,
@@ -59,6 +60,11 @@ const SettingsPage: React.FC<{
   const canSeeProfessionals = tenantContextOk && (canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional"));
   const canSeePayments = tenantContextOk && (!!isSuperAdmin || user?.role?.name === "admin");
   const canSeeNotifications = tenantContextOk && !!isSuperAdmin;
+  // Global, platform-level like "tenants" — deliberately NOT gated by tenantContextOk (a
+  // SuperAdmin with no tenant selected must still be able to reach Integrations), and
+  // deliberately NOT gated by the manage_n8n_connections permission slug (SuperAdmin-only by
+  // architecture decision — see backend N8nConnectionPolicy).
+  const canSeeIntegrations = !!isSuperAdmin;
 
   const [tab, setTab] = useState<TabKey>(() => {
     if (isSuperAdmin) return "tenants";
@@ -75,6 +81,7 @@ const SettingsPage: React.FC<{
     if (tab === "professionals") return "Profesionales";
     if (tab === "tenants") return "Tenants";
     if (tab === "payments") return "Pagos (Stripe)";
+    if (tab === "integrations") return "Integraciones";
     return "Roles y permisos";
   }, [tab]);
 
@@ -109,6 +116,11 @@ const SettingsPage: React.FC<{
         {canSeeNotifications && (
           <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
             Notificaciones
+          </TabButton>
+        )}
+        {canSeeIntegrations && (
+          <TabButton active={tab === "integrations"} onClick={() => setTab("integrations")}>
+            Integraciones
           </TabButton>
         )}
         {canSeeBranches && (
@@ -170,6 +182,7 @@ const SettingsPage: React.FC<{
         )}
         {tab === "tenants" && isSuperAdmin && <Tenants />}
         {tab === "notifications" && canSeeNotifications && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "integrations" && canSeeIntegrations && <IntegrationsSettings isSuperAdmin={isSuperAdmin} />}
         {tab === "payments" && canSeePayments && <PaymentsSettings isSuperAdmin={isSuperAdmin} user={user} />}
       </div>
     </div>

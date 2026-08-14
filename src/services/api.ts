@@ -13,6 +13,10 @@ import {
   UpdateTenantProfilePayload,
   UpdateTenantSalesSettingsPayload,
   UpdateTenantPaymentSettingsPayload,
+  N8nConnection,
+  CreateN8nConnectionPayload,
+  UpdateN8nConnectionPayload,
+  N8nConnectionTestResult,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -324,6 +328,90 @@ export const api = {
     });
     this.setCurrentTenantId(tenantId);
     return data;
+  },
+
+  /**
+   * --- n8n Connections (SuperAdmin only, global — Configuration -> Integrations -> n8n) ---
+   * Platform-level resource, not tied to any tenant: skipTenantHeader is required on every
+   * call here for the same reason as createTenant/listTenants — these routes sit outside the
+   * 'tenant' middleware entirely (routes/api.php), so an unrelated, already-selected
+   * X-Tenant-ID would be meaningless noise, never required or checked.
+   */
+  async listN8nConnections() {
+    return request<N8nConnection[]>(`/api/n8n-connections`, {
+      method: "GET",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async createN8nConnection(payload: CreateN8nConnectionPayload) {
+    return request<N8nConnection>(`/api/n8n-connections`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async updateN8nConnection(id: number, payload: UpdateN8nConnectionPayload) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async deleteN8nConnection(id: number) {
+    return request<{ message: string }>(`/api/n8n-connections/${id}`, {
+      method: "DELETE",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async activateN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/activate`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async deactivateN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/deactivate`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async setDefaultN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/set-default`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  /** Tests the already-saved connection using its own stored key. */
+  async testN8nConnection(id: number) {
+    return request<N8nConnectionTestResult>(`/api/n8n-connections/${id}/test`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  /** Stateless draft test (create/edit form, before saving) — never persists anything. */
+  async testN8nConnectionDraft(baseUrl: string, apiKey: string) {
+    return request<N8nConnectionTestResult>(`/api/n8n-connections/test`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_key: apiKey },
+      auth: true,
+      skipTenantHeader: true,
+    });
   },
 
   /**
