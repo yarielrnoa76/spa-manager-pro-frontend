@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Send, CheckCircle2, User, Bot, AlertCircle, Clock, Check, CheckCheck, Trash2 } from "lucide-react";
-import { api } from "../services/api";
+import { Send, CheckCircle2, User, Bot, AlertCircle, Clock, Check, CheckCheck, Trash2, Lock, MessageSquareText, FileText } from "lucide-react";
+import { api, ApiError } from "../services/api";
 import { Conversation, ConversationMessage } from "../types";
+import NotifyContactModal from "./NotifyContactModal";
+import SendTemplateModal from "./SendTemplateModal";
 
 interface ChatProps {
     conversationId: number;
@@ -15,6 +17,8 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [newMessage, setNewMessage] = useState("");
+    const [showNotifyModal, setShowNotifyModal] = useState(false);
+    const [showTemplateModal, setShowTemplateModal] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +67,28 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages.length]);
 
+    // Backend-authoritative window expiration: never flip window_open locally. Schedule a
+    // single refetch for the exact instant window_expires_at reports, so the UI switches to
+    // the closed-window panel without waiting for the next 5s poll (and without polling faster
+    // just for this). Also covers stale tabs: if the window already expired by the time this
+    // effect runs (e.g. tab was backgrounded), it refetches immediately instead of waiting.
+    useEffect(() => {
+        if (!conversation?.window_open || !conversation.window_expires_at) return;
+
+        const msUntilExpiry = new Date(conversation.window_expires_at).getTime() - Date.now();
+
+        if (msUntilExpiry <= 0) {
+            loadData(true);
+            return;
+        }
+
+        const timerId = setTimeout(() => {
+            loadData(true);
+        }, msUntilExpiry);
+
+        return () => clearTimeout(timerId);
+    }, [conversation?.window_open, conversation?.window_expires_at, conversationId]);
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() || sending) return;
@@ -92,10 +118,27 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
             setMessages(prev => prev.map(m => m.id === tempId ? actualMsg : m));
             setConversation(prev => prev ? { ...prev, bot_enabled: false } : null);
         } catch (e) {
-            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
+            if (e instanceof ApiError && e.code === 'WHATSAPP_WINDOW_CLOSED') {
+                // Backend is authoritative -- our local window_open was stale (race/old tab).
+                // The message was never accepted, so drop the optimistic bubble entirely
+                // (marking it "failed" would wrongly imply WhatsApp tried and failed to
+                // deliver it) and refetch so the UI switches to the closed-window panel.
+                setMessages(prev => prev.filter(m => m.id !== tempId));
+                loadData(true);
+            } else {
+                setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
+            }
         } finally {
             setSending(false);
         }
+    };
+
+    const handleTemplateSent = () => {
+        setShowNotifyModal(false);
+        setShowTemplateModal(false);
+        // Refresh from the server -- never locally set window_open=true. A template send does
+        // not reopen the 24h window; only an inbound customer message does.
+        loadData(true);
     };
 
     const toggleBot = async () => {
@@ -276,6 +319,35 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
                     <div className="text-center text-xs text-gray-500 font-medium py-2 bg-gray-50 rounded-lg">
                         No tienes permisos para escribir en esta conversación.
                     </div>
+                ) : !conversation.window_open ? (
+                    // WhatsApp's 24h customer-service window is closed (backend-authoritative,
+                    // never computed here) -- free text is not deliverable, so the composer is
+                    // replaced entirely rather than merely disabled, to avoid a user typing a
+                    // message that looks normal but can never be sent.
+                    <div className="text-center py-3 px-2 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p className="text-xs font-bold text-amber-800 flex items-center justify-center gap-1.5">
+                            <Lock size={13} /> Ventana de WhatsApp cerrada
+                        </p>
+                        <p className="text-[11px] text-amber-700 mt-1 mb-3">
+                            El contacto debe responder antes de poder enviar mensajes de texto libre nuevamente.
+                        </p>
+                        <div className="flex gap-2 justify-center">
+                            <button
+                                type="button"
+                                onClick={() => setShowNotifyModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+                            >
+                                <MessageSquareText size={14} /> Notificar contacto
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowTemplateModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-50 transition-colors"
+                            >
+                                <FileText size={14} /> Enviar plantilla
+                            </button>
+                        </div>
+                    </div>
                 ) : (
                     <form onSubmit={handleSend} className="flex gap-2 relative">
                         {conversation.bot_enabled && (
@@ -285,6 +357,14 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
                                 </span>
                             </div>
                         )}
+                        <button
+                            type="button"
+                            onClick={() => setShowTemplateModal(true)}
+                            title="Enviar una plantilla de WhatsApp aprobada"
+                            className="shrink-0 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl px-2.5 flex items-center justify-center transition-colors"
+                        >
+                            <FileText size={16} />
+                        </button>
                         <input
                             type="text"
                             value={newMessage}
@@ -303,6 +383,26 @@ export const ConversationChat: React.FC<ChatProps> = ({ conversationId, embedded
                     </form>
                 )}
             </div>
+
+            {showNotifyModal && (
+                <NotifyContactModal
+                    conversation={conversation}
+                    onClose={() => setShowNotifyModal(false)}
+                    onSent={handleTemplateSent}
+                    onOpenSendTemplate={() => {
+                        setShowNotifyModal(false);
+                        setShowTemplateModal(true);
+                    }}
+                />
+            )}
+            {showTemplateModal && (
+                <SendTemplateModal
+                    conversation={conversation}
+                    onClose={() => setShowTemplateModal(false)}
+                    onSent={handleTemplateSent}
+                    closedWindowOnly={!conversation.window_open}
+                />
+            )}
         </div>
     );
 };

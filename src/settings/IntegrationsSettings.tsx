@@ -1,19 +1,37 @@
-import React from "react";
+import React, { useState } from "react";
 import N8nConnectionsSection from "../components/integrations/N8nConnectionsSection";
+import ChatwootConnectionSettings from "../components/integrations/ChatwootConnectionSettings";
+import WhatsappTemplatesSettings from "../components/integrations/WhatsappTemplatesSettings";
 
 /**
- * Configuration -> Integrations (SuperAdmin only, global — not tenant-scoped). n8n is the
- * only integration today; this wrapper exists so a second one (e.g. a future global OpenAI
- * or Chatwoot section) has somewhere to attach without reshaping Settings.tsx again.
+ * Configuration -> Integrations.
  *
- * isSuperAdmin is re-checked here (not just at the Settings.tsx tab-gate level) so this
- * component is never silently reachable if it's ever rendered from anywhere else later —
- * mirrors NotificationsSettings' own defensive re-check. The real enforcement is always the
- * backend's 'superadmin' middleware; this is UI-only, matching every other page in the app.
+ * n8n stays SuperAdmin-only and global (unchanged) -- it is platform-level infrastructure, not
+ * tied to any tenant.
+ *
+ * Chatwoot is split into two sections with different authorization boundaries, matching the
+ * backend exactly:
+ *  - Connection (health test / token rotation): SuperAdmin-only, and requires an active tenant
+ *    context, mirroring TenantPolicy::update -- the same boundary that already governs editing
+ *    chatwoot_api_token itself via the Tenant form. Not shown to regular tenant staff even
+ *    read-only, since the backend would reject every call anyway.
+ *  - WhatsApp Templates (list/sync/enable/disable/default): tenant-scoped and permission-gated
+ *    (view_whatsapp_templates / manage_whatsapp_templates), reachable by tenant staff with that
+ *    permission -- not limited to SuperAdmin. Reuses the tenant's existing Chatwoot
+ *    configuration; this screen never introduces a second/parallel Chatwoot config.
  */
-const IntegrationsSettings: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperAdmin }) => {
-  if (!isSuperAdmin) {
-    return <div className="p-4 text-center text-gray-500">Acceso denegado. Solo administradores.</div>;
+const IntegrationsSettings: React.FC<{
+  isSuperAdmin?: boolean;
+  currentTenantId?: number | null;
+  canViewWhatsappTemplates?: boolean;
+  canManageWhatsappTemplates?: boolean;
+}> = ({ isSuperAdmin, currentTenantId, canViewWhatsappTemplates, canManageWhatsappTemplates }) => {
+  // Bumped after a successful token rotation (which triggers an automatic template refresh
+  // server-side) so the WhatsApp Templates table below reflects it without a manual re-sync.
+  const [templatesRefreshKey, setTemplatesRefreshKey] = useState(0);
+
+  if (!isSuperAdmin && !canViewWhatsappTemplates && !canManageWhatsappTemplates) {
+    return <div className="p-4 text-center text-gray-500">Acceso denegado.</div>;
   }
 
   return (
@@ -21,11 +39,22 @@ const IntegrationsSettings: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperAdm
       <div>
         <h2 className="text-xl font-bold text-gray-900">Integraciones</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Configuración global de integraciones de la plataforma, compartida por todos los tenants.
+          Configuración de integraciones de la plataforma y del tenant actual.
         </p>
       </div>
 
-      <N8nConnectionsSection />
+      {isSuperAdmin && <N8nConnectionsSection />}
+
+      {isSuperAdmin && currentTenantId && (
+        <ChatwootConnectionSettings
+          tenantId={currentTenantId}
+          onTokenRotated={() => setTemplatesRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {(canViewWhatsappTemplates || canManageWhatsappTemplates) && (
+        <WhatsappTemplatesSettings key={templatesRefreshKey} canManage={!!canManageWhatsappTemplates} />
+      )}
     </div>
   );
 };

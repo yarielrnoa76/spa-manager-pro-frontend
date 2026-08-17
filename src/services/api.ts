@@ -17,6 +17,12 @@ import {
   CreateN8nConnectionPayload,
   UpdateN8nConnectionPayload,
   N8nConnectionTestResult,
+  WhatsappTemplate,
+  WhatsappTemplateListResponse,
+  WhatsappTemplateSyncResult,
+  UpdateWhatsappTemplatePayload,
+  ChatwootConnectionHealth,
+  ChatwootTokenRotationResult,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -1144,7 +1150,28 @@ export const api = {
     return request<any>(`/api/communications/conversations/${id}/messages?page=${page}&_t=${t}`, { method: "GET", auth: true });
   },
 
-  async sendConversationMessage(id: number, body: string, opts?: { force_template?: boolean; template_name?: string; template_language?: string }) {
+  /**
+   * body is optional because a registered-template send (whatsapp_template_id) never needs
+   * one -- the backend server-renders the actual message from the synchronized template and
+   * ignores whatever, if anything, is sent here for that path. For a normal free-text send,
+   * body is required exactly as before.
+   *
+   * template_name/template_language are still accepted by the backend for the legacy raw path
+   * (kept for backward compatibility, see ConversationController::storeMessage), but the
+   * preferred contract going forward is whatsapp_template_id + template_params -- prefer that
+   * for any new call site.
+   */
+  async sendConversationMessage(
+    id: number,
+    body?: string,
+    opts?: {
+      force_template?: boolean;
+      template_name?: string;
+      template_language?: string;
+      template_params?: string[];
+      whatsapp_template_id?: number;
+    },
+  ) {
     return request<any>(`/api/communications/conversations/${id}/messages`, { method: "POST", body: { body, ...opts }, auth: true });
   },
 
@@ -1248,6 +1275,66 @@ export const api = {
     }>(`/api/chatwoot/accounts/${accountId}/inboxes/create`, {
       method: "POST",
       body: { base_url: baseUrl, api_token: apiToken, name },
+      auth: true,
+    });
+  },
+
+  // --- WhatsApp Templates (tenant-scoped registry synced from Chatwoot) ---
+  async listWhatsappTemplates(params: {
+    enabled?: boolean;
+    available?: boolean;
+    category?: string;
+    language?: string;
+    allowed_when_window_closed?: boolean;
+  } = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) searchParams.append(key, String(value));
+    });
+    const qs = searchParams.toString();
+    return request<WhatsappTemplateListResponse>(`/api/communications/whatsapp-templates${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
+  async syncWhatsappTemplates() {
+    return request<WhatsappTemplateSyncResult>(`/api/communications/whatsapp-templates/sync`, {
+      method: "POST",
+      auth: true,
+    });
+  },
+
+  /** Only enabled/allowed_when_window_closed/is_default_closed_window are accepted by the
+   * backend -- Meta-owned fields (name/language/category/status/components/...) are read-only
+   * and silently ignored if sent here. */
+  async updateWhatsappTemplate(id: number, payload: UpdateWhatsappTemplatePayload) {
+    return request<WhatsappTemplate>(`/api/communications/whatsapp-templates/${id}`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  // --- Chatwoot connection health + safe token rotation (SuperAdmin only) ---
+  // Operates on the tenant's OWN already-persisted Chatwoot configuration (base_url/account_id/
+  // inbox_id, edited via the Tenant form) -- distinct from chatwootTestConnection() above, which
+  // tests arbitrary body-supplied credentials for the setup wizard before anything is saved.
+  async testTenantChatwootConnection(tenantId: number) {
+    return request<ChatwootConnectionHealth>(`/api/tenants/${tenantId}/chatwoot/test`, {
+      method: "POST",
+      auth: true,
+    });
+  },
+
+  /** apiToken is the CANDIDATE token only -- never the current one. The backend validates it
+   * against the tenant's existing base_url/account/inbox before persisting anything; the
+   * current token is left untouched if validation fails. Never log or persist apiToken
+   * client-side beyond the single request. */
+  async rotateChatwootToken(tenantId: number, apiToken: string) {
+    return request<ChatwootTokenRotationResult>(`/api/tenants/${tenantId}/chatwoot/rotate-token`, {
+      method: "POST",
+      body: { api_token: apiToken },
       auth: true,
     });
   },

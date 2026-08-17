@@ -144,6 +144,107 @@ export interface N8nConnectionTestResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WhatsApp Templates (Phase 1/1B backend) — tenant-scoped local registry synced from the
+// tenant's Chatwoot inbox. Chatwoot/Meta remain authoritative for everything except the three
+// SPA-owned fields (enabled, allowed_when_window_closed, is_default_closed_window). Field names
+// match the backend's WhatsappTemplate model attributes exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Structural only -- which component carries a {{n}} placeholder and at which position.
+ * Sending currently only supports component === "BODY" entries; anything else (HEADER,
+ * BUTTON_n) is reported for visibility but rejected by the backend at send time. */
+export interface WhatsappTemplateParameterSchemaEntry {
+  component: string;
+  position: number;
+  required: boolean;
+}
+
+export interface WhatsappTemplateComponent {
+  type: string;
+  format?: string;
+  text?: string;
+  example?: unknown;
+  buttons?: Array<{ type?: string; text?: string; url?: string }>;
+}
+
+export interface WhatsappTemplate {
+  id: number;
+  tenant_id: number;
+  chatwoot_account_id: string | null;
+  chatwoot_inbox_id: string;
+  external_template_id: string | null;
+  name: string;
+  language: string;
+  category: string | null;
+  status: string | null;
+  body_preview: string | null;
+  components: WhatsappTemplateComponent[] | null;
+  parameter_schema: WhatsappTemplateParameterSchemaEntry[] | null;
+  parameter_format: string | null;
+  enabled: boolean;
+  allowed_when_window_closed: boolean;
+  is_default_closed_window: boolean;
+  is_available: boolean;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsappTemplateListResponse {
+  data: WhatsappTemplate[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+export interface WhatsappTemplateSyncResult {
+  ok: boolean;
+  created: number;
+  updated: number;
+  restored: number;
+  marked_unavailable: number;
+  skipped: number;
+  total_synced: number;
+  synced_at: string;
+}
+
+export interface UpdateWhatsappTemplatePayload {
+  enabled?: boolean;
+  allowed_when_window_closed?: boolean;
+  is_default_closed_window?: boolean;
+}
+
+/** GET.../messages request body for a registered-template send. body/template_name/
+ * template_language are deliberately NOT part of this contract -- the backend resolves and
+ * renders them from whatsapp_template_id, ignoring any raw client-supplied values. */
+export interface SendWhatsappTemplatePayload {
+  whatsapp_template_id: number;
+  template_params: string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chatwoot connection health / token rotation (Phase 1B backend, SuperAdmin-only). The current
+// token is NEVER part of any response shape here -- these mirror ChatwootConnectionService's
+// allow-listed return arrays exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ChatwootConnectionHealth {
+  configured: boolean;
+  ok: boolean;
+  account_id?: string | null;
+  inbox_id?: string | null;
+  inbox_name?: string | null;
+  channel_type?: string | null;
+  provider?: string | null;
+  last_tested_at?: string | null;
+  message: string;
+}
+
+export interface ChatwootTokenRotationResult extends ChatwootConnectionHealth {
+  template_sync?: WhatsappTemplateSyncResult | { ok: false; message: string } | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Payloads — one explicit shape per endpoint (never a blanket Partial<Tenant>).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -431,6 +532,9 @@ export interface Lead {
   tenant_id?: number;
   assigned_to?: string;
   assignedTo?: User;
+  /** ISO 639-1-ish locale (e.g. "es", "en") used to pick a language-appropriate default
+   * WhatsApp template for Notify Contact. Defaults to "es" server-side when absent. */
+  preferred_language?: string | null;
 }
 
 export interface RefundLog {
@@ -555,6 +659,16 @@ export interface Notification {
   };
 }
 
+/** Present only on outbound messages sent through the registered-template contract. */
+export interface ConversationMessageTemplateMeta {
+  is_template: true;
+  whatsapp_template_id?: number;
+  template_name: string;
+  template_language: string;
+  template_params: string[];
+  external_template_id?: string | null;
+}
+
 export interface ConversationMessage {
   id: number;
   tenant_id: number;
@@ -568,6 +682,7 @@ export interface ConversationMessage {
   created_at: string;
   deleted_at?: string | null;
   sender?: User;
+  meta?: ConversationMessageTemplateMeta | null;
 }
 
 export interface Conversation {
@@ -590,4 +705,14 @@ export interface Conversation {
   lead?: Lead;
   assignedUser?: User;
   branch?: Branch;
+  /**
+   * Backend-authoritative WhatsApp 24h customer-service window state
+   * (Conversation::isWindowOpen() / windowExpiresAt()). Never compute this on the client —
+   * always trust these two fields, refetched from the server.
+   */
+  window_open: boolean;
+  window_expires_at: string | null;
+  /** Present only on the conversation's own Chatwoot inbox, when set (may differ from the
+   * tenant's default inbox for a future multi-inbox tenant). */
+  chatwoot_inbox_id?: string | null;
 }
