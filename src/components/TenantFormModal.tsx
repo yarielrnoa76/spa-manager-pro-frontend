@@ -7,6 +7,7 @@ import {
   TenantPaymentPolicy,
   DownPaymentType,
   UpdateTenantProfilePayload,
+  N8nConnection,
 } from "../types";
 import ChatwootConfigTab from "./ChatwootConfigTab";
 import {
@@ -68,6 +69,14 @@ const TenantFormModal: React.FC<{
   const [tenantApiToken, setTenantApiToken] = useState(tenant.tenant_api_token || "");
   const [n8nApiKey, setN8nApiKey] = useState(tenant.n8n_api_key || "");
   const [n8nWebhookUrl, setN8nWebhookUrl] = useState(tenant.n8n_webhook_url || "");
+
+  // ── Conexión n8n administrada (global N8nConnection assignment) ── seeded strictly from
+  // tenant.n8n_connection_id -- never from any connection's is_default flag. That flag is only
+  // a suggested starting point for the create/edit form in N8nConnectionsSection, never an
+  // implicit fallback a tenant should inherit automatically.
+  const [n8nConnectionId, setN8nConnectionId] = useState<number | null>(tenant.n8n_connection_id ?? null);
+  const [n8nConnections, setN8nConnections] = useState<N8nConnection[]>([]);
+  const [n8nConnectionsLoading, setN8nConnectionsLoading] = useState(false);
 
   // ── Integraciones Chatwoot (existing, unchanged fields) ──
   const [chatwootBaseUrl, setChatwootBaseUrl] = useState(tenant.chatwoot_base_url || "");
@@ -199,6 +208,36 @@ const TenantFormModal: React.FC<{
     };
   }, [tenant.id, loadToken]);
 
+  // ── Global n8n connections, for the "Conexión n8n administrada" selector ── independent of
+  // the profile-extras fetch above: this is platform-level data (Configuration -> Integrations
+  // -> n8n), not per-tenant, so it doesn't need tenantIdOverride and never resets when the
+  // tenant's own extras reload.
+  useEffect(() => {
+    let cancelled = false;
+    setN8nConnectionsLoading(true);
+
+    api
+      .listN8nConnections()
+      .then((connections) => {
+        if (!cancelled) setN8nConnections(connections);
+      })
+      .catch(() => {
+        // Non-fatal: the selector degrades to "no connections available" rather than blocking
+        // the rest of the modal.
+      })
+      .finally(() => {
+        if (!cancelled) setN8nConnectionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Only meaningful when it resolves to an INACTIVE connection -- that's the one case the UI
+  // must surface explicitly (see the n8n tab below) rather than silently reflect.
+  const assignedN8nConnection = n8nConnections.find((c) => c.id === n8nConnectionId) ?? null;
+
   const clearProfileFieldError = (key: string) => {
     setProfileFieldErrors((prev) => {
       if (!(key in prev)) return prev;
@@ -229,6 +268,7 @@ const TenantFormModal: React.FC<{
         tenant_api_token: tenantApiToken || undefined,
         n8n_api_key: n8nApiKey || undefined,
         n8n_webhook_url: n8nWebhookUrl.trim() || null,
+        n8n_connection_id: n8nConnectionId,
         chatwoot_base_url: chatwootBaseUrl.trim() || null,
         chatwoot_api_token: chatwootApiToken || undefined,
         chatwoot_account_id: chatwootAccountId.trim() || null,
@@ -838,6 +878,47 @@ const TenantFormModal: React.FC<{
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm"
                     placeholder="https://n8n.tudominio.com/webhook/..."
                   />
+                </div>
+
+                {/* Clearly separated from the three legacy fields above -- this is a
+                    DIFFERENT credential class (the global n8n Management API instance this
+                    tenant is administered through), not the tenant's own webhook secrets. */}
+                <div className="border-t pt-4 mt-2">
+                  <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-1">
+                    <Link2 size={16} className="text-indigo-600" /> Conexión n8n administrada
+                  </h4>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Instancia global de n8n asignada explícitamente a este tenant. No se usa ninguna conexión
+                    predeterminada automáticamente.
+                  </p>
+                  <select
+                    aria-label="Conexión n8n administrada"
+                    value={n8nConnectionId !== null ? String(n8nConnectionId) : ""}
+                    onChange={(e) => setN8nConnectionId(e.target.value === "" ? null : Number(e.target.value))}
+                    disabled={n8nConnectionsLoading}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none text-sm bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value="">Sin conexión asignada</option>
+                    {n8nConnections
+                      .filter((c) => c.active)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    {assignedN8nConnection && !assignedN8nConnection.active && (
+                      <option value={assignedN8nConnection.id} disabled>
+                        {assignedN8nConnection.name} (inactiva — asignación actual)
+                      </option>
+                    )}
+                  </select>
+                  {assignedN8nConnection && !assignedN8nConnection.active && (
+                    <p className="text-[11px] text-amber-600 mt-1.5 flex items-center gap-1">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      La conexión asignada actualmente está inactiva. La asignación se conserva tal cual hasta
+                      que elijas otra o la desasignes — nunca se cambia automáticamente.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

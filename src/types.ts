@@ -73,6 +73,9 @@ export interface Tenant {
   chatwoot_api_token?: string | null;
   chatwoot_account_id?: string | null;
   chatwoot_inbox_id?: string | null;
+  /** Explicit assignment to a global N8nConnection (Management API instance). null =
+   * unassigned. Never an implicit default -- no "current tenant" fallback exists. */
+  n8n_connection_id?: number | null;
   created_at?: string;
   updated_at?: string;
 
