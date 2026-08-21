@@ -23,6 +23,10 @@ import {
   UpdateWhatsappTemplatePayload,
   ChatwootConnectionHealth,
   ChatwootTokenRotationResult,
+  AiAgent,
+  AiAgentVersionSummary,
+  UpdateAiAgentPayload,
+  RestoreAiAgentVersionPayload,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -1311,6 +1315,38 @@ export const api = {
   async updateWhatsappTemplate(id: number, payload: UpdateWhatsappTemplatePayload) {
     return request<WhatsappTemplate>(`/api/communications/whatsapp-templates/${id}`, {
       method: "PATCH",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  // --- AI Agents (Close-out phase, Objective B) — tenant-scoped prompt configuration.
+  // SPA Manager Pro is the source of truth; n8n only consumes the compiled effective_prompt at
+  // runtime. system_prompt_override is rejected with 403 server-side unless the caller is a
+  // SuperAdmin -- the UI should never send that key for a non-SuperAdmin. ---
+  async listAiAgents() {
+    return request<AiAgent[]>(`/api/ai-agents`, { method: "GET", auth: true });
+  },
+
+  async getAiAgent(id: number) {
+    return request<AiAgent>(`/api/ai-agents/${id}`, { method: "GET", auth: true });
+  },
+
+  async updateAiAgent(id: number, payload: UpdateAiAgentPayload) {
+    return request<AiAgent>(`/api/ai-agents/${id}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  async listAiAgentVersions(id: number) {
+    return request<AiAgentVersionSummary[]>(`/api/ai-agents/${id}/versions`, { method: "GET", auth: true });
+  },
+
+  async restoreAiAgentVersion(agentId: number, versionId: number, payload: RestoreAiAgentVersionPayload = {}) {
+    return request<AiAgent>(`/api/ai-agents/${agentId}/versions/${versionId}/restore`, {
+      method: "POST",
       body: payload,
       auth: true,
     });

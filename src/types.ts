@@ -719,3 +719,59 @@ export interface Conversation {
    * tenant's default inbox for a future multi-inbox tenant). */
   chatwoot_inbox_id?: string | null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Agents (Close-out phase, Objective B). SPA Manager Pro is the source of truth for the
+// prompt an n8n-hosted AI agent uses at runtime — n8n only ever reads the compiled
+// effective_prompt via BotController::handleIncoming's additive ai_agent field, never edits or
+// stores it. system_prompt_override is SuperAdmin-exclusive (enforced server-side); a tenant
+// user with manage_ai_agents may only ever change tenant_instructions/enabled.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AiAgent {
+  id: number;
+  tenant_id: number;
+  code: string;
+  name: string;
+  enabled: boolean;
+  /** SuperAdmin-only. Null means "use the platform baseline prompt". */
+  system_prompt_override: string | null;
+  /** Tenant-editable, appended to the base (override or baseline) with a blank-line separator. */
+  tenant_instructions: string | null;
+  current_version: number;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+  /** Derived/read-only preview -- never persisted on the model itself, only present on
+   * show()/update()/restore() responses (never on the index() list). */
+  effective_prompt?: string;
+  /** SuperAdmin-only. The platform baseline prompt text, read directly from the backend's
+   * resource file (AiAgentConfigurationService::platformBaseline()) -- never derived/guessed
+   * client-side. Present on show()/update()/restore() responses ONLY when the caller is a
+   * SuperAdmin; absent for a normal tenant user regardless of permissions. */
+  platform_baseline_prompt?: string;
+}
+
+export interface AiAgentVersionSummary {
+  id: number;
+  ai_agent_id: number;
+  version: number;
+  changed_by: number | null;
+  changedBy?: { id: number; name: string } | null;
+  change_reason: string | null;
+  created_at: string;
+}
+
+/** Only enabled/tenant_instructions/system_prompt_override are ever meaningful here --
+ * system_prompt_override is rejected with 403 server-side unless the caller is a SuperAdmin. */
+export interface UpdateAiAgentPayload {
+  enabled?: boolean;
+  tenant_instructions?: string | null;
+  system_prompt_override?: string | null;
+  change_reason?: string | null;
+}
+
+export interface RestoreAiAgentVersionPayload {
+  change_reason?: string | null;
+}
