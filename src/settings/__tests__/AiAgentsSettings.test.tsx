@@ -40,6 +40,7 @@ function makeAgent(overrides: Partial<AiAgent> = {}): AiAgent {
     created_at: "2026-08-21T00:00:00Z",
     updated_at: "2026-08-21T00:00:00Z",
     effective_prompt: "You are a helpful WhatsApp receptionist.",
+    system_prompt_editor_value: "You are a helpful WhatsApp receptionist.",
     ...overrides,
   };
 }
@@ -249,52 +250,55 @@ describe("AiAgentsSettings — version history and restore", () => {
 });
 
 describe("AiAgentsSettings — SuperAdmin Advanced section", () => {
-  it("shows Avanzado for a SuperAdmin and reveals baseline/override/effective-prompt only after expanding", async () => {
+  it("never shows the Avanzado section or the system prompt editor for a non-SuperAdmin, even with manage permission", async () => {
+    render(<AiAgentsSettings canView canManage isSuperAdmin={false} />);
+
+    await screen.findByText("WhatsApp Reception Agent");
+    expect(screen.queryByText(/Avanzado \(solo SuperAdmin\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Prompt del sistema")).not.toBeInTheDocument();
+  });
+
+  it("shows Avanzado for a SuperAdmin and reveals the system prompt editor + effective-prompt preview only after expanding", async () => {
     const user = userEvent.setup();
     render(<AiAgentsSettings canView canManage isSuperAdmin />);
 
     await screen.findByText("WhatsApp Reception Agent");
-    expect(screen.queryByText(/Prompt base de la plataforma \(solo lectura\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Prompt del sistema")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
 
-    expect(screen.getByText(/Prompt base de la plataforma \(solo lectura\)/i)).toBeInTheDocument();
+    expect(screen.getByText("Prompt del sistema")).toBeInTheDocument();
     expect(screen.getByText(/Vista previa del prompt efectivo/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Vacío = usar el prompt base/i)).toBeInTheDocument();
   });
 
-  it("shows the real platform_baseline_prompt from the API response (no client-side derivation)", async () => {
+  it("initializes the editor from system_prompt_editor_value (the resolved baseline) when no override exists, and labels the source as platform baseline", async () => {
     vi.mocked(api.getAiAgent).mockResolvedValue(
       makeAgent({
         system_prompt_override: null,
-        tenant_instructions: null,
-        effective_prompt: "Baseline text only.",
-        platform_baseline_prompt: "Baseline text only.",
+        effective_prompt: "Resolved baseline text.",
+        system_prompt_editor_value: "Resolved baseline text.",
       }),
     );
+    const user = userEvent.setup();
 
     render(<AiAgentsSettings canView canManage isSuperAdmin />);
     await screen.findByText("WhatsApp Reception Agent");
-    const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
 
-    expect(screen.getByText(/Prompt base de la plataforma \(solo lectura\)/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Baseline text only.").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByDisplayValue("Resolved baseline text.")).toBeInTheDocument();
+    expect(screen.getByText("Prompt base de plataforma")).toBeInTheDocument();
+    expect(screen.queryByText("Override personalizado")).not.toBeInTheDocument();
+    // No override active -- the baseline-for-reference block only shows once one exists.
+    expect(screen.queryByText(/solo lectura, para referencia/i)).not.toBeInTheDocument();
   });
 
-  /**
-   * Corrective pass requirement: the SuperAdmin must always see the REAL baseline, even while an
-   * override is active -- it comes straight from the API's platform_baseline_prompt field
-   * (never derived by subtracting strings from effective_prompt, which would be wrong once an
-   * override replaces the baseline entirely).
-   */
-  it("still shows the real platform_baseline_prompt while an override is active -- never hidden, never corrupted", async () => {
+  it("initializes the editor from the active override and labels the source as a custom override", async () => {
     vi.mocked(api.getAiAgent).mockResolvedValue(
       makeAgent({
-        system_prompt_override: "Custom override.",
-        tenant_instructions: null,
-        effective_prompt: "Custom override.",
-        platform_baseline_prompt: "The real, unrelated platform baseline text.",
+        system_prompt_override: "Custom override text.",
+        effective_prompt: "Custom override text.",
+        system_prompt_editor_value: "Custom override text.",
+        platform_baseline_prompt: "The underlying platform baseline.",
       }),
     );
     const user = userEvent.setup();
@@ -303,32 +307,120 @@ describe("AiAgentsSettings — SuperAdmin Advanced section", () => {
     await screen.findByText("WhatsApp Reception Agent");
     await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
 
-    expect(screen.getByText("The real, unrelated platform baseline text.")).toBeInTheDocument();
-    // The effective prompt preview correctly shows the override, not the baseline -- proving
-    // the two panels are genuinely independent, not one derived from the other. "Custom
-    // override." legitimately appears twice: the editable override textarea's value AND the
-    // read-only effective-prompt preview.
-    expect(screen.getByDisplayValue("Custom override.")).toBeInTheDocument();
-    expect(screen.getAllByText("Custom override.").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByDisplayValue("Custom override text.")).toBeInTheDocument();
+    expect(screen.getByText("Override personalizado")).toBeInTheDocument();
+    // Reference-only baseline block appears alongside the editor while an override is active.
+    expect(screen.getByText(/solo lectura, para referencia/i)).toBeInTheDocument();
+    expect(screen.getByText("The underlying platform baseline.")).toBeInTheDocument();
   });
 
-  it("lets a SuperAdmin save a system_prompt_override", async () => {
-    vi.mocked(api.updateAiAgent).mockResolvedValue(makeAgent({ system_prompt_override: "New override text." }));
+  it("never calls the API merely from expanding the Avanzado section", async () => {
+    const user = userEvent.setup();
+    render(<AiAgentsSettings canView canManage isSuperAdmin />);
+    await screen.findByText("WhatsApp Reception Agent");
+
+    await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
+
+    expect(api.updateAiAgent).not.toHaveBeenCalled();
+  });
+
+  it("saves the fully edited prompt as system_prompt_override", async () => {
+    vi.mocked(api.updateAiAgent).mockResolvedValue(makeAgent({ system_prompt_override: "You are a helpful WhatsApp receptionist. New instructions." }));
     const user = userEvent.setup();
 
     render(<AiAgentsSettings canView canManage isSuperAdmin />);
     await screen.findByText("WhatsApp Reception Agent");
     await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
 
-    const overrideTextarea = screen.getByPlaceholderText(/Vacío = usar el prompt base/i);
-    await user.type(overrideTextarea, "New override text.");
-    await user.click(screen.getByRole("button", { name: /Guardar override/i }));
+    const editor = screen.getByDisplayValue("You are a helpful WhatsApp receptionist.");
+    await user.type(editor, " New instructions.");
+    await user.click(screen.getByRole("button", { name: /Guardar prompt del sistema/i }));
 
     await waitFor(() =>
       expect(api.updateAiAgent).toHaveBeenCalledWith(
         1,
-        expect.objectContaining({ system_prompt_override: "New override text." }),
+        expect.objectContaining({ system_prompt_override: "You are a helpful WhatsApp receptionist. New instructions." }),
       ),
+    );
+  });
+
+  /**
+   * source-of-truth corrective pass, mandatory regression: proves the frontend sends the RAW
+   * SOURCE (with placeholders intact), never a pre-rendered preview -- a SuperAdmin who edits
+   * an unrelated sentence in a placeholder-containing baseline must NOT accidentally freeze
+   * resolved business data into system_prompt_override.
+   */
+  it("saves the raw source with placeholders intact, never a pre-rendered preview", async () => {
+    const rawBaselineWithPlaceholders =
+      "You are the virtual receptionist for [[BUSINESS_NAME]].\n\n[[BUSINESS_CONTEXT]]\n\nBe polite.";
+    vi.mocked(api.getAiAgent).mockResolvedValue(
+      makeAgent({
+        system_prompt_override: null,
+        effective_prompt: "You are the virtual receptionist for Example Spa.\n\nBUSINESS:\nName: Example Spa\n\nBe polite.",
+        system_prompt_editor_value: rawBaselineWithPlaceholders,
+        platform_baseline_prompt: rawBaselineWithPlaceholders,
+      }),
+    );
+    vi.mocked(api.updateAiAgent).mockResolvedValue(makeAgent({ system_prompt_override: rawBaselineWithPlaceholders }));
+    const user = userEvent.setup();
+
+    const { container } = render(<AiAgentsSettings canView canManage isSuperAdmin />);
+    await screen.findByText("WhatsApp Reception Agent");
+    await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
+
+    // The unified system-prompt editor is the only <textarea rows="10"> in this component.
+    // Located this way (rather than getByDisplayValue) because multiline textarea values with
+    // literal "[[...]]" placeholder text are not reliably matched by display-value queries.
+    const editor = container.querySelector('textarea[rows="10"]') as HTMLTextAreaElement;
+    expect(editor).not.toBeNull();
+    expect(editor.value).toBe(rawBaselineWithPlaceholders);
+    await user.type(editor, " Always thank the client.");
+    await user.click(screen.getByRole("button", { name: /Guardar prompt del sistema/i }));
+
+    await waitFor(() => expect(api.updateAiAgent).toHaveBeenCalled());
+    const [, payload] = vi.mocked(api.updateAiAgent).mock.calls[0];
+    expect(payload.system_prompt_override).toContain("[[BUSINESS_NAME]]");
+    expect(payload.system_prompt_override).toContain("[[BUSINESS_CONTEXT]]");
+    expect(payload.system_prompt_override).not.toContain("Example Spa");
+    expect(payload.system_prompt_override).toContain("Always thank the client.");
+  });
+
+  it("disables the save button until the editor draft actually differs from the loaded value", async () => {
+    render(<AiAgentsSettings canView canManage isSuperAdmin />);
+    await screen.findByText("WhatsApp Reception Agent");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
+
+    expect(screen.getByRole("button", { name: /Guardar prompt del sistema/i })).toBeDisabled();
+  });
+
+  it("only offers Restaurar prompt base while an override is active", async () => {
+    const user = userEvent.setup();
+    render(<AiAgentsSettings canView canManage isSuperAdmin />);
+    await screen.findByText("WhatsApp Reception Agent");
+    await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
+
+    expect(screen.queryByRole("button", { name: /Restaurar prompt base/i })).not.toBeInTheDocument();
+  });
+
+  it("Restaurar prompt base sends system_prompt_override: null", async () => {
+    vi.mocked(api.getAiAgent).mockResolvedValue(
+      makeAgent({
+        system_prompt_override: "Custom override text.",
+        effective_prompt: "Custom override text.",
+        system_prompt_editor_value: "Custom override text.",
+      }),
+    );
+    vi.mocked(api.updateAiAgent).mockResolvedValue(makeAgent({ system_prompt_override: null }));
+    const user = userEvent.setup();
+
+    render(<AiAgentsSettings canView canManage isSuperAdmin />);
+    await screen.findByText("WhatsApp Reception Agent");
+    await user.click(screen.getByRole("button", { name: /Avanzado \(solo SuperAdmin\)/i }));
+    await user.click(screen.getByRole("button", { name: /Restaurar prompt base/i }));
+
+    await waitFor(() =>
+      expect(api.updateAiAgent).toHaveBeenCalledWith(1, expect.objectContaining({ system_prompt_override: null })),
     );
   });
 

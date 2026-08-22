@@ -744,13 +744,27 @@ export interface AiAgent {
   created_at: string;
   updated_at: string;
   /** Derived/read-only preview -- never persisted on the model itself, only present on
-   * show()/update()/restore() responses (never on the index() list). */
+   * show()/update()/restore() responses (never on the index() list). Business identity/context,
+   * current date/weekday, and timezone are all resolved (real tenant data); CLIENT_PHONE stays
+   * a literal placeholder since there's no live conversation in this admin/preview context. */
   effective_prompt?: string;
-  /** SuperAdmin-only. The platform baseline prompt text, read directly from the backend's
-   * resource file (AiAgentConfigurationService::platformBaseline()) -- never derived/guessed
-   * client-side. Present on show()/update()/restore() responses ONLY when the caller is a
-   * SuperAdmin; absent for a normal tenant user regardless of permissions. */
+  /** SuperAdmin-only. The RAW, UNRESOLVED platform baseline SOURCE (supported placeholders like
+   * [[BUSINESS_NAME]]/[[BUSINESS_CONTEXT]] are left exactly as written) -- independent of
+   * whether an override is active, never derived/guessed client-side, always read from
+   * AiAgentConfigurationService::platformBaseline(). Present on show()/update()/restore()
+   * responses ONLY when the caller is a SuperAdmin; absent for a normal tenant user regardless
+   * of permissions. Deliberately NOT resolved -- see system_prompt_editor_value below for why. */
   platform_baseline_prompt?: string;
+  /** SuperAdmin-only. The exact RAW SOURCE the unified "Prompt del sistema" editor should
+   * initialize with: the active override if one exists, else the raw platform baseline source
+   * -- never includes tenant_instructions. Placeholders like [[BUSINESS_NAME]]/
+   * [[BUSINESS_CONTEXT]] are intentionally left UNRESOLVED here (source-of-truth corrective
+   * pass): this value is exactly what gets sent back as system_prompt_override on save, and if
+   * it were pre-rendered, an unrelated prompt edit would silently freeze today's literal
+   * business data into the override forever, breaking future business-data changes from ever
+   * propagating. Never display this field as a "what will be sent" preview -- use
+   * effective_prompt for that. */
+  system_prompt_editor_value?: string;
 }
 
 export interface AiAgentVersionSummary {

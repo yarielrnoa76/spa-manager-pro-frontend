@@ -45,10 +45,11 @@ const AiAgentsSettings: React.FC<{
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [tenantInstructionsDraft, setTenantInstructionsDraft] = useState("");
-  const [overrideDraft, setOverrideDraft] = useState("");
+  const [systemPromptDraft, setSystemPromptDraft] = useState("");
   const [changeReasonDraft, setChangeReasonDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [savingOverride, setSavingOverride] = useState(false);
+  const [savingSystemPrompt, setSavingSystemPrompt] = useState(false);
+  const [restoringBaseline, setRestoringBaseline] = useState(false);
   const [restoringVersionId, setRestoringVersionId] = useState<number | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -74,7 +75,15 @@ const AiAgentsSettings: React.FC<{
       setAgent(detail);
       setVersions(versionList);
       setTenantInstructionsDraft(detail.tenant_instructions || "");
-      setOverrideDraft(detail.system_prompt_override || "");
+      // Unified editor UX: initialize with the RAW SOURCE that's currently applicable -- the
+      // active override if one exists, else the raw platform baseline source
+      // (system_prompt_editor_value already encodes that precedence server-side and is
+      // deliberately UNRESOLVED -- [[BUSINESS_NAME]]/[[BUSINESS_CONTEXT]] stay as placeholders).
+      // Never initialize from system_prompt_override directly, which would show an empty box
+      // whenever no override exists yet. Never initialize from effective_prompt either -- that
+      // field is pre-rendered, and saving pre-rendered text back as the override would freeze
+      // today's literal business data into it forever (source-of-truth corrective pass).
+      setSystemPromptDraft(detail.system_prompt_editor_value ?? "");
       setChangeReasonDraft("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo cargar el detalle del agente.");
@@ -131,22 +140,50 @@ const AiAgentsSettings: React.FC<{
     }
   };
 
-  const handleSaveOverride = async () => {
+  /**
+   * Saving from the unified editor always persists as system_prompt_override -- per Section 16,
+   * "if SuperAdmin modifies and saves: persist the complete edited prompt as
+   * system_prompt_override", regardless of whether the starting point was the baseline or an
+   * existing override. An empty draft is treated the same as "Restaurar prompt base" (null),
+   * never as a literal empty-string override.
+   */
+  const handleSaveSystemPrompt = async () => {
     if (!agent) return;
-    setSavingOverride(true);
+    setSavingSystemPrompt(true);
     setError(null);
     setSuccessMessage(null);
     try {
       await api.updateAiAgent(agent.id, {
-        system_prompt_override: overrideDraft.trim() === "" ? null : overrideDraft,
+        system_prompt_override: systemPromptDraft.trim() === "" ? null : systemPromptDraft,
         change_reason: changeReasonDraft.trim() === "" ? undefined : changeReasonDraft,
       });
-      setSuccessMessage("Override guardado.");
+      setSuccessMessage("Prompt del sistema guardado.");
       await fetchDetail(agent.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo guardar el override.");
+      setError(err instanceof ApiError ? err.message : "No se pudo guardar el prompt del sistema.");
     } finally {
-      setSavingOverride(false);
+      setSavingSystemPrompt(false);
+    }
+  };
+
+  /** "Restaurar prompt base" (Section 16) -- an ordinary system_prompt_override: null update
+   * through the existing API, never a client-side-only reset of the draft. */
+  const handleRestoreBaseline = async () => {
+    if (!agent) return;
+    setRestoringBaseline(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await api.updateAiAgent(agent.id, {
+        system_prompt_override: null,
+        change_reason: changeReasonDraft.trim() === "" ? undefined : changeReasonDraft,
+      });
+      setSuccessMessage("Prompt base de la plataforma restaurado.");
+      await fetchDetail(agent.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo restaurar el prompt base.");
+    } finally {
+      setRestoringBaseline(false);
     }
   };
 
@@ -167,8 +204,9 @@ const AiAgentsSettings: React.FC<{
   };
 
   const baseline = agent?.platform_baseline_prompt ?? null;
+  const hasOverride = !!agent?.system_prompt_override;
   const instructionsDirty = agent != null && tenantInstructionsDraft !== (agent.tenant_instructions || "");
-  const overrideDirty = agent != null && overrideDraft !== (agent.system_prompt_override || "");
+  const systemPromptDirty = agent != null && systemPromptDraft !== (agent.system_prompt_editor_value ?? "");
 
   return (
     <div className="space-y-4">
@@ -347,40 +385,64 @@ const AiAgentsSettings: React.FC<{
                   {showAdvanced && (
                     <div className="mt-3 space-y-4">
                       <div>
-                        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1">
-                          <Eye size={14} /> Prompt base de la plataforma (solo lectura)
-                        </label>
-                        {baseline !== null ? (
-                          <pre className="whitespace-pre-wrap text-xs bg-gray-50 border rounded-lg p-3 max-h-56 overflow-y-auto font-mono text-gray-700">
-                            {baseline}
-                          </pre>
-                        ) : (
-                          <p className="text-xs text-gray-500 italic">No disponible.</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Override del prompt del sistema (reemplaza el prompt base)
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-sm font-medium text-gray-700">Prompt del sistema</label>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                              hasOverride ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
+                            }`}
+                          >
+                            {hasOverride ? "Override personalizado" : "Prompt base de plataforma"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Este es el prompt completo que aplica actualmente. Edítalo libremente: al guardar se
+                          convierte en un override personalizado para este tenant. Las instrucciones del tenant (arriba)
+                          se agregan aparte y no forman parte de este texto.
+                        </p>
                         <textarea
-                          value={overrideDraft}
-                          onChange={(e) => setOverrideDraft(e.target.value)}
-                          rows={6}
+                          value={systemPromptDraft}
+                          onChange={(e) => setSystemPromptDraft(e.target.value)}
+                          rows={10}
                           className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
-                          placeholder="Vacío = usar el prompt base de la plataforma."
                         />
-                        <div className="flex justify-end mt-2">
+                        <div className="flex items-center justify-end gap-2 mt-2">
+                          {hasOverride && (
+                            <button
+                              type="button"
+                              onClick={handleRestoreBaseline}
+                              disabled={savingSystemPrompt || restoringBaseline}
+                              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                              {restoringBaseline ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                              Restaurar prompt base
+                            </button>
+                          )}
                           <button
-                            onClick={handleSaveOverride}
-                            disabled={savingOverride || !overrideDirty}
+                            onClick={handleSaveSystemPrompt}
+                            disabled={savingSystemPrompt || restoringBaseline || !systemPromptDirty}
                             className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50"
                           >
-                            {savingOverride ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            Guardar override
+                            {savingSystemPrompt ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            Guardar prompt del sistema
                           </button>
                         </div>
                       </div>
+
+                      {hasOverride && (
+                        <div>
+                          <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1">
+                            <Eye size={14} /> Prompt base de la plataforma (solo lectura, para referencia)
+                          </label>
+                          {baseline !== null ? (
+                            <pre className="whitespace-pre-wrap text-xs bg-gray-50 border rounded-lg p-3 max-h-56 overflow-y-auto font-mono text-gray-700">
+                              {baseline}
+                            </pre>
+                          ) : (
+                            <p className="text-xs text-gray-500 italic">No disponible.</p>
+                          )}
+                        </div>
+                      )}
 
                       <div>
                         <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1">
