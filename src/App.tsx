@@ -335,14 +335,13 @@ const App: React.FC = () => {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } z-50 lg:z-auto`}
+        className={`fixed inset-y-0 left-0 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } z-50 lg:z-auto`}
       >
         <div className="h-full flex flex-col p-4">
           <div className="flex items-center justify-between mb-8 px-4">
             <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-2">
-              <Store /> ManPro
+              <Store /> ManagerPro
             </h1>
             <button
               className="lg:hidden p-1 rounded-lg hover:bg-gray-100 text-gray-400"
