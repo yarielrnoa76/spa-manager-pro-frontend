@@ -148,6 +148,60 @@ export interface PaymentTransaction {
  * (una venta puede tener más de un PaymentIntent: intentos fallidos previos + el
  * exitoso). Devuelto por GET /payment-transactions cuando se filtra por sale_id.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified refund view — GET /api/refunds/unified (App\Services\UnifiedRefundService). Read-only,
+// additive aggregation of RefundLog (manual) + PaymentRefund (Stripe). Never a write API: the
+// existing POST /refunds (manual) and POST /payment-refunds (Stripe, via SaleModal) flows are
+// unchanged and unrelated to this type. RefundLog and PaymentRefund remain two independent
+// engines — `origin` is the only reliable discriminator; `source_id` alone can collide between
+// the two (RefundLog.id and PaymentRefund.id are independent auto-increment sequences).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type UnifiedRefundOrigin = "manual" | "stripe";
+
+/** Presentation-only normalization — never persisted, never fed back into either engine. */
+export type UnifiedRefundNormalizedStatus =
+  | "pending"
+  | "completed"
+  | "rejected"
+  | "failed"
+  | "canceled";
+
+export interface UnifiedRefund {
+  origin: UnifiedRefundOrigin;
+  /** Id within its own origin's table — ALWAYS pair with `origin` before using this for any
+   *  action (delete, navigate, etc.); RefundLog.id and PaymentRefund.id are independent
+   *  sequences and can collide numerically. */
+  source_id: number;
+  sale_id: number | null;
+  sale_group_id: number | null;
+  branch_id: number | null;
+  client_name: string | null;
+  refund_amount: number;
+  /** Stripe only: cumulative successful-refund total on the transaction as of this operation.
+   *  Always null for origin='manual' (not reliably reconstructable — RefundLogController mutates
+   *  the sale's amount/quantity directly and never preserves the pre-refund total) and for any
+   *  Stripe refund whose own status isn't 'succeeded' (nothing has actually moved yet). */
+  refunded_total: number | null;
+  /** Stripe only: the transaction's gross amount. Null for origin='manual', same reason as
+   *  refunded_total above. */
+  original_payment_amount: number | null;
+  /** 'total' when this operation's refunded_total reaches original_payment_amount, 'partial'
+   *  otherwise. Null whenever refunded_total is null (manual origin, or a Stripe refund that
+   *  hasn't succeeded yet) — never inferred/guessed. */
+  refund_type: "partial" | "total" | null;
+  normalized_status: UnifiedRefundNormalizedStatus;
+  /** The real, untranslated value from RefundLog.status or PaymentRefund.status — always shown
+   *  alongside normalized_status, never replaced by it. */
+  original_status: string;
+  date: string;
+  requested_by: { id: number; name: string } | null;
+  reason: string | null;
+  payment_transaction_id: number | null;
+  payment_request_id: number | null;
+  stripe_refund_id: string | null;
+}
+
 export interface SaleFinancialSummary {
   gross_paid_amount: number;
   successful_refunded_amount: number;
