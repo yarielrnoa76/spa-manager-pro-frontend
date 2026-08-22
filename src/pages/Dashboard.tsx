@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import RevenueTab from "../components/revenue/RevenueTab";
 import {
   BarChart as ReBarChart,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import StatCard from "../components/StatCard";
+import { SalesListItem } from "../types/payments";
 
 type Branch = { id: number; name: string };
 
@@ -51,9 +52,9 @@ type Product = {
   salesprice: number;
 };
 
-// Ventas (DailyLog) — tipado “suave”
+// Ventas (DailyLog, or a SaleGroup collapsed to one operation) — tipado "blando"
 type Sale = {
-  id: number;
+  id: number | string;
   date: string;
   branch_id?: number | string;
   seller_id?: number | string | null;
@@ -73,6 +74,8 @@ type Sale = {
   is_deleted?: boolean | null;
   isDeleted?: boolean | null;
   status?: string | null;
+  sale_status?: string | null;
+  payment_status?: string | null;
 };
 
 function normalizeArray<T = any>(payload: unknown): T[] {
@@ -116,6 +119,66 @@ function toISODate(dt: Date) {
   return dt.toISOString().slice(0, 10);
 }
 
+/**
+ * Single, centralized rule for every "cantidad de ventas"/"ventas por X" metric on this page:
+ * a SaleGroup (grouped_sale) is ONE sale operation regardless of its product/line count; an
+ * independent DailyLog line is one operation on its own — mirrors
+ * App\Services\SaleOperationsMetricsService on the backend exactly, just applied client-side to
+ * the already-fetched, backend-authoritative `SalesListItem[]` (each item's `type`/`sale_group_id`
+ * are backend facts, not inferred here). Every count-of-sales figure below (the "Cant. Ventas" KPI,
+ * the day/month/seller breakdown charts, the weekly breakdown) is derived from this SAME list, so
+ * none of them can drift into a different formula from one another.
+ */
+function toOperations(items: SalesListItem[]): Sale[] {
+  return items.map((item) => item.type === "group"
+    ? {
+      id: item.id,
+      date: item.date,
+      branch_id: item.branch_id,
+      seller_id: item.seller_id,
+      seller_name: item.seller_name,
+      quantity: item.lines_count,
+      amount: item.total_amount,
+      deleted_at: item.deleted_at,
+      sale_status: item.sale_status,
+      payment_status: item.payment_status,
+    }
+    : item);
+}
+
+/**
+ * The line/product-level counterpart of toOperations() above: every metric that genuinely
+ * measures products/services sold (not sale operations) — quantity totals, per-product
+ * breakdowns, per-line profit — needs one entry per DailyLog line, including every line inside a
+ * SaleGroup. Never used for a "cantidad de ventas" figure; see toOperations() for that.
+ */
+function flattenToLines(items: SalesListItem[]): Sale[] {
+  const lines: Sale[] = [];
+  for (const item of items) {
+    if (item.type === "group") {
+      for (const line of item.lines) {
+        lines.push({
+          id: line.id,
+          date: item.date,
+          branch_id: item.branch_id,
+          seller_id: item.seller_id,
+          seller_name: item.seller_name,
+          product_id: line.product_id,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          amount: line.amount,
+          deleted_at: item.deleted_at,
+          sale_status: item.sale_status,
+          payment_status: item.payment_status,
+        });
+      }
+    } else {
+      lines.push(item);
+    }
+  }
+  return lines;
+}
+
 function toNum(v: any) {
   const n = Number(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
@@ -151,7 +214,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<SalesListItem[]>([]);
   const [loadingCharts, setLoadingCharts] = useState<boolean>(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [refunds, setRefunds] = useState<any[]>([]);
@@ -189,7 +252,7 @@ const Dashboard: React.FC = () => {
         if (cancelled) return;
         setStats(statsRes as DashboardStats);
         setBranches(normalizeArray<Branch>(branchesRes));
-        setSales(normalizeArray<Sale>(salesRes));
+        setSales(normalizeArray<SalesListItem>(salesRes));
         setProducts(normalizeArray<Product>(productsRes));
         setRefunds(normalizeArray<any>(refundsRes));
         setExpenses(normalizeArray<any>(expensesRes));
@@ -301,33 +364,54 @@ const Dashboard: React.FC = () => {
     };
   }, [selectedMonth, selectedYear]);
 
-  const periodSales = useMemo(() => {
-    return (sales || []).filter((s) => {
-      const d = normalizeDate(s.date);
-      if (!d || d < period.startStr || d > period.endStr) return false;
-      if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
-      return !isSaleCancelled(s);
-    });
-  }, [sales, selectedBranch, period.startStr, period.endStr]);
+  // Operations (toOperations() — one entry per SaleGroup + one per independent line): every
+  // "cantidad de ventas"/"ventas por X" metric on this page (the Cant. Ventas KPI, the day/month/
+  // seller breakdown charts, the weekly breakdown) reads from this, never from raw sales/lines.
+  const operations = useMemo(() => toOperations(sales), [sales]);
+  // Lines (flattenToLines() — one entry per product/line, including every line inside a group):
+  // only the genuinely product/line-level metrics (productsSold, productBreakdown, profit) read
+  // from this instead.
+  const lines = useMemo(() => flattenToLines(sales), [sales]);
+
+  const filterByPeriodAndBranch = useCallback((rows: Sale[]) => rows.filter((s) => {
+    const d = normalizeDate(s.date);
+    if (!d || d < period.startStr || d > period.endStr) return false;
+    if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
+    return !isSaleCancelled(s);
+  }), [selectedBranch, period.startStr, period.endStr]);
+
+  const periodSales = useMemo(
+    () => filterByPeriodAndBranch(operations),
+    [operations, filterByPeriodAndBranch],
+  );
+  const periodLines = useMemo(
+    () => filterByPeriodAndBranch(lines),
+    [lines, filterByPeriodAndBranch],
+  );
 
   const kpi = useMemo(() => {
+    // totalSales/salesCount: sale-operations concepts (a group's total_amount counted once) —
+    // read from periodSales (toOperations()). productsSold: a genuine product/line concept — read
+    // from periodLines (flattenToLines()), so a 3-product grouped sale still counts as 3 products
+    // sold, never conflated with the "3 sales" miscount this fix corrects.
     const totalSales = periodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
     const salesCount = periodSales.length;
-    const productsSold = periodSales.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
+    const productsSold = periodLines.reduce((acc, s) => acc + Math.max(1, toNum(s.quantity)), 0);
     return { totalSales, salesCount, productsSold };
-  }, [periodSales]);
+  }, [periodSales, periodLines]);
 
-  // Control-only cancellation summary — same period/branch filters as periodSales,
-  // inverted to select cancelled sales instead of excluding them. Never mixed into
-  // `kpi` above (see docs/architecture/payment-platform.md).
+  // Control-only cancellation summary — same period/branch filters as periodSales, inverted to
+  // select cancelled OPERATIONS instead of excluding them (a cancelled 3-product group is 1
+  // cancelled sale, not 3). Never mixed into `kpi` above (see docs/architecture/
+  // payment-platform.md).
   const cancelledPeriodSales = useMemo(() => {
-    return (sales || []).filter((s) => {
+    return operations.filter((s) => {
       const d = normalizeDate(s.date);
       if (!d || d < period.startStr || d > period.endStr) return false;
       if (selectedBranch !== "all" && String(s.branch_id ?? "") !== String(selectedBranch)) return false;
       return isSaleCancelled(s);
     });
-  }, [sales, selectedBranch, period.startStr, period.endStr]);
+  }, [operations, selectedBranch, period.startStr, period.endStr]);
 
   const cancelledKpi = useMemo(() => {
     const amount = cancelledPeriodSales.reduce((acc, s) => acc + toNum(s.amount), 0);
@@ -341,8 +425,11 @@ const Dashboard: React.FC = () => {
   }, [selectedMonth, selectedYear]);
 
   const profitDisplay = useMemo(() => {
+    // Cost basis is a per-product/line concept — computed over periodLines (flattenToLines()),
+    // never periodSales, so a grouped sale's profit is the sum of its own lines' margins, not a
+    // single blended figure keyed off the header.
     let totalProfit = 0;
-    periodSales.forEach((s) => {
+    periodLines.forEach((s) => {
       let cost = 0;
       if (s.product_id != null) {
         const prod = products.find(p => String(p.id) === String(s.product_id));
@@ -353,7 +440,7 @@ const Dashboard: React.FC = () => {
       totalProfit += (toNum(s.amount) - cost);
     });
     return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-  }, [periodSales, products]);
+  }, [periodLines, products]);
 
   const salesByDayChartData = useMemo(() => {
     if (period.mode !== "month") return [];
@@ -463,13 +550,15 @@ const Dashboard: React.FC = () => {
   }, [periodSales]);
 
   const topProducts = useMemo(() => {
+    // Quantity sold per product is a line-level concept — periodLines (flattenToLines()), never
+    // periodSales, so a group's individual products are each counted under their own name.
     const map = new Map<string, number>();
-    periodSales.forEach((s) => {
+    periodLines.forEach((s) => {
       const name = s?.product?.name || s?.product_name || productNameById.get(String(s.product_id)) || "Producto sin nombre";
       map.set(name, (map.get(name) || 0) + Math.max(1, toNum(s.quantity)));
     });
     return Array.from(map.entries()).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 10);
-  }, [periodSales, productNameById]);
+  }, [periodLines, productNameById]);
 
   const weeklyBreakdown = useMemo(() => {
     if (period.mode !== "month") return [];
@@ -490,7 +579,12 @@ const Dashboard: React.FC = () => {
   }, [period, periodSales]);
 
   const annualSummary = useMemo(() => {
-    const yearSales = sales.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
+    // Revenue/"visits" closing report — a per-line concept (a free-visit service line, or a
+    // product's own revenue), same as productBreakdown/profitDisplay above — reads from the
+    // flattened `lines`, not raw `sales`, preserving the exact historical per-line semantics this
+    // report always had (dollar sums are unaffected either way; only counts like visitsYTD would
+    // have diverged).
+    const yearSales = lines.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
     const yearRefunds = refunds.filter(r => normalizeDate(r.date || r.created_at).startsWith(String(selectedYear)));
     const yearExpenses = expenses.filter(e => normalizeDate(e.date || e.created_at).startsWith(String(selectedYear)));
 
@@ -571,7 +665,7 @@ const Dashboard: React.FC = () => {
     });
 
     return { branches: data, ...totals };
-  }, [sales, branches, selectedYear, refunds, expenses, products]);
+  }, [lines, branches, selectedYear, refunds, expenses, products]);
 
   if (loading) return <div className="p-8 font-semibold">Cargando panel...</div>;
   if (!stats) return <div className="p-8 text-red-600 font-bold">{errorMsg || "Error al cargar datos"}</div>;

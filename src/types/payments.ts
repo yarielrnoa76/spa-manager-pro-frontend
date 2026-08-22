@@ -1,3 +1,5 @@
+import type { DailyLog } from "../types";
+
 export type StripeConnectionType =
   | "express_created_by_platform"
   | "standard_oauth_authorized_by_owner"
@@ -60,7 +62,12 @@ export interface PaymentTimelineEntry {
 
 export interface PaymentRequest {
   id: number;
-  sale_id: number;
+  // Grouped sales (ADR-027): exactly one of sale_id/sale_group_id is ever set, never both.
+  // independent_sales/historical requests: sale_id set, sale_group_id null. grouped_sale
+  // requests: sale_group_id set, sale_id null.
+  sale_id: number | null;
+  sale_group_id: number | null;
+  sale_group?: SaleGroup | null;
   lead_id: number | null;
   appointment_id: number | null;
   amount: number | string;
@@ -84,6 +91,18 @@ export type PaymentTransactionStatus =
 
 export type PaymentRefundStatus = "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
 
+/**
+ * Optional, additive per-line allocation (ADR-027): only ever populated when staff attributed a
+ * grouped-sale partial refund to specific lines. Audit only — the refund's own `amount` is
+ * always the authoritative figure Stripe actually processed.
+ */
+export interface PaymentRefundLine {
+  id: number;
+  payment_refund_id: number;
+  daily_log_id: number;
+  amount: number | string;
+}
+
 export interface PaymentRefund {
   id: number;
   payment_transaction_id: number;
@@ -96,11 +115,14 @@ export interface PaymentRefund {
   requested_by: number | null;
   processed_at: string | null;
   created_at: string;
+  lines?: PaymentRefundLine[];
 }
 
 export interface PaymentTransaction {
   id: number;
-  sale_id: number;
+  // Same exactly-one-of rule as PaymentRequest above (ADR-027).
+  sale_id: number | null;
+  sale_group_id: number | null;
   payment_request_id: number;
   stripe_payment_intent_id: string | null;
   stripe_charge_id: string | null;
@@ -133,4 +155,109 @@ export interface SaleFinancialSummary {
   net_collected_amount: number;
   remaining_refundable_amount: number;
   transaction_count: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Grouped sales (ADR-027) — TenantSetting.sales_mode = 'grouped_sale'. Purely additive: an
+// independent_sales sale never has a SaleGroup and never appears in these types.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One line of a grouped sale — structurally a DailyLog row sharing one sale_group_id. */
+export interface SaleGroupLine {
+  id: number;
+  sale_group_id: number;
+  product_id: number | null;
+  service_rendered: string;
+  quantity: number;
+  unit_price: number | string;
+  discount_amount: number | string;
+  tax_amount: number | string;
+  amount: number | string;
+  professional_id: number | null;
+  professional?: { id: number; fname: string; lname: string; title?: string } | null;
+  sale_status?: string;
+  payment_status?: string;
+}
+
+/** GET /api/sale-groups/{id} — the header, with every line it owns. */
+export interface SaleGroup {
+  id: number;
+  tenant_id: number;
+  branch_id: number;
+  lead_id: number | null;
+  seller_id: number | null;
+  /** Mirrors DailyLog.seller_name — present when the `seller` relation was eager-loaded
+   *  (always true for Sales list items; may be absent on other endpoints). */
+  seller_name?: string | null;
+  client_name: string;
+  date: string;
+  payment_method: string;
+  currency: string;
+  subtotal_amount: number | string;
+  discount_amount: number | string;
+  tax_amount: number | string;
+  total_amount: number | string;
+  sale_status: string;
+  payment_status: string;
+  payment_provider: string | null;
+  paid_at: string | null;
+  cancelled_at: string | null;
+  notes?: string | null;
+  created_at: string;
+  /** Present (non-null) when the group was cancelled via SaleGroupController::cancel() (soft
+   *  delete) — only populated by endpoints that explicitly request trashed rows. */
+  deleted_at?: string | null;
+  lines: SaleGroupLine[];
+}
+
+/**
+ * GET /api/sales's `data` items (Sales.tsx list): each represents ONE sale operation, never one
+ * per product/line. A grouped sale (sales_mode = grouped_sale) is a `SalesListGroupItem` — the
+ * SaleGroup header itself, with `lines` nested for the UI's expand toggle; every field a group
+ * needs (id, date, client_name, total_amount, sale_status/payment_status, ...) already exists on
+ * `SaleGroup` above. An independent/historical sale (no sale_group_id) is a
+ * `SalesListIndependentItem` — the exact same `DailyLog` shape the list has always rendered,
+ * completely unchanged. Discriminate on `type`, never on ad-hoc field presence.
+ */
+export interface SalesListGroupItem extends SaleGroup {
+  type: "group";
+  /** Always equal to `id` — included for symmetry with PaymentRequest/PaymentTransaction's own
+   *  `sale_group_id` field, so the same key name works across all three response shapes. */
+  sale_group_id: number;
+  lines_count: number;
+}
+
+export interface SalesListIndependentItem extends DailyLog {
+  type: "independent";
+}
+
+export type SalesListItem = SalesListGroupItem | SalesListIndependentItem;
+
+/** One cart item as sent in POST /api/sales's `items` array. */
+export interface SaleCartItem {
+  product_id?: number | string | null;
+  quantity: number;
+  service_rendered: string;
+  unit_price: number;
+  amount?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  professional_id?: number | string | null;
+}
+
+/**
+ * POST /api/sales's response is discriminated by the tenant's OWN persisted sales_mode, never by
+ * what the client sent: `items` array + grouped_sale -> {type:'group'}; `items` array +
+ * independent_sales -> {type:'batch'} (N independent sales, same as today's per-item loop, just
+ * one round-trip); legacy single-item payload -> the bare DailyLog, unchanged from before this
+ * feature existed.
+ */
+export interface CreateSaleGroupResponse {
+  type: 'group';
+  sale_group: SaleGroup;
+}
+
+export interface CreateSaleBatchResponse {
+  type: 'batch';
+  sales: unknown[];
 }

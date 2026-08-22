@@ -9,7 +9,26 @@ import {
   Appointment,
   Tenant,
   ProfessionalPerson,
+  CreateTenantPayload,
+  UpdateTenantProfilePayload,
+  UpdateTenantSalesSettingsPayload,
+  UpdateTenantPaymentSettingsPayload,
+  N8nConnection,
+  CreateN8nConnectionPayload,
+  UpdateN8nConnectionPayload,
+  N8nConnectionTestResult,
+  WhatsappTemplate,
+  WhatsappTemplateListResponse,
+  WhatsappTemplateSyncResult,
+  UpdateWhatsappTemplatePayload,
+  ChatwootConnectionHealth,
+  ChatwootTokenRotationResult,
+  AiAgent,
+  AiAgentVersionSummary,
+  UpdateAiAgentPayload,
+  RestoreAiAgentVersionPayload,
 } from "../types";
+import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
 export interface ActivityLog {
   id: number;
@@ -51,14 +70,14 @@ if (!API_URL) {
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-type ApiErrorPayload = {
+export type ApiErrorPayload = {
   ok?: boolean;
   code?: string;
   message?: string;
   errors?: Record<string, string[]>;
 };
 
-class ApiError extends Error {
+export class ApiError extends Error {
   code?: string;
   status?: number;
   errors?: Record<string, string[]>;
@@ -92,10 +111,33 @@ function safeJsonParse(text: string): ApiErrorPayload {
 
 async function request<T>(
   path: string,
-  options: { method?: HttpMethod; body?: unknown; auth?: boolean } = {},
+  options: {
+    method?: HttpMethod;
+    body?: unknown;
+    auth?: boolean;
+    /**
+     * Opts a single request out of the X-Tenant-ID header — for global operations that are
+     * authenticated but not scoped to any tenant context (e.g. POST /api/tenants, which creates
+     * a brand-new tenant and must never carry an unrelated, already-selected tenant's id).
+     * Defaults to false: every other call keeps today's behavior exactly. Never affects
+     * Authorization or any other header, and never changes how currentTenantId is resolved —
+     * it only suppresses attaching it to this one request.
+     */
+    skipTenantHeader?: boolean;
+    /**
+     * Sends X-Tenant-ID as this explicit value for this ONE request instead of reading
+     * localStorage's current_tenant_id — for SuperAdmin actions on a specific tenant chosen
+     * from a list (e.g. editing that tenant's business profile) that must not depend on, or
+     * mutate, the globally-selected tenant context. Never writes to localStorage, never
+     * changes what any OTHER request sends, and never affects Authorization. Ignored when
+     * skipTenantHeader is true.
+     */
+    tenantIdOverride?: number | string;
+  } = {},
 ): Promise<T> {
   const method = options.method ?? "GET";
   const auth = options.auth ?? true;
+  const skipTenantHeader = options.skipTenantHeader ?? false;
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET") headers["Content-Type"] = "application/json";
@@ -104,10 +146,15 @@ async function request<T>(
     const token = localStorage.getItem("auth_token");
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    // === MULTI-TENANT: Add X-Tenant-ID header ===
-    const tenantId = localStorage.getItem("current_tenant_id");
-    if (tenantId) {
-      headers["X-Tenant-ID"] = tenantId;
+    // === MULTI-TENANT: Add X-Tenant-ID header (unless this request opted out) ===
+    if (!skipTenantHeader) {
+      const tenantId =
+        options.tenantIdOverride !== undefined
+          ? String(options.tenantIdOverride)
+          : localStorage.getItem("current_tenant_id");
+      if (tenantId) {
+        headers["X-Tenant-ID"] = tenantId;
+      }
     }
   }
 
@@ -243,12 +290,36 @@ export const api = {
     return request<Tenant[]>(`/api/tenants`, { method: "GET", auth: true });
   },
 
-  async createTenant(payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants`, { method: "POST", body: payload, auth: true });
+  /**
+   * POST /api/tenants — global SuperAdmin operation (creates a brand-new tenant; there is no
+   * "current tenant" context to be scoped to). skipTenantHeader:true is required here — see
+   * request()'s doc-comment. Does NOT auto-select the newly-created tenant as current;
+   * callers decide that explicitly (see CreateTenantModal's post-creation "Select and configure
+   * Tenant" prompt in Tenants.tsx).
+   */
+  async createTenant(payload: CreateTenantPayload) {
+    return request<Tenant>(`/api/tenants`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
   },
 
+  /**
+   * PUT /api/tenants/{tenant} is wrapped in the 'tenant' middleware (routes/api.php), which
+   * requires SOME valid X-Tenant-ID header for a SuperAdmin request — it does not have to
+   * match {tenant} (the route param may target any tenant), but it must be present. Always
+   * overriding it to the tenant actually being edited means this call never depends on, or is
+   * blocked by, whatever tenant (if any) happens to be globally selected in localStorage.
+   */
   async updateTenant(tenantId: number, payload: Partial<Tenant>) {
-    return request<Tenant>(`/api/tenants/${tenantId}`, { method: "PUT", body: payload, auth: true });
+    return request<Tenant>(`/api/tenants/${tenantId}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
   async deleteTenant(tenantId: number, confirmName: string, confirmPhrase: string) {
@@ -267,6 +338,131 @@ export const api = {
     });
     this.setCurrentTenantId(tenantId);
     return data;
+  },
+
+  /**
+   * --- n8n Connections (SuperAdmin only, global — Configuration -> Integrations -> n8n) ---
+   * Platform-level resource, not tied to any tenant: skipTenantHeader is required on every
+   * call here for the same reason as createTenant/listTenants — these routes sit outside the
+   * 'tenant' middleware entirely (routes/api.php), so an unrelated, already-selected
+   * X-Tenant-ID would be meaningless noise, never required or checked.
+   */
+  async listN8nConnections() {
+    return request<N8nConnection[]>(`/api/n8n-connections`, {
+      method: "GET",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async createN8nConnection(payload: CreateN8nConnectionPayload) {
+    return request<N8nConnection>(`/api/n8n-connections`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async updateN8nConnection(id: number, payload: UpdateN8nConnectionPayload) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async deleteN8nConnection(id: number) {
+    return request<{ message: string }>(`/api/n8n-connections/${id}`, {
+      method: "DELETE",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async activateN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/activate`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async deactivateN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/deactivate`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  async setDefaultN8nConnection(id: number) {
+    return request<N8nConnection>(`/api/n8n-connections/${id}/set-default`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  /** Tests the already-saved connection using its own stored key. */
+  async testN8nConnection(id: number) {
+    return request<N8nConnectionTestResult>(`/api/n8n-connections/${id}/test`, {
+      method: "POST",
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  /** Stateless draft test (create/edit form, before saving) — never persists anything. */
+  async testN8nConnectionDraft(baseUrl: string, apiKey: string) {
+    return request<N8nConnectionTestResult>(`/api/n8n-connections/test`, {
+      method: "POST",
+      body: { base_url: baseUrl, api_key: apiKey },
+      auth: true,
+      skipTenantHeader: true,
+    });
+  },
+
+  /**
+   * --- Tenant self-service profile ---
+   * Default behavior (tenantId omitted): reads/writes whatever tenant is currently selected
+   * (X-Tenant-ID from localStorage), exactly as before Fase 3D.
+   *
+   * Passing tenantId lets a SuperAdmin act on a SPECIFIC tenant chosen from the tenant list
+   * (e.g. TenantFormModal editing a tenant that may not be the globally-selected one) without
+   * switching the active tenant context — request()'s tenantIdOverride sends X-Tenant-ID for
+   * this call only and never touches localStorage/current_tenant_id.
+   */
+  async getTenantProfile(tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, { method: "GET", auth: true, tenantIdOverride: tenantId });
+  },
+
+  async updateTenantProfile(payload: UpdateTenantProfilePayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/profile`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
+  },
+
+  async updateTenantSalesSettings(payload: UpdateTenantSalesSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/sales-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
+  },
+
+  async updateTenantPaymentSettings(payload: UpdateTenantPaymentSettingsPayload, tenantId?: number) {
+    return request<Tenant>(`/api/tenant/payment-settings`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+      tenantIdOverride: tenantId,
+    });
   },
 
   async listUsers(opts?: { include_global?: boolean }) {
@@ -401,7 +597,7 @@ export const api = {
     const q = params.toString() ? `?${params.toString()}` : "";
 
     return request<{
-      data: DailyLog[];
+      data: SalesListItem[];
       current_page: number;
       last_page: number;
       per_page: number;
@@ -410,6 +606,7 @@ export const api = {
       to: number | null;
       total_amount: number;
       valid_count: number;
+      products_sold_count: number;
       cancelled_count: number;
       cancelled_amount: number;
     }>(`/api/sales${q}`, {
@@ -486,7 +683,11 @@ export const api = {
   },
 
   async createSale(payload: unknown) {
-    return request(`/api/sales`, { method: "POST", body: payload, auth: true });
+    return request<DailyLog | CreateSaleGroupResponse | CreateSaleBatchResponse>(`/api/sales`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
   },
   async cancelSale(saleId: string | number) {
     return request(`/api/sales/${encodeURIComponent(String(saleId))}/cancel`, {
@@ -504,6 +705,21 @@ export const api = {
     return request<any>(`/api/sales/${encodeURIComponent(String(saleId))}`, {
       method: "PUT",
       body: payload,
+      auth: true,
+    });
+  },
+
+  // Grouped sales (ADR-027) — header/lines detail + group-level cancel. Creation always goes
+  // through createSale() above (an `items` array); there is no separate create endpoint here.
+  async getSaleGroup(saleGroupId: string | number) {
+    return request<SaleGroup>(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+  async cancelSaleGroup(saleGroupId: string | number) {
+    return request(`/api/sale-groups/${encodeURIComponent(String(saleGroupId))}/cancel`, {
+      method: "POST",
       auth: true,
     });
   },
@@ -938,7 +1154,28 @@ export const api = {
     return request<any>(`/api/communications/conversations/${id}/messages?page=${page}&_t=${t}`, { method: "GET", auth: true });
   },
 
-  async sendConversationMessage(id: number, body: string, opts?: { force_template?: boolean; template_name?: string; template_language?: string }) {
+  /**
+   * body is optional because a registered-template send (whatsapp_template_id) never needs
+   * one -- the backend server-renders the actual message from the synchronized template and
+   * ignores whatever, if anything, is sent here for that path. For a normal free-text send,
+   * body is required exactly as before.
+   *
+   * template_name/template_language are still accepted by the backend for the legacy raw path
+   * (kept for backward compatibility, see ConversationController::storeMessage), but the
+   * preferred contract going forward is whatsapp_template_id + template_params -- prefer that
+   * for any new call site.
+   */
+  async sendConversationMessage(
+    id: number,
+    body?: string,
+    opts?: {
+      force_template?: boolean;
+      template_name?: string;
+      template_language?: string;
+      template_params?: string[];
+      whatsapp_template_id?: number;
+    },
+  ) {
     return request<any>(`/api/communications/conversations/${id}/messages`, { method: "POST", body: { body, ...opts }, auth: true });
   },
 
@@ -1042,6 +1279,98 @@ export const api = {
     }>(`/api/chatwoot/accounts/${accountId}/inboxes/create`, {
       method: "POST",
       body: { base_url: baseUrl, api_token: apiToken, name },
+      auth: true,
+    });
+  },
+
+  // --- WhatsApp Templates (tenant-scoped registry synced from Chatwoot) ---
+  async listWhatsappTemplates(params: {
+    enabled?: boolean;
+    available?: boolean;
+    category?: string;
+    language?: string;
+    allowed_when_window_closed?: boolean;
+  } = {}) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) searchParams.append(key, String(value));
+    });
+    const qs = searchParams.toString();
+    return request<WhatsappTemplateListResponse>(`/api/communications/whatsapp-templates${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
+  async syncWhatsappTemplates() {
+    return request<WhatsappTemplateSyncResult>(`/api/communications/whatsapp-templates/sync`, {
+      method: "POST",
+      auth: true,
+    });
+  },
+
+  /** Only enabled/allowed_when_window_closed/is_default_closed_window are accepted by the
+   * backend -- Meta-owned fields (name/language/category/status/components/...) are read-only
+   * and silently ignored if sent here. */
+  async updateWhatsappTemplate(id: number, payload: UpdateWhatsappTemplatePayload) {
+    return request<WhatsappTemplate>(`/api/communications/whatsapp-templates/${id}`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  // --- AI Agents (Close-out phase, Objective B) — tenant-scoped prompt configuration.
+  // SPA Manager Pro is the source of truth; n8n only consumes the compiled effective_prompt at
+  // runtime. system_prompt_override is rejected with 403 server-side unless the caller is a
+  // SuperAdmin -- the UI should never send that key for a non-SuperAdmin. ---
+  async listAiAgents() {
+    return request<AiAgent[]>(`/api/ai-agents`, { method: "GET", auth: true });
+  },
+
+  async getAiAgent(id: number) {
+    return request<AiAgent>(`/api/ai-agents/${id}`, { method: "GET", auth: true });
+  },
+
+  async updateAiAgent(id: number, payload: UpdateAiAgentPayload) {
+    return request<AiAgent>(`/api/ai-agents/${id}`, {
+      method: "PUT",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  async listAiAgentVersions(id: number) {
+    return request<AiAgentVersionSummary[]>(`/api/ai-agents/${id}/versions`, { method: "GET", auth: true });
+  },
+
+  async restoreAiAgentVersion(agentId: number, versionId: number, payload: RestoreAiAgentVersionPayload = {}) {
+    return request<AiAgent>(`/api/ai-agents/${agentId}/versions/${versionId}/restore`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
+  },
+
+  // --- Chatwoot connection health + safe token rotation (SuperAdmin only) ---
+  // Operates on the tenant's OWN already-persisted Chatwoot configuration (base_url/account_id/
+  // inbox_id, edited via the Tenant form) -- distinct from chatwootTestConnection() above, which
+  // tests arbitrary body-supplied credentials for the setup wizard before anything is saved.
+  async testTenantChatwootConnection(tenantId: number) {
+    return request<ChatwootConnectionHealth>(`/api/tenants/${tenantId}/chatwoot/test`, {
+      method: "POST",
+      auth: true,
+    });
+  },
+
+  /** apiToken is the CANDIDATE token only -- never the current one. The backend validates it
+   * against the tenant's existing base_url/account/inbox before persisting anything; the
+   * current token is left untouched if validation fails. Never log or persist apiToken
+   * client-side beyond the single request. */
+  async rotateChatwootToken(tenantId: number, apiToken: string) {
+    return request<ChatwootTokenRotationResult>(`/api/tenants/${tenantId}/chatwoot/rotate-token`, {
+      method: "POST",
+      body: { api_token: apiToken },
       auth: true,
     });
   },

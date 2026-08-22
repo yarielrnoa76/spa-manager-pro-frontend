@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { X, UserPlus } from "lucide-react";
 import { api } from "../services/api";
 import LeadModal from "./LeadModal";
+import { TenantSalesMode } from "../types";
 
 type CreateSaleModalProps = {
     isOpen: boolean;
@@ -89,6 +90,10 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Purely informational for this component: only decides which payload shape to send
+    // (single grouped request vs. today's per-item loop). The backend independently reads the
+    // tenant's own persisted sales_mode and is the real authority regardless of this value.
+    const [salesMode, setSalesMode] = useState<TenantSalesMode | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -118,12 +123,14 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             api.listPaymentMethods(),
             canSelectBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
             api.listProfessionals().catch(() => []),
-        ]).then(([b, p, l, pm, u, prof]) => {
+            api.getTenantProfile().catch(() => null),
+        ]).then(([b, p, l, pm, u, prof, tenant]) => {
             setBranches(Array.isArray(b) ? b : []);
             setProducts(Array.isArray(p) ? p : []);
             setLeads(Array.isArray(l) ? l : []);
             setUsers(Array.isArray(u) ? u : []);
             setProfessionals(Array.isArray(prof) ? prof : []);
+            setSalesMode(tenant?.settings?.sales_mode ?? null);
 
             const pms = Array.isArray(pm) ? pm : [];
             setPaymentMethods(pms);
@@ -273,22 +280,44 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         setLoading(true);
         setError(null);
         try {
-            for (const item of cart) {
+            const sharedFields = {
+                date: form.date,
+                branch_id: form.branch_id,
+                lead_id: form.lead_id,
+                client_name: form.client_name,
+                payment_method: form.payment_method,
+                seller_id: form.seller_id,
+                notes: form.notes,
+            };
+
+            if (salesMode === "grouped_sale") {
+                // Single request with every cart item — the backend still independently
+                // verifies the tenant is actually grouped_sale before treating this as a group.
                 await api.createSale({
-                    date: form.date,
-                    branch_id: form.branch_id,
-                    lead_id: form.lead_id,
-                    client_name: form.client_name,
-                    payment_method: form.payment_method,
-                    seller_id: form.seller_id,
-                    notes: form.notes,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    amount: item.amount,
-                    product_id: item.product_id || null,
-                    service_rendered: item.service_rendered,
-                    professional_id: item.professional_id || null,
+                    ...sharedFields,
+                    items: cart.map(item => ({
+                        product_id: item.product_id || null,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        amount: item.amount,
+                        service_rendered: item.service_rendered,
+                        professional_id: item.professional_id || null,
+                    })),
                 });
+            } else {
+                // independent_sales (or sales_mode not yet known) — today's unchanged flow:
+                // one independent request per cart item.
+                for (const item of cart) {
+                    await api.createSale({
+                        ...sharedFields,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        amount: item.amount,
+                        product_id: item.product_id || null,
+                        service_rendered: item.service_rendered,
+                        professional_id: item.professional_id || null,
+                    });
+                }
             }
 
             onSuccess();

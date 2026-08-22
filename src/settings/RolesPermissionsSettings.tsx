@@ -3,12 +3,14 @@ import { api } from "../services/api";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 type Permission = { id: number; name: string };
-type Role = { 
-  id: number; 
-  name: string; 
-  view_scope?: string; 
+type Role = {
+  id: number;
+  name: string;
+  tenant_id: number | null;
+  is_system_role?: boolean;
+  view_scope?: string;
   resource_scopes?: Record<string, string>;
-  permissions?: Permission[] 
+  permissions?: Permission[]
 };
 
 export default function RolesPermissionsSettings({ canManage = true }: { canManage?: boolean }) {
@@ -19,9 +21,17 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The global platform role (tenant_id = null, e.g. `superadmin`) authorizes via a bypass in
+  // User::hasPermission() — it is never assigned permissions and is immutable from this
+  // screen (RoleController rejects update/destroy/syncPermissions on it with 403 regardless
+  // of actor). It must never appear in the editable-role selector; it is rendered separately,
+  // read-only, below.
+  const manageableRoles = useMemo(() => roles.filter((r) => r.tenant_id !== null), [roles]);
+  const globalRoles = useMemo(() => roles.filter((r) => r.tenant_id === null), [roles]);
+
   const selectedRole = useMemo(
-    () => roles.find((r) => String(r.id) === String(selectedRoleId)) ?? null,
-    [roles, selectedRoleId],
+    () => manageableRoles.find((r) => String(r.id) === String(selectedRoleId)) ?? null,
+    [manageableRoles, selectedRoleId],
   );
 
   const selectedPermIds = useMemo(() => {
@@ -201,7 +211,7 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
             onChange={(e) => setSelectedRoleId(e.target.value)}
           >
             <option value="">Selecciona un rol...</option>
-            {roles.map((r) => (
+            {manageableRoles.map((r) => (
               <option key={r.id} value={String(r.id)}>
                 {r.name}
               </option>
@@ -242,6 +252,28 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
           </button>
         </div>
       </div>
+
+      {globalRoles.length > 0 && (
+        <div className="space-y-2">
+          {globalRoles.map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 p-4 rounded-xl"
+            >
+              <div>
+                <div className="text-xs font-bold text-amber-700 uppercase tracking-wide">
+                  Rol de plataforma — acceso completo — solo lectura
+                </div>
+                <div className="text-sm text-gray-700 mt-0.5">
+                  <span className="font-semibold">{r.name}</span> — este rol autoriza mediante un
+                  bypass interno (nunca se le asignan permisos individuales) y no puede editarse,
+                  eliminarse ni sincronizar permisos desde esta pantalla.
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!selectedRole ? (
         <div className="text-sm text-gray-500">

@@ -5,10 +5,12 @@ import RolesPermissionsSettings from "../settings/RolesPermissionsSettings";
 import ProfessionalsSettings from "../settings/ProfessionalsSettings";
 import NotificationsSettings from "../settings/NotificationsSettings";
 import PaymentsSettings from "../settings/PaymentsSettings";
+import IntegrationsSettings from "../settings/IntegrationsSettings";
+import AiAgentsSettings from "../settings/AiAgentsSettings";
 import Tenants from "./Tenants";
 import { UserData } from "../App";
 
-type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments";
+type TabKey = "branches" | "users" | "rbac" | "professionals" | "tenants" | "notifications" | "payments" | "integrations" | "ai-agents";
 
 const TabButton = ({
   active,
@@ -59,6 +61,21 @@ const SettingsPage: React.FC<{
   const canSeeProfessionals = tenantContextOk && (canManageSettings || hasPerm("view_professionals") || hasPerm("create_professional") || hasPerm("edit_professional") || hasPerm("delete_professional"));
   const canSeePayments = tenantContextOk && (!!isSuperAdmin || user?.role?.name === "admin");
   const canSeeNotifications = tenantContextOk && !!isSuperAdmin;
+  // WhatsApp Templates (backend Phase 1/1B) is tenant-scoped and permission-gated, unlike n8n
+  // and the Chatwoot connection health/rotation controls below it on the same tab (both
+  // SuperAdmin-only by architecture decision — see backend N8nConnectionPolicy / TenantPolicy).
+  const canManageWhatsappTemplates = tenantContextOk && hasPerm("manage_whatsapp_templates");
+  const canViewWhatsappTemplates = tenantContextOk && (hasPerm("view_whatsapp_templates") || canManageWhatsappTemplates);
+  // A SuperAdmin always reaches this tab (n8n is global, not tenant-owned — same reasoning as
+  // "tenants" above). A regular tenant user reaches it only once they have a WhatsApp
+  // Templates permission; the tab itself decides internally which of its sections to render.
+  const canSeeIntegrations = !!isSuperAdmin || canViewWhatsappTemplates;
+  // Agentes IA (Close-out phase) — deliberately its OWN tab, not nested inside Integrations:
+  // it configures SPA Manager Pro's own prompt data, not an n8n/Chatwoot connection. Tenant-
+  // scoped and permission-gated like WhatsApp Templates above.
+  const canManageAiAgents = tenantContextOk && hasPerm("manage_ai_agents");
+  const canViewAiAgents = tenantContextOk && (hasPerm("view_ai_agents") || canManageAiAgents);
+  const canSeeAiAgents = isSuperAdmin ? tenantContextOk : canViewAiAgents;
 
   const [tab, setTab] = useState<TabKey>(() => {
     if (isSuperAdmin) return "tenants";
@@ -75,6 +92,8 @@ const SettingsPage: React.FC<{
     if (tab === "professionals") return "Profesionales";
     if (tab === "tenants") return "Tenants";
     if (tab === "payments") return "Pagos (Stripe)";
+    if (tab === "integrations") return "Integraciones";
+    if (tab === "ai-agents") return "Agentes IA";
     return "Roles y permisos";
   }, [tab]);
 
@@ -109,6 +128,16 @@ const SettingsPage: React.FC<{
         {canSeeNotifications && (
           <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
             Notificaciones
+          </TabButton>
+        )}
+        {canSeeIntegrations && (
+          <TabButton active={tab === "integrations"} onClick={() => setTab("integrations")}>
+            Integraciones
+          </TabButton>
+        )}
+        {canSeeAiAgents && (
+          <TabButton active={tab === "ai-agents"} onClick={() => setTab("ai-agents")}>
+            Agentes IA
           </TabButton>
         )}
         {canSeeBranches && (
@@ -170,7 +199,23 @@ const SettingsPage: React.FC<{
         )}
         {tab === "tenants" && isSuperAdmin && <Tenants />}
         {tab === "notifications" && canSeeNotifications && <NotificationsSettings isSuperAdmin={isSuperAdmin} />}
+        {tab === "integrations" && canSeeIntegrations && (
+          <IntegrationsSettings
+            isSuperAdmin={isSuperAdmin}
+            currentTenantId={currentTenantId}
+            canViewWhatsappTemplates={canViewWhatsappTemplates}
+            canManageWhatsappTemplates={canManageWhatsappTemplates}
+          />
+        )}
         {tab === "payments" && canSeePayments && <PaymentsSettings isSuperAdmin={isSuperAdmin} user={user} />}
+        {tab === "ai-agents" && canSeeAiAgents && (
+          <AiAgentsSettings
+            isSuperAdmin={isSuperAdmin}
+            canView={canViewAiAgents}
+            canManage={canManageAiAgents}
+            currentTenantId={currentTenantId}
+          />
+        )}
       </div>
     </div>
   );
