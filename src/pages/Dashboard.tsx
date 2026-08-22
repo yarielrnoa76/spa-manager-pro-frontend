@@ -278,12 +278,14 @@ const Dashboard: React.FC = () => {
     }
   }, [user]);
 
-  // Revenue Tab — lazy fetch: fires only when the tab is active.
-  // Fetches period-aware dashboard stats (with from/to) + payment requests.
-  // Date range is computed here directly (same logic as the period useMemo below)
-  // to avoid a temporal dead zone reference inside the useEffect.
+  // Period-aware dashboard stats (with from/to) — NOT gated to the Revenue tab: 'profit' (backend-
+  // computed, App\Services\ProfitCalculationService) feeds the "Ganancia Est." card on the
+  // Resumen de Actividad tab too, so this has to stay in sync with the selected month/year/branch
+  // regardless of which tab is active. Backend is the single source of truth for Profit — this
+  // component no longer computes its own (see the removed profitDisplay useMemo this replaces).
+  // Date range is computed here directly (same logic as the period useMemo below) to avoid a
+  // temporal dead zone reference inside the effect.
   useEffect(() => {
-    if (activeTab !== "revenue") return;
     let cancelled = false;
 
     const now = new Date();
@@ -304,15 +306,35 @@ const Dashboard: React.FC = () => {
       toStr = toISODate(end);
     }
 
-    const fetchRevenue = async () => {
+    const fetchPeriodStats = async () => {
       setRevenueLoading(true);
       try {
-        const [statsRes, prRes] = await Promise.all([
-          api.getDashboardStats(selectedBranch, { from: fromStr, to: toStr }),
-          api.get<any>(`/api/payment-requests?per_page=50${selectedBranch !== "all" ? `&branch_id=${selectedBranch}` : ""}`),
-        ]);
+        const statsRes = await api.getDashboardStats(selectedBranch, { from: fromStr, to: toStr });
         if (cancelled) return;
         setRevenueStats(statsRes as DashboardStats);
+      } catch {
+        // Silently degrade — Revenue tab / Ganancia Est. show zeros, not an error screen
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    };
+
+    fetchPeriodStats();
+    return () => { cancelled = true; };
+  }, [selectedBranch, selectedMonth, selectedYear]);
+
+  // Payment Requests for the Financial Timeline — lazy: only actually needed once the Revenue
+  // tab is opened, and (unlike profit) has no consumer outside that tab. Independent of
+  // selectedMonth/selectedYear: the endpoint itself has no date filter, so re-fetching on period
+  // change would have been wasted work even before this split.
+  useEffect(() => {
+    if (activeTab !== "revenue") return;
+    let cancelled = false;
+
+    const fetchPaymentRequests = async () => {
+      try {
+        const prRes = await api.get<any>(`/api/payment-requests?per_page=50${selectedBranch !== "all" ? `&branch_id=${selectedBranch}` : ""}`);
+        if (cancelled) return;
         const prList = Array.isArray(prRes)
           ? prRes
           : Array.isArray((prRes as any)?.data)
@@ -320,15 +342,13 @@ const Dashboard: React.FC = () => {
           : [];
         setPaymentRequests(prList);
       } catch {
-        // Silently degrade — revenue tab shows zeros, not an error screen
-      } finally {
-        if (!cancelled) setRevenueLoading(false);
+        // Silently degrade — Financial Timeline shows "no data", not an error screen
       }
     };
 
-    fetchRevenue();
+    fetchPaymentRequests();
     return () => { cancelled = true; };
-  }, [activeTab, selectedBranch, selectedMonth, selectedYear]);
+  }, [activeTab, selectedBranch]);
 
   const userBranchId = user?.branch_id || user?.branch?.id;
   const isBranchRestricted = userBranchId && !user?.is_super_admin && !user?.permissions?.includes("view_all_sales");
@@ -424,23 +444,14 @@ const Dashboard: React.FC = () => {
     return `${m} ${selectedYear}`;
   }, [selectedMonth, selectedYear]);
 
+  // Profit is backend-authoritative (App\Services\ProfitCalculationService via
+  // DashboardController::getStats()'s 'profit' field, fetched into `revenueStats` above) — this
+  // component does not recompute it. `revenueStats` already tracks the selected
+  // branch/month/year period via the effect above.
   const profitDisplay = useMemo(() => {
-    // Cost basis is a per-product/line concept — computed over periodLines (flattenToLines()),
-    // never periodSales, so a grouped sale's profit is the sum of its own lines' margins, not a
-    // single blended figure keyed off the header.
-    let totalProfit = 0;
-    periodLines.forEach((s) => {
-      let cost = 0;
-      if (s.product_id != null) {
-        const prod = products.find(p => String(p.id) === String(s.product_id));
-        if (prod && (prod as any).cost_price) {
-          cost = Number((prod as any).cost_price) * Math.max(1, toNum(s.quantity));
-        }
-      }
-      totalProfit += (toNum(s.amount) - cost);
-    });
-    return `$${totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
-  }, [periodLines, products]);
+    if (!revenueStats || typeof revenueStats.profit !== "number") return "—";
+    return `$${revenueStats.profit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  }, [revenueStats]);
 
   const salesByDayChartData = useMemo(() => {
     if (period.mode !== "month") return [];
@@ -580,10 +591,11 @@ const Dashboard: React.FC = () => {
 
   const annualSummary = useMemo(() => {
     // Revenue/"visits" closing report — a per-line concept (a free-visit service line, or a
-    // product's own revenue), same as productBreakdown/profitDisplay above — reads from the
-    // flattened `lines`, not raw `sales`, preserving the exact historical per-line semantics this
-    // report always had (dollar sums are unaffected either way; only counts like visitsYTD would
-    // have diverged).
+    // product's own revenue), same as productBreakdown above — reads from the flattened `lines`,
+    // not raw `sales`, preserving the exact historical per-line semantics this report always had
+    // (dollar sums are unaffected either way; only counts like visitsYTD would have diverged).
+    // Unrelated to profitDisplay, which is now backend-authoritative (see the effect that
+    // populates revenueStats above) and no longer computed from `lines` at all.
     const yearSales = lines.filter(s => normalizeDate(s.date).startsWith(String(selectedYear)) && !isSaleCancelled(s));
     const yearRefunds = refunds.filter(r => normalizeDate(r.date || r.created_at).startsWith(String(selectedYear)));
     const yearExpenses = expenses.filter(e => normalizeDate(e.date || e.created_at).startsWith(String(selectedYear)));

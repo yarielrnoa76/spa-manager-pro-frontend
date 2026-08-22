@@ -1,27 +1,48 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
-import { RefundLog, Branch } from '../types';
-import { 
-  Undo2, 
-  AlertCircle, 
-  Plus, 
-  Filter, 
-  Building2, 
-  Calendar, 
-  Trash2, 
-  CheckCircle2, 
-  Clock, 
+import { Branch } from '../types';
+import { UnifiedRefund, UnifiedRefundNormalizedStatus } from '../types/payments';
+import {
+  Undo2,
+  Filter,
+  Building2,
+  Calendar,
+  Trash2,
+  CheckCircle2,
+  Clock,
   XCircle,
-  TrendingDown
+  TrendingDown,
+  CreditCard,
+  Wallet
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
+
+const NORMALIZED_STATUS_LABELS: Record<UnifiedRefundNormalizedStatus, string> = {
+  pending: 'Pendiente',
+  completed: 'Completado',
+  rejected: 'Rechazado',
+  failed: 'Fallido',
+  canceled: 'Cancelado',
+};
+
+function normalizedStatusIcon(status: UnifiedRefundNormalizedStatus) {
+  if (status === 'completed') return <CheckCircle2 size={12} className="text-emerald-500" />;
+  if (status === 'pending') return <Clock size={12} className="text-amber-500" />;
+  return <XCircle size={12} className="text-rose-500" />;
+}
+
+function normalizedStatusColor(status: UnifiedRefundNormalizedStatus) {
+  if (status === 'completed') return 'text-emerald-600';
+  if (status === 'pending') return 'text-amber-600';
+  return 'text-rose-600';
+}
 
 interface RefundsProps {
   user: any;
 }
 
 const Refunds: React.FC<RefundsProps> = ({ user }) => {
-  const [refunds, setRefunds] = useState<RefundLog[]>([]);
+  const [refunds, setRefunds] = useState<UnifiedRefund[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,9 +75,13 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const r = await api.get<RefundLog[]>('/refunds');
+      // Additive, read-only aggregation of manual (RefundLog) + Stripe (PaymentRefund) refunds —
+      // App\Services\UnifiedRefundService. Creating/editing/deleting a manual devolución still
+      // goes through /refunds below (handleCreate/handleDelete), unchanged; Stripe refunds are
+      // created exclusively from the "Reembolsar" button in SaleModal, never from this screen.
+      const r = await api.get<{ data: UnifiedRefund[] }>('/refunds/unified');
       const b = await api.listBranches();
-      setRefunds(Array.isArray(r) ? r : []);
+      setRefunds(Array.isArray(r?.data) ? r.data : []);
       setBranches(Array.isArray(b) ? b : []);
     } catch (err) {
       console.error(err);
@@ -75,8 +100,12 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
     try {
       // List sales to let user select one for the refund
       const data = await api.listSales();
-      // Only keep sales with quantity > 0
-      setSales(Array.isArray(data) ? data.filter((s: any) => s.quantity > 0) : []);
+      // Only keep sales with quantity > 0. A Stripe-paid sale is deliberately excluded here: the
+      // manual RefundLog flow mutates the sale's amount/quantity and restores inventory without
+      // any real money moving — the backend rejects it too (RefundLogController::
+      // assertSaleAllowsManualRefund()), this just keeps staff from picking one in the first
+      // place. Real Stripe refunds are processed from the "Reembolsar" button in SaleModal.
+      setSales(Array.isArray(data) ? data.filter((s: any) => s.quantity > 0 && s.payment_provider !== 'stripe') : []);
     } catch (err) {
       console.error("Error fetching sales:", err);
     } finally {
@@ -169,7 +198,7 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
 
   const filteredRefunds = useMemo(() => {
     return refunds.filter(r => {
-      const d = new Date(r.date + "T00:00:00");
+      const d = new Date(r.date);
       const mMatch = d.getMonth() + 1 === selectedMonth;
       const yMatch = d.getFullYear() === selectedYear;
       const bMatch = selectedBranch === "all" || String(r.branch_id) === selectedBranch;
@@ -178,18 +207,20 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
   }, [refunds, selectedMonth, selectedYear, selectedBranch]);
 
   const stats = useMemo(() => {
-    const total = filteredRefunds.reduce((acc, r) => acc + Number(r.amount), 0);
+    const total = filteredRefunds.reduce((acc, r) => acc + Number(r.refund_amount), 0);
+    // 'completed' is the normalized status for both origins (RefundLog 'approved' and
+    // PaymentRefund 'succeeded') — see App\Services\UnifiedRefundService.
     const approved = filteredRefunds
-      .filter(r => r.status === 'approved')
-      .reduce((acc, r) => acc + Number(r.amount), 0);
-    const pendingCount = filteredRefunds.filter(r => r.status === 'pending').length;
-    
+      .filter(r => r.normalized_status === 'completed')
+      .reduce((acc, r) => acc + Number(r.refund_amount), 0);
+    const pendingCount = filteredRefunds.filter(r => r.normalized_status === 'pending').length;
+
     const monthlyTotalAll = refunds
       .filter(r => {
-        const d = new Date(r.date + "T00:00:00");
+        const d = new Date(r.date);
         return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
       })
-      .reduce((acc, r) => acc + Number(r.amount), 0);
+      .reduce((acc, r) => acc + Number(r.refund_amount), 0);
 
     return { total, approved, pendingCount, monthlyTotalAll };
   }, [filteredRefunds, refunds, selectedMonth, selectedYear]);
@@ -310,46 +341,60 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
             <thead className="bg-gray-50/50 text-[10px] text-gray-400 uppercase font-black border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4">Fecha</th>
+                <th className="px-6 py-4">Origen</th>
                 <th className="px-6 py-4">Sucursal</th>
-                <th className="px-6 py-4">Motivo / Estado</th>
-                <th className="px-6 py-4 text-center">Cant.</th>
+                <th className="px-6 py-4">Cliente / Motivo / Estado</th>
+                <th className="px-6 py-4 text-center">Tipo</th>
                 <th className="px-6 py-4 text-right">Monto</th>
                 <th className="px-6 py-4 text-center">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 text-sm">
               {filteredRefunds.map((r) => (
-                <tr key={r.id} className="hover:bg-rose-50/10 transition group">
-                  <td className="px-6 py-5 whitespace-nowrap text-gray-400 font-medium">{r.date}</td>
+                <tr key={`${r.origin}-${r.source_id}`} className="hover:bg-rose-50/10 transition group">
+                  <td className="px-6 py-5 whitespace-nowrap text-gray-400 font-medium">{new Date(r.date).toLocaleDateString()}</td>
+                  <td className="px-6 py-5">
+                    {r.origin === 'stripe' ? (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-violet-100 text-violet-700 px-2 py-1 rounded-full">
+                        <CreditCard size={10} /> Stripe
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                        <Wallet size={10} /> Manual
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-5 font-bold text-gray-700">
                     {branches.find(b => String(b.id) === String(r.branch_id))?.name || "—"}
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex flex-col gap-1">
-                      {r.sale && (
-                        <span className="text-xs font-bold text-indigo-600">
-                          {r.sale.client_name} — {r.sale.service_rendered}
-                        </span>
+                      {r.client_name && (
+                        <span className="text-xs font-bold text-indigo-600">{r.client_name}</span>
                       )}
-                      <span className="text-gray-600 font-medium">{r.reason}</span>
+                      <span className="text-gray-600 font-medium">{r.reason || <span className="text-gray-300 italic">Sin motivo</span>}</span>
                       <div className="flex items-center gap-1.5">
-                        {r.status === 'approved' && <CheckCircle2 size={12} className="text-emerald-500" />}
-                        {r.status === 'pending' && <Clock size={12} className="text-amber-500" />}
-                        {r.status === 'rejected' && <XCircle size={12} className="text-rose-500" />}
-                        <span className={`text-[9px] font-black uppercase tracking-wider ${
-                          r.status === 'approved' ? 'text-emerald-600' : 
-                          r.status === 'pending' ? 'text-amber-600' : 'text-rose-600'
-                        }`}>
-                          {r.status === 'approved' ? 'Aprobado' : r.status === 'pending' ? 'Pendiente' : 'Rechazado'}
+                        {normalizedStatusIcon(r.normalized_status)}
+                        <span className={`text-[9px] font-black uppercase tracking-wider ${normalizedStatusColor(r.normalized_status)}`}>
+                          {NORMALIZED_STATUS_LABELS[r.normalized_status] || r.normalized_status}
                         </span>
+                        {/* original_status is always preserved next to the label — never
+                            translated away, per docs/architecture/payment-platform.md. */}
+                        <span className="text-[9px] text-gray-300 font-bold">({r.original_status})</span>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-5 text-center font-bold text-gray-400">{r.quantity || 1}</td>
-                  <td className="px-6 py-5 text-right font-black text-rose-600 text-base">-${Number(r.amount).toLocaleString()}</td>
+                  <td className="px-6 py-5 text-center font-bold text-gray-400 text-xs uppercase">
+                    {r.refund_type === 'total' ? 'Total' : r.refund_type === 'partial' ? 'Parcial' : '—'}
+                  </td>
+                  <td className="px-6 py-5 text-right font-black text-rose-600 text-base">-${Number(r.refund_amount).toLocaleString()}</td>
                   <td className="px-6 py-5 text-center">
-                    {isAdmin && (
-                      <button onClick={() => handleDelete(r.id)} className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300">
+                    {/* A Stripe refund represents a real, already-happened financial event — it
+                        can never be deleted from here (there is no DELETE /payment-refunds and
+                        there should not be one). Only a manual RefundLog can be removed, and
+                        only by an admin, exactly as before. */}
+                    {r.origin === 'manual' && isAdmin && (
+                      <button onClick={() => handleDelete(r.source_id)} className="p-2 text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all duration-300">
                         <Trash2 size={16} />
                       </button>
                     )}
@@ -358,7 +403,7 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
               ))}
               {filteredRefunds.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Undo2 size={48} className="text-gray-100" />
                       <p className="text-gray-400 text-sm font-medium italic">No hay devoluciones registradas en este periodo.</p>
@@ -404,6 +449,9 @@ const Refunds: React.FC<RefundsProps> = ({ user }) => {
                     )}
                   </select>
                 )}
+                <p className="text-[10px] text-gray-400 font-medium pt-0.5">
+                  Las ventas cobradas con Stripe no aparecen aquí — su reembolso se procesa desde el botón "Reembolsar" dentro del detalle de la venta.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
