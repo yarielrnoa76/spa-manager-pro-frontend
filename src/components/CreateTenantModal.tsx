@@ -10,6 +10,7 @@ import {
 } from "../types";
 import { Building2, X, Globe, User, MapPin, Settings2, KeyRound } from "lucide-react";
 import { SectionHeader, TextField } from "./tenant/TenantFormFields";
+import { TimezoneSelect } from "./tenant/TimezoneSelect";
 import { EMAIL_RE, buildAddressPayload, normalizeWebsiteUrl } from "./tenant/tenantPayloadHelpers";
 
 /** Browser timezone, falling back to America/New_York if unavailable or empty. */
@@ -346,7 +347,7 @@ const CreateTenantModal: React.FC<{
                 />
                 <TextField label="Teléfono" value={businessPhone} onChange={setBusinessPhone} placeholder="+1 555 123 4567" />
                 <TextField label="Sitio web" type="url" value={website} onChange={setWebsite} placeholder="https://negocio.com" />
-                <TextField
+                <TimezoneSelect
                   label="Zona horaria"
                   required
                   value={timezone}
@@ -355,7 +356,6 @@ const CreateTenantModal: React.FC<{
                     clearFieldError("timezone");
                   }}
                   error={fieldErrors["timezone"]}
-                  placeholder="America/New_York"
                 />
                 <TextField
                   label="Moneda"

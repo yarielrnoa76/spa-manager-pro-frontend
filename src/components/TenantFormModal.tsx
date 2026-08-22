@@ -25,6 +25,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { SectionHeader, TextField, SelectField, MaskedInput } from "./tenant/TenantFormFields";
+import { TimezoneSelect } from "./tenant/TimezoneSelect";
 import { EMAIL_RE, buildAddressPayload, normalizeWebsiteUrl } from "./tenant/tenantPayloadHelpers";
 
 type Tab = "profile" | "sales" | "payment" | "n8n" | "chatwoot";
@@ -615,7 +616,7 @@ const TenantFormModal: React.FC<{
                         />
                         <TextField label="Teléfono" value={businessPhone} onChange={setBusinessPhone} />
                         <TextField label="Sitio web" type="url" value={website} onChange={setWebsite} placeholder="https://negocio.com" />
-                        <TextField
+                        <TimezoneSelect
                           label="Zona horaria"
                           required
                           value={timezone}
