@@ -23,6 +23,8 @@ import {
   UpdateWhatsappTemplatePayload,
   ChatwootConnectionHealth,
   ChatwootTokenRotationResult,
+  TenantApiTokenStatus,
+  TenantApiTokenIssued,
   AiAgent,
   AiAgentVersionSummary,
   UpdateAiAgentPayload,
@@ -1371,6 +1373,64 @@ export const api = {
     return request<ChatwootTokenRotationResult>(`/api/tenants/${tenantId}/chatwoot/rotate-token`, {
       method: "POST",
       body: { api_token: apiToken },
+      auth: true,
+    });
+  },
+
+  // --- Tenant API access: Sanctum integration token (SuperAdmin only) ---
+  // The replacement for the legacy `tenant_api_token` / X-API-KEY credential. Distinct from it in
+  // every way that matters: scoped abilities, rotation with a candidate, revocation, and a
+  // plaintext that exists exactly once.
+  //
+  // There is deliberately NO read method that returns a token. getTenantApiTokenStatus returns
+  // metadata only; the plaintext is returned solely by the two mint operations below, and the
+  // backend has no endpoint that could hand it back afterwards.
+
+  async getTenantApiTokenStatus(tenantId: number) {
+    return request<TenantApiTokenStatus>(`/api/tenants/${tenantId}/api-token`, { auth: true });
+  },
+
+  /** Mints the tenant's first token. The response is the ONLY time the plaintext exists —
+   * hand it straight to the reveal modal and never store it anywhere. */
+  async createTenantApiToken(tenantId: number, abilities: string[]) {
+    return request<TenantApiTokenIssued>(`/api/tenants/${tenantId}/api-token`, {
+      method: "POST",
+      body: { abilities },
+      auth: true,
+    });
+  },
+
+  /** Step 1 of rotation: mints a candidate while the current token stays fully active, so the
+   * consumer can be updated without an outage. Same one-time plaintext rule. */
+  async rotateTenantApiToken(tenantId: number, abilities: string[]) {
+    return request<TenantApiTokenIssued>(`/api/tenants/${tenantId}/api-token/rotate`, {
+      method: "POST",
+      body: { abilities },
+      auth: true,
+    });
+  },
+
+  /** Step 2a: the candidate becomes the only active token and the previous one is revoked.
+   * Only call this once the consumer is verified on the new token. */
+  async confirmTenantApiTokenRotation(tenantId: number) {
+    return request<{ message: string; status: TenantApiTokenStatus }>(
+      `/api/tenants/${tenantId}/api-token/rotate/confirm`,
+      { method: "POST", auth: true },
+    );
+  },
+
+  /** Step 2b: abandons the candidate. The previous token is left exactly as it was. */
+  async discardTenantApiTokenRotation(tenantId: number) {
+    return request<{ message: string; status: TenantApiTokenStatus }>(
+      `/api/tenants/${tenantId}/api-token/rotate/discard`,
+      { method: "POST", auth: true },
+    );
+  },
+
+  /** Revokes the active token with no replacement — every consumer using it stops working. */
+  async revokeTenantApiToken(tenantId: number) {
+    return request<{ message: string }>(`/api/tenants/${tenantId}/api-token`, {
+      method: "DELETE",
       auth: true,
     });
   },

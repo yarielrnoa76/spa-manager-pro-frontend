@@ -789,3 +789,46 @@ export interface UpdateAiAgentPayload {
 export interface RestoreAiAgentVersionPayload {
   change_reason?: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Tenant API access (Sanctum integration token) — Security Track S2
+// ---------------------------------------------------------------------------
+
+/** One scope a tenant integration token may carry. Served by the backend from
+ * App\Enums\TenantTokenScope so the client never keeps its own copy of the catalog. */
+export interface TenantTokenAbility {
+  value: string;
+  label: string;
+}
+
+/** Metadata only. There is deliberately no field here that could carry the token itself:
+ * the plaintext exists exactly once, in the create/rotate response, and is never readable
+ * again from any endpoint. */
+export interface TenantApiTokenMeta {
+  id: number;
+  name: string;
+  abilities: string[];
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at?: string | null;
+}
+
+export interface TenantApiTokenStatus {
+  configured: boolean;
+  active: TenantApiTokenMeta | null;
+  pending_rotation: TenantApiTokenMeta | null;
+  available_abilities: TenantTokenAbility[];
+}
+
+/** The ONLY shape that ever carries plaintext. Consumers must treat plain_text_token as
+ * write-once, in-memory, never persisted — see TenantApiTokenRevealModal. */
+export interface TenantApiTokenIssued {
+  message: string;
+  plain_text_token: string;
+  token: {
+    id: number;
+    name: string;
+    abilities: string[];
+    created_at: string | null;
+  };
+}

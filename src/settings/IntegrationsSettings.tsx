@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import N8nConnectionsSection from "../components/integrations/N8nConnectionsSection";
 import ChatwootConnectionSettings from "../components/integrations/ChatwootConnectionSettings";
+import TenantApiAccessSection from "../components/integrations/TenantApiAccessSection";
 import WhatsappTemplatesSettings from "../components/integrations/WhatsappTemplatesSettings";
 
 /**
@@ -44,6 +45,11 @@ const IntegrationsSettings: React.FC<{
       </div>
 
       {isSuperAdmin && <N8nConnectionsSection />}
+
+      {/* Tenant API Access: SuperAdmin-only and tenant-scoped, mirroring the backend routes
+          (superadmin middleware + TenantPolicy). Not rendered read-only for tenant staff --
+          every call would be rejected, so showing it would promise something impossible. */}
+      {isSuperAdmin && currentTenantId && <TenantApiAccessSection tenantId={currentTenantId} />}
 
       {isSuperAdmin && currentTenantId && (
         <ChatwootConnectionSettings

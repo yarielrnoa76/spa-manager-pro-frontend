@@ -851,16 +851,25 @@ const TenantFormModal: React.FC<{
                 <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">
                   <Shield size={16} className="text-indigo-600" /> Configuración N8N
                 </h3>
+                {/* Legacy credential (Architecture Contract v1, D-20). Labelled as deprecated but
+                    deliberately left fully functional: it is still what live n8n/Chatwoot workflows
+                    authenticate with, and D-22 forbids removing a working path before its consumers
+                    have migrated. Its replacement is Settings -> Integrations -> Tenant API Access. */}
                 <MaskedInput
-                  label="Tenant API Token (n8n → SPA)"
+                  label="Tenant API Token (n8n → SPA) — LEGACY"
                   value={tenantApiToken}
                   onChange={setTenantApiToken}
                   placeholder="Clave para header X-API-KEY"
                   copyValue={tenant.tenant_api_token || ""}
                 />
-                <p className="text-[10px] text-gray-400 italic -mt-2">
-                  Proporcione este token a n8n para autenticar las llamadas entrantes.
-                </p>
+                <div className="-mt-2 text-[10px] rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-900">
+                  <strong>Obsoleto.</strong> Corresponde al header{" "}
+                  <code className="font-mono">X-API-KEY</code> y solo funciona mientras
+                  <code className="font-mono"> TENANT_LEGACY_API_AUTH_ENABLED</code> siga activo.
+                  Para nuevas integraciones use <em>Integraciones → Tenant API Access</em>, que emite
+                  tokens con permisos acotados y rotación sin interrupción. Este campo se conserva
+                  hasta que todos los consumidores hayan migrado.
+                </div>
                 <MaskedInput
                   label="N8N API Key (SPA → n8n)"
                   value={n8nApiKey}
