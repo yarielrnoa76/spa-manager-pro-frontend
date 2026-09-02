@@ -113,23 +113,25 @@ describe("getOrCreatePendingBatchUuid / clearPendingBatch", () => {
     expect(second).not.toBe(first);
   });
 
-  it("(f) an entry older than the 24h TTL is pruned on the next write", () => {
-    const digest = "stale-digest";
+  it("never automatically expires an unresolved entry, no matter how old", () => {
+    const digest = "very-old-digest";
     const key = pendingBatchKey("tenant-1", digest);
 
-    const staleMap = {
-      [key]: { uuid: "stale-uuid", createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() },
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(staleMap));
+    // An entry from a year ago -- there is no TTL, so this must still be honored exactly like a
+    // fresh one.
+    const oldMap = { [key]: { uuid: "year-old-uuid" } };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(oldMap));
 
-    // Any write (here, a different key's own creation) triggers the prune pass.
-    getOrCreatePendingBatchUuid("tenant-1", "unrelated-fresh-digest");
+    const uuid = getOrCreatePendingBatchUuid("tenant-1", digest);
 
+    expect(uuid).toBe("year-old-uuid");
+    // A write for an unrelated key must not prune the old entry either -- no background sweep.
+    getOrCreatePendingBatchUuid("tenant-1", "another-fresh-digest");
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    expect(stored[key]).toBeUndefined();
+    expect(stored[key]).toEqual({ uuid: "year-old-uuid" });
   });
 
-  it("(g) never stores raw sales row content, only tenant/digest/uuid/timestamp", () => {
+  it("never stores raw sales row content, only tenant/digest and uuid", () => {
     getOrCreatePendingBatchUuid("tenant-1", "some-digest-value");
 
     const raw = localStorage.getItem(STORAGE_KEY) || "{}";
@@ -137,8 +139,60 @@ describe("getOrCreatePendingBatchUuid / clearPendingBatch", () => {
     expect(raw).not.toContain("Facial");
 
     const stored = JSON.parse(raw);
-    const entry = Object.values(stored)[0] as { uuid: string; createdAt: string };
-    expect(Object.keys(entry).sort()).toEqual(["createdAt", "uuid"]);
+    const entry = Object.values(stored)[0] as { uuid: string };
+    expect(Object.keys(entry)).toEqual(["uuid"]);
+  });
+
+  it("missing tenant identity fails closed and never persists anything", () => {
+    expect(() => getOrCreatePendingBatchUuid(null, "some-digest")).toThrow();
+    expect(() => getOrCreatePendingBatchUuid("", "some-digest")).toThrow();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("malformed stored JSON fails closed rather than silently starting fresh", () => {
+    localStorage.setItem(STORAGE_KEY, "{not valid json");
+
+    expect(() => getOrCreatePendingBatchUuid("tenant-1", "some-digest")).toThrow();
+  });
+
+  it("an invalid existing entry for the requested key fails closed, never silently replaced", () => {
+    const digest = "digest-with-bad-entry";
+    const key = pendingBatchKey("tenant-1", digest);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ [key]: { uuid: 12345 } }));
+
+    expect(() => getOrCreatePendingBatchUuid("tenant-1", digest)).toThrow();
+
+    // Refusing to replace it means the invalid entry is still there afterward, unchanged.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    expect(stored[key]).toEqual({ uuid: 12345 });
+  });
+
+  it("a write whose read-back does not match fails closed (persistence is verified, not assumed)", () => {
+    // Simulate a write that reports success but does not actually persist the new value --
+    // e.g. some private-mode quota behaviors. Spying on Storage.prototype (not the localStorage
+    // instance) is required for jsdom to actually intercept calls made through the global
+    // `localStorage` binding.
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation((key) => {
+      if (key === STORAGE_KEY) return;
+    });
+
+    try {
+      expect(() => getOrCreatePendingBatchUuid("tenant-1", "digest-that-wont-persist")).toThrow();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("a setItem failure fails closed before any uuid is returned", () => {
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+
+    try {
+      expect(() => getOrCreatePendingBatchUuid("tenant-1", "digest-that-cant-write")).toThrow();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -190,6 +244,26 @@ describe("ImportSalesModal end-to-end batch identity", () => {
     const secondUuid = vi.mocked(api.post).mock.calls[1][1].import_batch_uuid;
 
     expect(secondUuid).toBe(firstUuid);
+  });
+
+  it("missing tenant identity fails before api.post() is ever called", async () => {
+    vi.mocked(api.getCurrentTenantId).mockReturnValue(null);
+    const { user } = await uploadAndReachMapStep();
+
+    await user.click(screen.getByText(/Importar \d+ registros/));
+
+    await waitFor(() => screen.getByText(/Ocurrió un error|identidad|tenant/i));
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("malformed stored JSON fails before api.post() is ever called", async () => {
+    localStorage.setItem(STORAGE_KEY, "{not valid json");
+    const { user } = await uploadAndReachMapStep();
+
+    await user.click(screen.getByText(/Importar \d+ registros/));
+
+    await waitFor(() => expect(screen.queryByText(/Importando/)).not.toBeInTheDocument());
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it("(e) a confirmed success removes the entry, and a later deliberate re-import gets a new uuid", async () => {

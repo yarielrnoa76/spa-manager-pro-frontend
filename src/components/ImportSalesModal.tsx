@@ -183,7 +183,10 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
         return;
       }
 
-      const tenantId = api.getCurrentTenantId() || "unknown-tenant";
+      // getOrCreatePendingBatchUuid() throws (fails closed) before any POST is sent when the
+      // tenant identity is missing, the pending-identity store is corrupted/unreadable, an
+      // existing entry for this key is invalid, or the write cannot be verified read-back.
+      const tenantId = api.getCurrentTenantId();
       const digest = await computeSalesDigest(sales);
       const importBatchUuid = getOrCreatePendingBatchUuid(tenantId, digest);
 
@@ -192,8 +195,11 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
 
       // Confirmed success only -- deletes the pending entry so a later, deliberate re-import of
       // the same file computes the identical key but finds nothing, and gets a genuinely new
-      // uuid (§12).
-      clearPendingBatch(tenantId, digest);
+      // uuid (§12). tenantId is guaranteed non-null here: getOrCreatePendingBatchUuid() above
+      // would already have thrown otherwise.
+      if (tenantId) {
+        clearPendingBatch(tenantId, digest);
+      }
 
       setTimeout(() => {
         onSuccess();
