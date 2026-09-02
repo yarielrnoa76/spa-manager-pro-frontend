@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import { X, Upload, FileText, AlertCircle, ChevronRight, ArrowLeft } from "lucide-react";
 import { api } from "../services/api";
+import { computeSalesDigest, getOrCreatePendingBatchUuid, clearPendingBatch } from "./ImportSalesModal.batchIdentity";
 
 interface ImportSalesModalProps {
   onClose: () => void;
@@ -182,8 +183,17 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
         return;
       }
 
-      const res: any = await api.post("/sales/batch-import", { sales });
+      const tenantId = api.getCurrentTenantId() || "unknown-tenant";
+      const digest = await computeSalesDigest(sales);
+      const importBatchUuid = getOrCreatePendingBatchUuid(tenantId, digest);
+
+      const res: any = await api.post("/sales/batch-import", { sales, import_batch_uuid: importBatchUuid });
       setSuccessMsg(res?.message || `Se importaron ${sales.length} ventas con éxito.`);
+
+      // Confirmed success only -- deletes the pending entry so a later, deliberate re-import of
+      // the same file computes the identical key but finds nothing, and gets a genuinely new
+      // uuid (§12).
+      clearPendingBatch(tenantId, digest);
 
       setTimeout(() => {
         onSuccess();
@@ -191,6 +201,8 @@ export default function ImportSalesModal({ onClose, onSuccess }: ImportSalesModa
     } catch (error) {
       const err = error as any;
       setError(err?.message || "Ocurrió un error al procesar el archivo.");
+      // Deliberately does NOT clear the pending entry on error/timeout -- a retry (same file,
+      // even after a reload) recomputes the identical key and reuses the identical uuid (§12).
     } finally {
       setLoading(false);
     }
