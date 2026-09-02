@@ -34,12 +34,17 @@ interface PendingBatchEntry {
 
 const PENDING_BATCHES_STORAGE_KEY = "spa.sales_import.pending_batches";
 
+// Matches exactly what `crypto.randomUUID()` produces (RFC 4122 version 4): 8-4-4-4-12 hex
+// digits, version nibble `4`, variant nibble `8|9|a|b`. A non-empty but non-UUID string (e.g. a
+// corrupted/tampered `"not-a-uuid"`) must fail validation, not merely "any non-empty string".
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function isValidEntry(value: unknown): value is PendingBatchEntry {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { uuid?: unknown }).uuid === "string" &&
-    (value as { uuid: string }).uuid.length > 0
+    UUID_V4_PATTERN.test((value as { uuid: string }).uuid)
   );
 }
 
@@ -166,31 +171,49 @@ export function getOrCreatePendingBatchUuid(tenantId: string | null | undefined,
   return uuid;
 }
 
+export interface ClearPendingBatchResult {
+  cleared: boolean;
+  /** Present only when `cleared` is false -- the underlying storage error's message. */
+  error?: string;
+}
+
 /**
  * Called only after a CONFIRMED successful (200) response -- never on error/timeout, so a retry
- * of the same file keeps reusing the same uuid. A deliberate later import of the same file after
- * a confirmed success finds no entry here and mints a genuinely new uuid.
+ * of the same file keeps reusing the same uuid.
  *
  * Deliberately does NOT fail closed the way `getOrCreatePendingBatchUuid()` does: the import has
  * already succeeded by the time this runs, so a storage failure here must never surface as an
- * apparent import failure. Worst case, a stale entry lingers and a later genuinely-new import of
- * identical content reuses its uuid -- the backend's own fingerprint/row_count comparison then
- * treats that as a conflict (409), never silent data corruption.
+ * apparent IMPORT failure -- it is reported back as an explicit `{ cleared: false, error }`
+ * result instead, so the caller can still tell the user their import succeeded while warning
+ * that this browser's local pending-identity record could not be removed.
+ *
+ * If clearing genuinely does fail, the stale entry lingers. That is NOT harmless to describe as
+ * "a future import will just be treated as new": if a LATER submission normalizes to this exact
+ * same (tenant, digest) -- i.e. the identical file, unchanged -- it would reuse this same stale
+ * uuid, and the backend's receipt would recognize it as an EXACT replay: a reconstructed `200`
+ * with zero new writes, not a fresh import and not a `409` (a `409` only happens when the SAME
+ * uuid is resubmitted with DIFFERENT content). Callers must not assert a future import is
+ * guaranteed to be new when `cleared` is false.
  */
-export function clearPendingBatch(tenantId: string, digest: string): void {
+export function clearPendingBatch(tenantId: string, digest: string): ClearPendingBatchResult {
   const key = pendingBatchKey(tenantId, digest);
 
   try {
     const rawMap = readPendingBatchesRaw();
 
     if (!(key in rawMap)) {
-      return;
+      return { cleared: true };
     }
 
     const rest = { ...rawMap };
     delete rest[key];
     writePendingBatches(rest);
-  } catch {
-    // See docblock above -- never surfaces after a confirmed success.
+
+    return { cleared: true };
+  } catch (err) {
+    return {
+      cleared: false,
+      error: err instanceof Error ? err.message : "Unknown error clearing the pending sales-import identity.",
+    };
   }
 }

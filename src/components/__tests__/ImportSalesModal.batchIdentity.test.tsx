@@ -8,6 +8,7 @@ import {
   getOrCreatePendingBatchUuid,
   pendingBatchKey,
   clearPendingBatch,
+  type SalesImportRow,
 } from "../ImportSalesModal.batchIdentity";
 import { api } from "../../services/api";
 
@@ -118,17 +119,19 @@ describe("getOrCreatePendingBatchUuid / clearPendingBatch", () => {
     const key = pendingBatchKey("tenant-1", digest);
 
     // An entry from a year ago -- there is no TTL, so this must still be honored exactly like a
-    // fresh one.
-    const oldMap = { [key]: { uuid: "year-old-uuid" } };
+    // fresh one. Uses a real crypto.randomUUID()-shaped value since entries are now validated
+    // against that format.
+    const oldUuid = crypto.randomUUID();
+    const oldMap = { [key]: { uuid: oldUuid } };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(oldMap));
 
     const uuid = getOrCreatePendingBatchUuid("tenant-1", digest);
 
-    expect(uuid).toBe("year-old-uuid");
+    expect(uuid).toBe(oldUuid);
     // A write for an unrelated key must not prune the old entry either -- no background sweep.
     getOrCreatePendingBatchUuid("tenant-1", "another-fresh-digest");
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    expect(stored[key]).toEqual({ uuid: "year-old-uuid" });
+    expect(stored[key]).toEqual({ uuid: oldUuid });
   });
 
   it("never stores raw sales row content, only tenant/digest and uuid", () => {
@@ -167,6 +170,26 @@ describe("getOrCreatePendingBatchUuid / clearPendingBatch", () => {
     expect(stored[key]).toEqual({ uuid: 12345 });
   });
 
+  it("an existing entry whose uuid is not a valid UUID format fails closed, never silently replaced", () => {
+    const digest = "digest-with-non-uuid-value";
+    const key = pendingBatchKey("tenant-1", digest);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ [key]: { uuid: "not-a-uuid" } }));
+
+    expect(() => getOrCreatePendingBatchUuid("tenant-1", digest)).toThrow();
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    expect(stored[key]).toEqual({ uuid: "not-a-uuid" });
+  });
+
+  it("accepts a well-formed crypto.randomUUID()-shaped value as a valid existing entry", () => {
+    const digest = "digest-with-real-uuid";
+    const key = pendingBatchKey("tenant-1", digest);
+    const realUuid = crypto.randomUUID();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ [key]: { uuid: realUuid } }));
+
+    expect(getOrCreatePendingBatchUuid("tenant-1", digest)).toBe(realUuid);
+  });
+
   it("a write whose read-back does not match fails closed (persistence is verified, not assumed)", () => {
     // Simulate a write that reports success but does not actually persist the new value --
     // e.g. some private-mode quota behaviors. Spying on Storage.prototype (not the localStorage
@@ -198,6 +221,21 @@ describe("getOrCreatePendingBatchUuid / clearPendingBatch", () => {
 
 describe("ImportSalesModal end-to-end batch identity", () => {
   const csv = "Fecha,Cliente,Servicio,Sucursal,Valor\n2026-01-15,Ada Lovelace,Facial,Main,100\n";
+
+  // The exact row shape ImportSalesModal itself builds from `csv` above (unmapped columns --
+  // payment_method/seller/professional/description -- normalize to "") -- used so a test can
+  // pre-compute the same (tenant, digest) storage key the component will look up.
+  const csvRow: SalesImportRow = {
+    date: "2026-01-15",
+    client: "Ada Lovelace",
+    product: "Facial",
+    amount: "100",
+    payment_method: "",
+    seller: "",
+    professional: "",
+    description: "",
+    branch: "Main",
+  };
 
   async function uploadAndReachMapStep(onSuccess = vi.fn(), onClose = vi.fn()) {
     const user = userEvent.setup();
@@ -264,6 +302,64 @@ describe("ImportSalesModal end-to-end batch identity", () => {
 
     await waitFor(() => expect(screen.queryByText(/Importando/)).not.toBeInTheDocument());
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("an existing entry with a non-UUID value fails before api.post() is ever called", async () => {
+    const digest = await computeSalesDigest([csvRow]);
+    const key = pendingBatchKey("tenant-1", digest);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ [key]: { uuid: "not-a-uuid" } }));
+
+    const { user } = await uploadAndReachMapStep();
+
+    await user.click(screen.getByText(/Importar \d+ registros/));
+
+    await waitFor(() => expect(screen.queryByText(/Importando/)).not.toBeInTheDocument());
+    expect(api.post).not.toHaveBeenCalled();
+
+    // Refusing to replace it means the invalid entry is still there afterward, unchanged.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    expect(stored[key]).toEqual({ uuid: "not-a-uuid" });
+  });
+
+  it("a cleanup failure after a confirmed success still shows success, plus a visible warning, with no second api.post()", async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ message: "Se importaron 1 ventas exitosamente.", count: 1 });
+
+    // setItem succeeds for the initial getOrCreatePendingBatchUuid() write (so the import can
+    // proceed), but fails on every call to OUR storage key AFTER that -- simulating a write
+    // failure specifically during clearPendingBatch()'s post-success cleanup. Counts only writes
+    // to STORAGE_KEY (never a global call count) so any unrelated localStorage write elsewhere
+    // cannot throw off which write is meant to fail. Captures the original implementation BEFORE
+    // spying, since `Storage.prototype.setItem` now refers to the mock itself once installed --
+    // calling it from within its own mockImplementation would recurse infinitely.
+    const originalSetItem = Storage.prototype.setItem;
+    let storageKeyWrites = 0;
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === STORAGE_KEY) {
+        storageKeyWrites += 1;
+        if (storageKeyWrites > 1) {
+          throw new Error("QuotaExceededError");
+        }
+      }
+      originalSetItem.call(this, key, value);
+    });
+
+    try {
+      const { user } = await uploadAndReachMapStep();
+      await user.click(screen.getByText(/Importar \d+ registros/));
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+      await waitFor(() => screen.getByText(/Se importaron/));
+
+      // The import is a success, AND a warning is visible -- never treated as a failure.
+      expect(screen.getByText(/Se importaron/)).toBeInTheDocument();
+      expect(screen.getByText(/no se pudo limpiar/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Ocurrió un error/i)).not.toBeInTheDocument();
+
+      // Cleanup failing must never trigger a retry/second submission.
+      expect(api.post).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("(e) a confirmed success removes the entry, and a later deliberate re-import gets a new uuid", async () => {
