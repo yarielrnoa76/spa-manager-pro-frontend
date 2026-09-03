@@ -52,6 +52,26 @@ export interface ActivityLog {
 
 export type LoginPayload = { email: string; password: string };
 
+// Phase 1B.5D.1.3 Slice K4: `import_batch_uuid` is a durable, tenant-scoped identity minted by
+// `ImportLeadsModal.batchIdentity.ts` BEFORE this request is ever sent, so a retry after a
+// network failure resubmits the SAME uuid instead of a new one (see that module's comments).
+export interface BatchImportLeadsPayload {
+  leads: Array<{
+    name: string;
+    last_name: string;
+    phone: string;
+    email: string;
+    branch: string;
+    message: string;
+  }>;
+  import_batch_uuid: string;
+}
+
+export interface BatchImportLeadsResponse {
+  message: string;
+  count: number;
+}
+
 export type DashboardStats = {
   totalSales: number;
   profit: number;
@@ -527,8 +547,8 @@ export const api = {
     return request<Lead[]>(`/api/leads`, { method: "GET", auth: true });
   },
 
-  async batchImportLeads(payload: unknown) {
-    return request(`/api/leads/batch-import`, { method: "POST", body: payload, auth: true });
+  async batchImportLeads(payload: BatchImportLeadsPayload) {
+    return request<BatchImportLeadsResponse>(`/api/leads/batch-import`, { method: "POST", body: payload, auth: true });
   },
 
   async getLead(leadId: string | number) {

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import { X, Upload, FileText, AlertCircle, ChevronRight, ArrowLeft } from "lucide-react";
 import { api } from "../services/api";
+import { computeLeadsDigest, getOrCreatePendingBatchUuid, clearPendingBatch } from "./ImportLeadsModal.batchIdentity";
 
 interface ImportLeadsModalProps {
   onClose: () => void;
@@ -78,6 +79,7 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [warningMsg, setWarningMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Parsed CSV data
@@ -150,6 +152,7 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
+    setWarningMsg(null);
 
     try {
       const leads = csvRows
@@ -173,8 +176,35 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
         return;
       }
 
-      const res: any = await api.batchImportLeads({ leads });
+      // getOrCreatePendingBatchUuid() throws (fails closed) before any POST is sent when the
+      // tenant identity is missing, the pending-identity store is corrupted/unreadable, an
+      // existing entry for this key is invalid, or the write cannot be verified read-back.
+      const tenantId = api.getCurrentTenantId();
+      const digest = await computeLeadsDigest(leads);
+      const importBatchUuid = getOrCreatePendingBatchUuid(tenantId, digest);
+
+      const res = await api.batchImportLeads({ leads, import_batch_uuid: importBatchUuid });
+      // The import itself has already succeeded at this point -- nothing below this line may
+      // downgrade that into an apparent failure.
       setSuccessMsg(res?.message || `Se importaron ${leads.length} leads con éxito.`);
+
+      // Confirmed success only -- deletes the pending entry so a later, deliberate re-import of
+      // the same file computes the identical key but finds nothing, and gets a genuinely new
+      // uuid. tenantId is guaranteed non-null here: getOrCreatePendingBatchUuid() above would
+      // already have thrown otherwise. If clearing fails, the import stays a success -- only a
+      // non-fatal warning is shown, since a lingering stale entry means a later resubmission of
+      // this exact same file would be reconstructed as a replay (same result, zero new writes),
+      // never silent data loss or corruption.
+      if (tenantId) {
+        const clearResult = clearPendingBatch(tenantId, digest);
+        if (!clearResult.cleared) {
+          setWarningMsg(
+            "La importación se completó con éxito, pero no se pudo limpiar el identificador local "
+            + "de este archivo en este navegador. Si vuelves a importar el mismo archivo sin cambios, "
+            + "el sistema lo reconocerá como la misma importación (sin duplicar registros)."
+          );
+        }
+      }
 
       setTimeout(() => {
         onSuccess();
@@ -182,6 +212,8 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
     } catch (error) {
       const err = error as any;
       setError(err?.message || "Ocurrió un error al procesar el archivo.");
+      // Deliberately does NOT clear the pending entry on error/timeout -- a retry (same file,
+      // even after a reload) recomputes the identical key and reuses the identical uuid.
     } finally {
       setLoading(false);
     }
@@ -254,6 +286,7 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
                   setCsvRows([]);
                   setFieldMap({});
                   setError(null);
+                  setWarningMsg(null);
                 }}
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600 mb-4 transition"
               >
@@ -353,6 +386,11 @@ export default function ImportLeadsModal({ onClose, onSuccess }: ImportLeadsModa
           {successMsg && (
             <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200">
               {successMsg}
+            </div>
+          )}
+          {warningMsg && (
+            <div className="mt-4 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm font-medium border border-amber-200">
+              {warningMsg}
             </div>
           )}
         </div>
