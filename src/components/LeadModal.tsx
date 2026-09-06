@@ -11,6 +11,47 @@ import {
     clearPendingSubmission,
 } from "./LeadModal.submissionIdentity";
 
+/**
+ * Phase 1B.5D Lead/Ticket Ownership block (§14). The five distinguishable outcomes of loading
+ * this lead's tickets. `empty` means the server answered successfully with zero rows; it is
+ * never used as a fallback for a failure.
+ */
+type TicketsLoadState = 'idle' | 'loading' | 'empty' | 'forbidden' | 'error' | 'success';
+
+type TicketLeadContext = {
+    id: number;
+    name: string;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    source: string | null;
+    status: string | null;
+    branch_id: number | null;
+    assigned_to: number | null;
+    created_at: string | null;
+};
+
+/**
+ * A decision the user has been asked to make but has not yet confirmed. Nothing is sent to the
+ * server while this is non-null -- `Cancelar` simply discards it, producing zero requests.
+ *
+ * `expectedResponsableId` / `expectedLeadAssignedTo` capture the state the UI actually OBSERVED
+ * when the dialog opened; they are sent back as optimistic preconditions so a change made by
+ * someone else in the meantime is reported (409) instead of silently overwritten.
+ */
+type PendingAssignment = {
+    kind: 'assign' | 'deassign';
+    ticketId: number;
+    ticketNumber: string;
+    targetId: number | null;
+    targetName: string | null;
+    currentResponsableName: string | null;
+    leadAssigneeName: string | null;
+    expectedResponsableId: number | null;
+    expectedLeadAssignedTo: number | null;
+    editorial: { subject: string; description: string };
+};
+
 type LeadModalProps = {
     isOpen: boolean;
     onClose: () => void;
@@ -34,7 +75,19 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'details' | 'sales' | 'appointments' | 'tickets' | 'chat'>('details');
     const [leadTickets, setLeadTickets] = useState<any[]>([]);
+    // Phase 1B.5D Lead/Ticket Ownership block (§14): the tickets panel is an explicit state
+    // machine. "This lead has no tickets" is ONE of five outcomes, and is never shown for a
+    // 403, a 500, or a network failure -- conflating them was the original defect (Readiness
+    // Report §1 finding 7: LeadModal swallowed load errors and rendered the empty state).
+    const [ticketsState, setTicketsState] = useState<TicketsLoadState>('idle');
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+    // Minimum relational lead context for the OPEN ticket, fetched from the ticket-authorized
+    // endpoint. Never used to widen anything: it is display-only.
+    const [ticketLeadContext, setTicketLeadContext] = useState<TicketLeadContext | null>(null);
+    // The pending three-option assignment/deassignment decision, or null when no dialog is open.
+    const [pendingAssignment, setPendingAssignment] = useState<PendingAssignment | null>(null);
+    const [assignmentError, setAssignmentError] = useState<string | null>(null);
+    const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
     const [leadConversations, setLeadConversations] = useState<any[]>([]);
 
     const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
@@ -104,9 +157,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
             });
             setActiveTab('details');
             setIsCreatingTicket(false);
-            setSelectedTicket(null);
             setIsEditingSelectedTicket(false);
             setNewTicketComment("");
+            // Phase 1B.5D Lead/Ticket Ownership block (§14): EVERY piece of lead-dependent
+            // state is cleared before another lead is loaded, so the previous lead's tickets,
+            // conversations, appointments, sales, open ticket, lead context and any pending
+            // assignment decision can never be displayed against the new one, not even for a
+            // frame while the new data is in flight.
+            resetLeadDependentState();
             if (leadToEdit) {
                 setFormData({
                     name: leadToEdit.name,
@@ -136,9 +194,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     status: "new",
                     assigned_to: "",
                 }));
-                setLeadTickets([]);
-                setLeadAppointments([]);
-                setLeadSales([]);
             }
         }
     }, [isOpen, initialBranchId, initialName, leadToEdit]);
@@ -181,12 +236,55 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    /**
+     * Clears every piece of state derived from the currently-open lead. Called before loading
+     * another lead, and when the modal opens with no lead at all.
+     */
+    const resetLeadDependentState = () => {
+        setLeadTickets([]);
+        setTicketsState('idle');
+        setSelectedTicket(null);
+        setTicketLeadContext(null);
+        setPendingAssignment(null);
+        setAssignmentError(null);
+        setAssignmentSubmitting(false);
+        setLeadAppointments([]);
+        setLeadSales([]);
+        setLeadConversations([]);
+    };
+
+    /**
+     * Phase 1B.5D Lead/Ticket Ownership block (§14). Distinguishes the five outcomes instead of
+     * swallowing every failure into an empty list: a 403 is "you are not allowed to see these",
+     * a 5xx/network failure is "we could not load them", and only a successful empty response is
+     * "this lead has no tickets".
+     */
     const loadLeadTickets = async (leadId: string | number) => {
+        setTicketsState('loading');
         try {
             const res = await api.listTickets({ lead_id: leadId });
-            setLeadTickets(res.data);
-        } catch (err) {
+            const rows = res?.data ?? [];
+            setLeadTickets(rows);
+            setTicketsState(rows.length === 0 ? 'empty' : 'success');
+        } catch (err: unknown) {
+            setLeadTickets([]);
+            const status = err instanceof ApiError ? err.status : undefined;
+            setTicketsState(status === 403 ? 'forbidden' : 'error');
             console.error("Error loading lead tickets", err);
+        }
+    };
+
+    /**
+     * The minimum relational lead context for one ticket, from the ticket-authorized endpoint.
+     * A failure here is never fatal to the ticket detail view -- the context panel simply does
+     * not render -- because the ticket itself is already loaded and authorized.
+     */
+    const loadTicketLeadContext = async (ticketId: number) => {
+        try {
+            setTicketLeadContext(await api.getTicketLeadContext(ticketId));
+        } catch (err: unknown) {
+            setTicketLeadContext(null);
+            console.error("Error loading ticket lead context", err);
         }
     };
 
@@ -235,6 +333,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : "",
             });
             setIsEditingSelectedTicket(false);
+            setAssignmentError(null);
+            await loadTicketLeadContext(ticketId);
         } catch (err: any) {
             console.error("Error fetching ticket", err);
             alert("No se pudo cargar el detalle del ticket: " + (err?.message || "Error desconocido"));
@@ -243,18 +343,145 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
+    /**
+     * Phase 1B.5D Lead/Ticket Ownership block (§14).
+     *
+     * Editorial fields and the responsable are separated here exactly as the backend separates
+     * them. When the responsable actually changes, the user is asked an explicit question
+     * before ANY request is made:
+     *
+     *  - a new responsable that differs from the lead's own assignee opens the three-option
+     *    reassignment dialog (`Solo el ticket` / `Ticket y lead` / `Cancelar`);
+     *  - clearing the responsable opens the equivalent deassignment dialog;
+     *  - a new responsable that already equals the lead's assignee needs no question: there is
+     *    no divergence to resolve, so it is submitted directly as ticket-only.
+     *
+     * `reassign_lead` is never inferred, and `Cancelar` produces zero requests.
+     */
     const handleUpdateTicket = async () => {
         if (!selectedTicket) return;
+
+        const editorial = {
+            subject: editTicketData.subject,
+            description: editTicketData.description,
+        };
+
+        const currentResponsableId: number | null =
+            selectedTicket.responsable_id != null ? Number(selectedTicket.responsable_id) : null;
+        const targetId: number | null =
+            editTicketData.responsable_id === "" ? null : Number(editTicketData.responsable_id);
+
+        if (targetId === currentResponsableId) {
+            await submitEditorialOnly(selectedTicket.id, editorial);
+            return;
+        }
+
+        // The lead's own current assignee, observed from the ticket-authorized context endpoint
+        // when available and from the open lead form otherwise. Never invented.
+        const leadAssignedTo: number | null =
+            ticketLeadContext?.assigned_to != null
+                ? Number(ticketLeadContext.assigned_to)
+                : (formData.assigned_to === "" ? null : Number(formData.assigned_to));
+
+        const nameOf = (id: number | null): string | null =>
+            id === null ? null : (responsibles.find((r: any) => Number(r.id) === id)?.name ?? `#${id}`);
+
+        const decision: PendingAssignment = {
+            kind: targetId === null ? 'deassign' : 'assign',
+            ticketId: selectedTicket.id,
+            ticketNumber: selectedTicket.ticket_number,
+            targetId,
+            targetName: nameOf(targetId),
+            currentResponsableName: nameOf(currentResponsableId),
+            leadAssigneeName: nameOf(leadAssignedTo),
+            expectedResponsableId: currentResponsableId,
+            expectedLeadAssignedTo: leadAssignedTo,
+            editorial,
+        };
+
+        // A new responsable that already matches the lead's assignee raises no lead/ticket
+        // divergence, so there is nothing to ask.
+        if (targetId !== null && targetId === leadAssignedTo) {
+            await submitAssignment(decision, false);
+            return;
+        }
+
+        setAssignmentError(null);
+        setPendingAssignment(decision);
+    };
+
+    const submitEditorialOnly = async (
+        ticketId: number,
+        editorial: { subject: string; description: string },
+    ) => {
         setLoading(true);
         try {
-            await api.updateTicket(selectedTicket.id, editTicketData);
+            await api.updateTicket(ticketId, editorial);
             setIsEditingSelectedTicket(false);
-            handleOpenTicket(selectedTicket.id);
-            if (leadToEdit) loadLeadTickets(leadToEdit.id);
-        } catch (err: any) {
-            alert(err?.message || "Error al actualizar ticket");
+            await handleOpenTicket(ticketId);
+            if (leadToEdit) await loadLeadTickets(leadToEdit.id);
+        } catch (err: unknown) {
+            alert(err instanceof Error ? err.message : "Error al actualizar ticket");
         } finally {
             setLoading(false);
+        }
+    };
+
+    /**
+     * Sends the editorial change and the assignment in ONE request, so the backend commits or
+     * rolls them back together. Both `expected_*` preconditions are always sent explicitly;
+     * `expected_lead_assigned_to` only accompanies `reassign_lead: true`, where it is the
+     * dimension being written.
+     *
+     * A 409 means someone else changed the assignment while the dialog was open: the user is
+     * told, the local state is reloaded from the server, and no further decision is offered
+     * until they have seen the current state.
+     */
+    const submitAssignment = async (decision: PendingAssignment, reassignLead: boolean) => {
+        setAssignmentSubmitting(true);
+        setAssignmentError(null);
+        try {
+            const payload: Record<string, unknown> = {
+                ...decision.editorial,
+                responsable_id: decision.targetId,
+                reassign_lead: reassignLead,
+                expected_responsable_id: decision.expectedResponsableId,
+            };
+
+            if (reassignLead) {
+                payload.expected_lead_assigned_to = decision.expectedLeadAssignedTo;
+            }
+
+            await api.updateTicket(decision.ticketId, payload);
+
+            setPendingAssignment(null);
+            setIsEditingSelectedTicket(false);
+            await handleOpenTicket(decision.ticketId);
+            if (leadToEdit) {
+                await loadLeadTickets(leadToEdit.id);
+                await loadLeadDataExtras(leadToEdit.id);
+            }
+        } catch (err: unknown) {
+            const status = err instanceof ApiError ? err.status : undefined;
+
+            if (status === 409) {
+                setPendingAssignment(null);
+                // Reload FIRST, then surface the message: `handleOpenTicket()` clears any stale
+                // banner when a ticket is opened, so setting the message before it would wipe
+                // the very explanation the user needs.
+                await handleOpenTicket(decision.ticketId);
+                if (leadToEdit) await loadLeadTickets(leadToEdit.id);
+                setAssignmentError(
+                    'Otro usuario modificó la asignación de este ticket o su lead mientras decidías. ' +
+                    'Se recargó el estado actual; revísalo antes de volver a decidir.',
+                );
+            } else {
+                setAssignmentError(
+                    err instanceof Error ? err.message : 'No se pudo actualizar la asignación.',
+                );
+            }
+        } finally {
+            setAssignmentSubmitting(false);
         }
     };
 
@@ -915,6 +1142,33 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         </span>
                                     </div>
 
+                                    {assignmentError && (
+                                        <div
+                                            data-testid="assignment-error"
+                                            role="alert"
+                                            className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold"
+                                        >
+                                            {assignmentError}
+                                        </div>
+                                    )}
+
+                                    {ticketLeadContext && (
+                                        <div
+                                            data-testid="ticket-lead-context"
+                                            className="mb-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+                                        >
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                                                Lead del ticket
+                                            </p>
+                                            <p className="text-sm font-bold text-gray-800">
+                                                {ticketLeadContext.name} {ticketLeadContext.last_name || ''}
+                                            </p>
+                                            <p className="text-[11px] text-gray-500">
+                                                {ticketLeadContext.phone || 'Sin teléfono'} · {ticketLeadContext.status || 'sin estado'}
+                                            </p>
+                                        </div>
+                                    )}
+
                                     {isEditingSelectedTicket ? (
                                         <div className="space-y-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 animate-in fade-in zoom-in-95">
                                             <div>
@@ -1165,12 +1419,43 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         </form>
                                     ) : (
                                         <>
-                                            {leadTickets.length === 0 ? (
-                                                <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed">
+                                            {ticketsState === 'loading' || ticketsState === 'idle' ? (
+                                                <div
+                                                    data-testid="tickets-state-loading"
+                                                    className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed"
+                                                >
+                                                    <p className="text-sm">Cargando tickets…</p>
+                                                </div>
+                                            ) : ticketsState === 'forbidden' ? (
+                                                <div
+                                                    data-testid="tickets-state-forbidden"
+                                                    className="p-12 text-center text-amber-700 bg-amber-50 rounded-xl border-2 border-dashed border-amber-200"
+                                                >
+                                                    <p className="text-sm font-bold">No tienes permiso para ver los tickets de este lead.</p>
+                                                    <p className="text-xs mt-1">Esto no significa que el lead no tenga tickets.</p>
+                                                </div>
+                                            ) : ticketsState === 'error' ? (
+                                                <div
+                                                    data-testid="tickets-state-error"
+                                                    className="p-12 text-center text-red-700 bg-red-50 rounded-xl border-2 border-dashed border-red-200"
+                                                >
+                                                    <p className="text-sm font-bold">No se pudieron cargar los tickets.</p>
+                                                    <button
+                                                        onClick={() => leadToEdit && loadLeadTickets(leadToEdit.id)}
+                                                        className="mt-3 text-xs font-bold text-red-700 underline"
+                                                    >
+                                                        Reintentar
+                                                    </button>
+                                                </div>
+                                            ) : ticketsState === 'empty' ? (
+                                                <div
+                                                    data-testid="tickets-state-empty"
+                                                    className="p-12 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed"
+                                                >
                                                     <p className="text-sm">Este lead no tiene tickets asociados aún.</p>
                                                 </div>
                                             ) : (
-                                                <div className="space-y-3">
+                                                <div className="space-y-3" data-testid="tickets-state-success">
                                                     {leadTickets.map(ticket => (
                                                         <div
                                                             key={ticket.id}
@@ -1209,6 +1494,73 @@ const LeadModal: React.FC<LeadModalProps> = ({
                     }
                 </div >
             </div >
+
+            {pendingAssignment && (
+                /*
+                 * Phase 1B.5D Lead/Ticket Ownership block (§4.2/§4.3, §14): the three-option
+                 * decision. Exactly three choices, always in this order, and NOTHING is sent to
+                 * the server until one of the two affirmative ones is pressed -- `Cancelar`
+                 * closes the dialog and produces zero requests.
+                 */
+                <div
+                    data-testid="assignment-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+                >
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 p-5 space-y-4">
+                        <h4 className="text-sm font-black text-gray-900 uppercase tracking-wider">
+                            {pendingAssignment.kind === 'deassign' ? 'Quitar responsable' : 'Cambiar responsable'}
+                        </h4>
+
+                        <p data-testid="assignment-dialog-question" className="text-sm text-gray-700 leading-relaxed">
+                            {pendingAssignment.kind === 'deassign'
+                                ? `Este ticket pertenece al lead ${formData.name || ''}, actualmente asignado a ${pendingAssignment.leadAssigneeName ?? 'nadie'}. ¿Deseas quitar también el responsable del lead?`
+                                : `Este ticket pertenece al lead ${formData.name || ''}, actualmente asignado a ${pendingAssignment.leadAssigneeName ?? 'nadie'}. ¿Deseas asignar también el lead a ${pendingAssignment.targetName ?? ''}?`}
+                        </p>
+
+                        <div className="flex flex-col gap-2">
+                            <button
+                                data-testid="assignment-dialog-ticket-only"
+                                disabled={assignmentSubmitting}
+                                onClick={() => submitAssignment(pendingAssignment, false)}
+                                className="w-full py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {pendingAssignment.kind === 'deassign' ? 'Desasignar solo el ticket' : 'Solo el ticket'}
+                            </button>
+                            <button
+                                data-testid="assignment-dialog-ticket-and-lead"
+                                disabled={assignmentSubmitting}
+                                onClick={() => submitAssignment(pendingAssignment, true)}
+                                className="w-full py-2.5 bg-gray-900 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-black disabled:opacity-50"
+                            >
+                                {pendingAssignment.kind === 'deassign' ? 'Desasignar ticket y lead' : 'Ticket y lead'}
+                            </button>
+                            <button
+                                data-testid="assignment-dialog-cancel"
+                                disabled={assignmentSubmitting}
+                                onClick={() => {
+                                    setPendingAssignment(null);
+                                    setAssignmentError(null);
+                                }}
+                                className="w-full py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-xl disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+
+                        {assignmentError && (
+                            <p data-testid="assignment-dialog-error" className="text-xs font-bold text-red-600">
+                                {assignmentError}
+                            </p>
+                        )}
+
+                        <p className="text-[10px] text-gray-400 leading-snug">
+                            Los demás tickets de este lead nunca cambian con esta acción.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {isCreatingAppointment && (
                 <CreateAppointmentModal

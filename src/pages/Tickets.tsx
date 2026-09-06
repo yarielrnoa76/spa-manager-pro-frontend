@@ -5,7 +5,7 @@ import {
     User, Calendar, MessageSquare, History, Settings,
     ArrowRight, Send
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import { Ticket, TicketCategory, TicketPriority, User as UserType } from '../types';
 import { format } from 'date-fns';
 import StatCard from '../components/StatCard';
@@ -397,10 +397,27 @@ const Tickets: React.FC = () => {
                                             className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                             value={selectedTicket.responsable_id || ''}
                                             onChange={(e) => {
+                                                // Phase 1B.5D Lead/Ticket Ownership block: the
+                                                // observed responsable is sent as the optimistic
+                                                // precondition, and an empty selection is an
+                                                // explicit deassignment (null), not a no-op.
+                                                // `reassign_lead` is false: this screen offers no
+                                                // lead choice, so it must never move the lead.
                                                 const userId = e.target.value;
-                                                if (userId) {
-                                                    api.assignTicket(selectedTicket.id, Number(userId)).then(() => fetchData());
-                                                }
+                                                const observed = selectedTicket.responsable_id ?? null;
+                                                api.assignTicket(selectedTicket.id, {
+                                                    responsable_id: userId ? Number(userId) : null,
+                                                    reassign_lead: false,
+                                                    expected_responsable_id: observed === null ? null : Number(observed),
+                                                })
+                                                    .then(() => fetchData())
+                                                    .catch((err: unknown) => {
+                                                        const status = err instanceof ApiError ? err.status : undefined;
+                                                        alert(status === 409
+                                                            ? 'Otro usuario modificó la asignación de este ticket. Se recargará el estado actual.'
+                                                            : (err instanceof Error ? err.message : 'No se pudo cambiar el responsable.'));
+                                                        fetchData();
+                                                    });
                                             }}
                                         >
                                             <option value="">-- Sin asignar --</option>

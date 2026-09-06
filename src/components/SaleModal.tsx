@@ -143,7 +143,11 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     // Editing tickets inline
     const [editingTicketId, setEditingTicketId] = useState<number | null>(null);
     const [ticketEditForm, setTicketEditForm] = useState({
-        subject: '', description: '', category_id: '', priority_id: '', responsable_id: '', status: '', cancel_reason: ''
+        subject: '', description: '', category_id: '', priority_id: '', responsable_id: '', status: '', cancel_reason: '',
+        // Phase 1B.5D Lead/Ticket Ownership block: the responsable this form OBSERVED when it
+        // opened. Sent back as the optimistic `expected_responsable_id` precondition so a
+        // concurrent change by someone else is reported (409) instead of silently overwritten.
+        initial_responsable_id: '' as string,
     });
     const [ticketSaving, setTicketSaving] = useState(false);
     const [ticketCategories, setTicketCategories] = useState<any[]>([]);
@@ -631,7 +635,8 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             description: ticket.description || '',
             category_id: ticket.category_id ? String(ticket.category_id) : '',
             priority_id: ticket.priority_id ? String(ticket.priority_id) : '',
-            responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : ''
+            responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : '',
+            initial_responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : ''
         });
     };
 
@@ -645,8 +650,19 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                 category_id: ticketEditForm.category_id,
                 priority_id: ticketEditForm.priority_id,
             });
-            if (ticketEditForm.responsable_id) {
-                await api.assignTicket(editingTicketId, Number(ticketEditForm.responsable_id)).catch(() => { });
+            // Only call the assignment authority when the responsable actually changed: an
+            // unchanged value is a server-side no-op anyway, but not sending it at all keeps
+            // this screen from ever producing a spurious 409 for an edit that never touched
+            // ownership. `reassign_lead` is false here — this screen offers no lead choice, so
+            // it must never silently move the lead too.
+            if (ticketEditForm.responsable_id !== ticketEditForm.initial_responsable_id) {
+                await api.assignTicket(editingTicketId, {
+                    responsable_id: ticketEditForm.responsable_id ? Number(ticketEditForm.responsable_id) : null,
+                    reassign_lead: false,
+                    expected_responsable_id: ticketEditForm.initial_responsable_id
+                        ? Number(ticketEditForm.initial_responsable_id)
+                        : null,
+                }).catch(() => { });
             }
             await api.updateTicketStatus(
                 editingTicketId,

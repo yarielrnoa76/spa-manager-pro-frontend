@@ -973,8 +973,48 @@ export const api = {
     return request(`/api/tickets/${id}/status`, { method: "POST", body: { status, cancel_reason }, auth: true });
   },
 
-  async assignTicket(id: number, responsable_id: number) {
-    return request(`/api/tickets/${id}/assign`, { method: "POST", body: { responsable_id }, auth: true });
+  /**
+   * Phase 1B.5D Lead/Ticket Ownership block.
+   *
+   * `responsable_id` is `number | null` — `null` is the explicit deassignment target, never an
+   * omission. `reassign_lead` is always sent explicitly (the user's own choice between
+   * "Solo el ticket" and "Ticket y lead"); the backend never infers it.
+   *
+   * The `expected_*` optimistic preconditions are always sent, and `null` is a meaningful
+   * value there ("I believe this is currently unassigned") — which is why they are built as
+   * explicit keys rather than being dropped when nullish. Omitting a precondition is
+   * fail-closed on the server and yields a 409.
+   */
+  async assignTicket(
+    id: number,
+    payload: {
+      responsable_id: number | null;
+      reassign_lead: boolean;
+      expected_responsable_id: number | null;
+      expected_lead_assigned_to?: number | null;
+    },
+  ) {
+    return request<Record<string, unknown>>(`/api/tickets/${id}/assign`, { method: "POST", body: payload, auth: true });
+  },
+
+  /**
+   * Minimum relational lead context for a ticket the caller can already see. Authorized by
+   * TicketPolicy::view() on the TICKET — never by a lead id supplied from here. A 403 means
+   * the ticket itself is out of scope; it is never "this lead has no data".
+   */
+  async getTicketLeadContext(id: number) {
+    return request<{
+      id: number;
+      name: string;
+      last_name: string | null;
+      phone: string | null;
+      email: string | null;
+      source: string | null;
+      status: string | null;
+      branch_id: number | null;
+      assigned_to: number | null;
+      created_at: string | null;
+    }>(`/api/tickets/${id}/lead-context`, { method: "GET", auth: true });
   },
 
   async addTicketComment(id: number, comment: string) {
