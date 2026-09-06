@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { X, MessageSquare } from "lucide-react";
-import { api } from "../services/api";
+import { api, ApiError } from "../services/api";
 import { Branch, Lead } from "../types";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateSaleModal from "./CreateSaleModal";
 import { ConversationChat } from "./ConversationChat";
+import {
+    computeLeadSubmissionDigest,
+    getOrCreatePendingSubmissionUuid,
+    clearPendingSubmission,
+} from "./LeadModal.submissionIdentity";
 
 type LeadModalProps = {
     isOpen: boolean;
@@ -42,6 +47,11 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [userRole, setUserRole] = useState<string>('');
     const [userBranchId, setUserBranchId] = useState<number | null>(null);
     const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+    // Phase 1B.5D Slice K6: the acting user's own id, used ONLY to key the local pending
+    // submission-identity store (LeadModal.submissionIdentity.ts) so two different users sharing
+    // a browser profile never collide on the same pending identity. Never sent to the backend as
+    // an authority of any kind.
+    const [userId, setUserId] = useState<string | null>(null);
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -137,6 +147,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
         try {
             const u = await api.me();
             if (u) {
+                setUserId(u.id != null ? String(u.id) : null);
                 setUserPermissions(u.permissions || []);
                 setUserRole(u.role?.name || '');
                 const fetchedBranchId = u.branch_id || u.branch?.id || null;
@@ -335,7 +346,44 @@ const LeadModal: React.FC<LeadModalProps> = ({
             if (leadToEdit) {
                 result = await api.updateLead(leadToEdit.id, payload);
             } else {
-                result = await api.createLead(payload);
+                // Phase 1B.5D Slice K6: durable submission identity, mirroring
+                // ImportLeadsModal's own K4 pattern. getOrCreatePendingSubmissionUuid() throws
+                // (fails closed) before any POST is sent when tenant/actor identity is missing
+                // or the local store is unreadable/corrupted.
+                const tenantId = api.getCurrentTenantId();
+                const digest = await computeLeadSubmissionDigest({
+                    name: formData.name,
+                    last_name: formData.last_name,
+                    phone: formData.phone,
+                    email: formData.email,
+                    branch_id: formData.branch_id,
+                    source: formData.source,
+                    message: formData.message,
+                    status: formData.status,
+                    assigned_to: formData.assigned_to,
+                });
+                const submissionUuid = getOrCreatePendingSubmissionUuid(tenantId, userId, digest);
+
+                try {
+                    result = await api.createLead({ ...payload, submission_uuid: submissionUuid });
+                } catch (err) {
+                    // Clear the pending identity only for a CONFIRMED terminal Kernel outcome --
+                    // MatchedExisting's own 422 duplicate-phone contract, or a 409 idempotency
+                    // conflict (retrying with the same uuid would only repeat the conflict).
+                    // Never cleared for a pre-Kernel validation 422 (e.g. a missing required
+                    // field), since the identity was never consumed server-side in that case.
+                    const isMatchedExisting = err instanceof ApiError && err.status === 422 && err.data?.message === "El Lead ya existe.";
+                    const isConflict = err instanceof ApiError && err.status === 409;
+                    if (tenantId && userId && (isMatchedExisting || isConflict)) {
+                        clearPendingSubmission(tenantId, userId, digest);
+                    }
+                    throw err;
+                }
+
+                // Confirmed success only.
+                if (tenantId && userId) {
+                    clearPendingSubmission(tenantId, userId, digest);
+                }
             }
             onSuccess(result);
             onClose();
