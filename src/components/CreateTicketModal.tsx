@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, Search, User, Link as LinkIcon } from 'lucide-react';
+import { XCircle, Search, Link as LinkIcon } from 'lucide-react';
 import { api } from '../services/api';
 import { TicketCategory, TicketPriority, Lead, Branch } from '../types';
 
@@ -20,7 +20,6 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
     const [priorities, setPriorities] = useState<TicketPriority[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [leads, setLeads] = useState<Lead[]>([]);
-    const [responsibles, setResponsibles] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         lead_id: initialLeadId || '',
@@ -30,7 +29,6 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
         subject: initialData?.subject || '',
         description: initialData?.description || '',
         source_channel: 'other',
-        responsable_id: '',
         due_date: ''
     });
 
@@ -43,9 +41,8 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                 api.listTicketCategories().catch(() => []),
                 api.listTicketPriorities().catch(() => []),
                 api.listBranches().catch(() => []),
-                api.listLeads().catch(() => []),
-                api.listUsers().catch(() => [])
-            ]).then(([cats, pris, brs, lds, users]) => {
+                api.listLeads().catch(() => [])
+            ]).then(([cats, pris, brs, lds]) => {
                 const safeCats = Array.isArray(cats) ? cats : [];
                 const safePris = Array.isArray(pris) ? pris : [];
                 const safeBrs = Array.isArray(brs) ? brs : [];
@@ -54,7 +51,6 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                 setPriorities(safePris);
                 setBranches(safeBrs);
                 setLeads(Array.isArray(lds) ? lds : []);
-                setResponsibles(Array.isArray(users) ? users : []);
 
                 // Auto-select basic stuff if possible
                 if (safeBrs.length > 0 && !formData.branch_id) {
@@ -244,19 +240,13 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                                     className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                                 />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4">
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Responsable</label>
-                                    <select
-                                        value={formData.responsable_id}
-                                        onChange={e => setFormData({ ...formData, responsable_id: e.target.value })}
-                                        className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                                    >
-                                        <option value="">-- Sin asignar --</option>
-                                        {responsibles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                    </select>
-                                </div>
-                                <div>
+                                    {/* Corrective pass, Correction E: no responsable selector here anymore --
+                                        the server derives the initial responsable from the lead's own
+                                        `assigned_to`; the browser never proposes an internal assignment
+                                        authority. An unassigned lead produces an unassigned ticket, which
+                                        then falls under the Admin/SuperAdmin review mechanism. */}
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Vencimiento (Opcional)</label>
                                     <input
                                         type="datetime-local"

@@ -1378,18 +1378,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                     placeholder="Detalles adicionales..."
                                                 />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Responsable</label>
-                                                    <select
-                                                        value={ticketData.responsable_id}
-                                                        onChange={e => setTicketData({ ...ticketData, responsable_id: e.target.value })}
-                                                        className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                                    >
-                                                        <option value="">-- Sin asignar --</option>
-                                                        {filteredResponsibles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                                                    </select>
-                                                </div>
+                                            {/* Corrective pass, Correction E: no responsable selector for a NEW
+                                                ticket anymore -- the server derives the initial responsable
+                                                from the lead's own `assigned_to`; the browser never proposes
+                                                an internal assignment authority. An unassigned lead produces
+                                                an unassigned ticket, which then falls under the
+                                                Admin/SuperAdmin review mechanism. */}
+                                            <div className="grid grid-cols-1 gap-3">
                                                 <div>
                                                     <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Vencimiento</label>
                                                     <input
