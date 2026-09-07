@@ -157,7 +157,11 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                                                     type="button"
                                                     className="w-full text-left p-3 hover:bg-gray-50 flex flex-col"
                                                     onClick={() => {
-                                                        setFormData(p => ({ ...p, lead_id: l.id.toString(), branch_id: p.branch_id || l.branch_id?.toString() || '' }));
+                                                        // Second corrective pass, §7: the branch shown/sent must correspond to the
+                                                        // SELECTED LEAD, never remain an independent authority (e.g. whatever
+                                                        // branch happened to be auto-defaulted before a lead was ever chosen).
+                                                        // The lead's own branch always wins once a lead is selected.
+                                                        setFormData(p => ({ ...p, lead_id: l.id.toString(), branch_id: l.branch_id?.toString() || p.branch_id || '' }));
                                                         setSearchLead('');
                                                     }}
                                                 >
@@ -178,9 +182,13 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Sucursal *</label>
                                 <select
                                     required
+                                    // Second corrective pass, §7: once a lead is selected, its own branch is the
+                                    // only authority -- disabled here so the operator cannot pick an incoherent
+                                    // one (the server would reject it anyway, but the UI should never offer it).
+                                    disabled={!!selectedLead}
                                     value={formData.branch_id}
                                     onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                                    className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                                    className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-gray-100 disabled:text-gray-500"
                                 >
                                     <option value="" disabled>Seleccione...</option>
                                     {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -193,11 +201,14 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                                     onChange={(e) => setFormData({ ...formData, source_channel: e.target.value })}
                                     className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                                 >
+                                    {/* Second corrective pass, §6: the same canonical catalog
+                                        Lead::source already uses everywhere else -- never a
+                                        second, divergent list. `facebook`/`instagram` removed:
+                                        nothing in this codebase's source_channel/source authority
+                                        recognizes them. */}
                                     <option value="web">Página Web</option>
                                     <option value="whatsapp">WhatsApp</option>
                                     <option value="call">Llamada</option>
-                                    <option value="facebook">Facebook</option>
-                                    <option value="instagram">Instagram</option>
                                     <option value="other">Otro / Manual</option>
                                 </select>
                             </div>

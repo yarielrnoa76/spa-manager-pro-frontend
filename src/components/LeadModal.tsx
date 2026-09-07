@@ -125,13 +125,17 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [categories, setCategories] = useState<any[]>([]);
     const [priorities, setPriorities] = useState<any[]>([]);
     const [responsibles, setResponsibles] = useState<any[]>([]);
+    // Second corrective pass, §7: `responsable_id` removed from this CREATE-only state.
+    // Removing the visual selector alone was not enough -- this object was still spread
+    // wholesale into the create payload (`...ticketData`), so an empty `responsable_id: ""` kept
+    // being sent on every manual ticket creation. `editTicketData` below is the EDIT/reassignment
+    // state and legitimately keeps its own `responsable_id`.
     const [ticketData, setTicketData] = useState({
         subject: "",
         category_id: "",
         priority_id: "",
         description: "",
         due_date: "",
-        responsable_id: "",
     });
     const [editTicketData, setEditTicketData] = useState({
         subject: "",
@@ -153,7 +157,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 priority_id: "",
                 description: "",
                 due_date: "",
-                responsable_id: "",
             });
             setActiveTab('details');
             setIsCreatingTicket(false);
@@ -646,7 +649,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 branch_id: leadToEdit.branch_id,
             });
             setIsCreatingTicket(false);
-            setTicketData({ subject: "", category_id: "", priority_id: "", description: "", due_date: "", responsable_id: "" });
+            setTicketData({ subject: "", category_id: "", priority_id: "", description: "", due_date: "" });
             loadLeadTickets(leadToEdit.id);
         } catch (err: any) {
             alert(err?.message || "Error al crear ticket.");
