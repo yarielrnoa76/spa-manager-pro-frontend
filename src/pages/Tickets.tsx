@@ -529,6 +529,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                                 <th className="px-4 py-3">Creado</th>
                                                 <th className="px-4 py-3">Lead</th>
                                                 <th className="px-4 py-3">Asunto</th>
+                                                <th className="px-4 py-3">Categoría</th>
                                                 <th className="px-4 py-3">Estado</th>
                                                 <th className="px-4 py-3">Prioridad</th>
                                                 <th className="px-4 py-3">Vencimiento</th>
@@ -546,6 +547,10 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                                     <td className="px-4 py-3 text-xs text-gray-500">{format(new Date(t.created_at), 'dd/MM/yyyy HH:mm')}</td>
                                                     <td className="px-4 py-3 text-sm text-indigo-700 font-medium">{t.lead?.name ?? '—'}</td>
                                                     <td className="px-4 py-3 text-sm font-bold text-gray-900">{t.subject}</td>
+                                                    {/* Final adversarial correction, Correction 1: `category` was missing from
+                                                        `index()`'s own eager-load list, leaving this column (and LeadModal's own
+                                                        ticket list) permanently blank. */}
+                                                    <td className="px-4 py-3 text-xs text-gray-600">{t.category?.name ?? '—'}</td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadgeClasses(t.status)}`}>{t.status}</span>
                                                     </td>

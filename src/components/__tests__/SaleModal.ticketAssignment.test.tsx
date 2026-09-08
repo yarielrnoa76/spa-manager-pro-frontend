@@ -191,4 +191,205 @@ describe('SaleModal — ticket assignment (shared authority)', () => {
     expect(screen.getByText('Carla')).toBeTruthy();
     expect(screen.queryByPlaceholderText('Buscar por nombre o teléfono...')).toBeNull();
   });
+
+  it('a confirmed assignment still carries full optimistic-concurrency preconditions', async () => {
+    vi.mocked(api.getSale).mockResolvedValue(buildSale());
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    await user.selectOptions(await screen.findByTestId('ticket-assignment-select'), '9');
+    await user.click(await screen.findByTestId('assignment-dialog-ticket-and-lead'));
+
+    await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.updateTicket).mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload).toMatchObject({
+      responsable_id: 9,
+      reassign_lead: true,
+      expected_responsable_id: 7,
+      expected_lead_assigned_to: 7,
+    });
+  });
+});
+
+/**
+ * Final adversarial correction, Correction 2: `SaleModal::saveTicketEdit()` used to bundle an
+ * editorial `updateTicket()` with an unconditional `updateTicketStatus()` inside the same user
+ * action — a partial-mutation risk (the editorial half could persist while the status half
+ * failed, yet the UI reported one undifferentiated failure) and a redundant-request risk (status
+ * was resent even when it hadn't changed). "Guardar Detalles" is now editorial-only; a status
+ * transition is its own explicit, separate action reusing the ticket's own canonical
+ * `POST /tickets/{id}/status` endpoint.
+ */
+describe('SaleModal — ticket editorial save vs. status transition are fully separated (Correction 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.listUsers).mockResolvedValue([]);
+    vi.mocked(api.listPaymentMethods).mockResolvedValue([]);
+    vi.mocked(api.listBranches).mockResolvedValue([]);
+    vi.mocked(api.listTicketCategories).mockResolvedValue([{ id: 1, name: 'General' }]);
+    vi.mocked(api.listTicketPriorities).mockResolvedValue([{ id: 1, name: 'Media' }]);
+    vi.mocked(api.listConversations).mockResolvedValue({ data: [] });
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(7));
+    vi.mocked(api.updateTicket).mockResolvedValue({});
+    vi.mocked(api.updateTicketStatus).mockResolvedValue({});
+    vi.mocked(api.getSale).mockResolvedValue(buildSale());
+  });
+
+  it('"Guardar Detalles" issues exactly one editorial request and zero status requests', async () => {
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    const subjectInput = await screen.findByDisplayValue('Seguimiento de venta');
+    await user.clear(subjectInput);
+    await user.type(subjectInput, 'Asunto actualizado');
+    await user.click(screen.getByText('Guardar Detalles'));
+
+    await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.updateTicket).mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload).toMatchObject({ subject: 'Asunto actualizado' });
+    expect(payload).not.toHaveProperty('status');
+    expect(payload).not.toHaveProperty('responsable_id');
+    expect(api.updateTicketStatus).not.toHaveBeenCalled();
+  });
+
+  it('changing status issues exactly one canonical status command and zero editorial requests', async () => {
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    await user.click(await screen.findByText('Completar'));
+
+    await waitFor(() => expect(api.updateTicketStatus).toHaveBeenCalledTimes(1));
+    expect(api.updateTicketStatus).toHaveBeenCalledWith(200, 'Completed', undefined);
+    expect(api.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('cancelling a ticket sends its reason through the same canonical status command', async () => {
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    await user.click(await screen.findByText('Cancelar Ticket'));
+    await user.type(await screen.findByPlaceholderText('Motivo de la cancelación...'), 'Cliente desistió');
+    await user.click(await screen.findByText('Confirmar Cancelación'));
+
+    await waitFor(() => expect(api.updateTicketStatus).toHaveBeenCalledTimes(1));
+    expect(api.updateTicketStatus).toHaveBeenCalledWith(200, 'Cancelled', 'Cliente desistió');
+    expect(api.updateTicket).not.toHaveBeenCalled();
+  });
+
+  it('a status failure never presents as a failure of an already-applied edit', async () => {
+    vi.mocked(api.updateTicketStatus).mockRejectedValueOnce(new ApiError('boom', { status: 500 }));
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    await user.click(await screen.findByText('Completar'));
+
+    // The status-specific error surface fires; the editorial `alert()` path — which would
+    // misleadingly imply the (never-attempted) edit failed — must never fire for this.
+    expect(await screen.findByTestId('ticket-status-error')).toBeTruthy();
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('a second click while a status change is in flight issues no additional updateTicketStatus() call', async () => {
+    // `changeTicketStatus()` itself also no-ops outright whenever the target status already
+    // equals `ticket.status` — unreachable through the UI's own conditional rendering (which
+    // never re-offers a matching transition once it's applied), so the practically reachable,
+    // testable guarantee is this one: the button disables itself for the duration of the
+    // in-flight request, so a second click on the SAME already-requested transition can never
+    // fire a second, redundant `updateTicketStatus()` call.
+    let resolveStatus: (value: unknown) => void = () => {};
+    vi.mocked(api.updateTicketStatus).mockImplementation(() => new Promise((resolve) => { resolveStatus = resolve; }));
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ADMIN_USER} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+
+    const completeButton = await screen.findByText('Completar');
+    await user.click(completeButton);
+    expect(completeButton).toBeDisabled();
+
+    await user.click(completeButton);
+    expect(api.updateTicketStatus).toHaveBeenCalledTimes(1);
+
+    resolveStatus({});
+    await waitFor(() => expect(completeButton).not.toBeDisabled());
+  });
+});
+
+/**
+ * Final adversarial correction, Correction 3: `users`/`filteredUsers` feed EXCLUSIVELY the sale's
+ * own `edit_sale`-gated seller selector. `api.listUsers()` used to also fire for `edit_ticket`/
+ * `view_ticket` alone, fetching a tenant-wide user list a ticket-only actor has no use for —
+ * ticket assignment has used the dedicated `assignment-context` authority since the prior pass.
+ */
+describe('SaleModal — listUsers() is edit_sale-only (Correction 3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.listUsers).mockResolvedValue([{ id: 1, name: 'Seller One', branch_id: 1 }]);
+    vi.mocked(api.listPaymentMethods).mockResolvedValue([]);
+    vi.mocked(api.listBranches).mockResolvedValue([]);
+    vi.mocked(api.listTicketCategories).mockResolvedValue([{ id: 1, name: 'General' }]);
+    vi.mocked(api.listTicketPriorities).mockResolvedValue([{ id: 1, name: 'Media' }]);
+    vi.mocked(api.listConversations).mockResolvedValue({ data: [] });
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(7));
+    vi.mocked(api.getSale).mockResolvedValue(buildSale());
+  });
+
+  it('a user with only view_ticket never calls listUsers()', async () => {
+    const viewOnlyUser = { id: 2, is_super_admin: false, permissions: ['view_ticket'] };
+    render(<SaleModal isOpen saleId={300} user={viewOnlyUser} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await screen.findByText('Detalles de la Venta');
+    await waitFor(() => expect(api.getSale).toHaveBeenCalled());
+    expect(api.listUsers).not.toHaveBeenCalled();
+  });
+
+  it('a user with only edit_ticket never calls listUsers()', async () => {
+    const ticketEditorUser = { id: 3, is_super_admin: false, permissions: ['view_ticket', 'edit_ticket'] };
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={ticketEditorUser} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+    await screen.findByTestId('ticket-assignment-select');
+
+    expect(api.listUsers).not.toHaveBeenCalled();
+  });
+
+  it('a user holding edit_sale still calls listUsers() and keeps the seller selector working', async () => {
+    const salesAdminUser = { id: 4, is_super_admin: false, permissions: ['edit_sale'] };
+    render(<SaleModal isOpen saleId={300} user={salesAdminUser} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await waitFor(() => expect(api.listUsers).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Seller One')).toBeTruthy();
+  });
+
+  it('listUsers() never feeds the ticket responsable selector', async () => {
+    const salesAdminUser = { id: 5, is_super_admin: true, permissions: [] };
+    const user = userEvent.setup();
+    render(<SaleModal isOpen saleId={300} user={salesAdminUser} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    await waitFor(() => expect(api.listUsers).toHaveBeenCalledTimes(1));
+    await openTicketsTab(user);
+    await user.click(await screen.findByTitle('Editar ticket'));
+
+    const select = await screen.findByTestId('ticket-assignment-select') as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    // The only candidates are the ones `assignment-context` itself returned (Alice/Bruno, ids 7
+    // and 9) — never `Seller One` (id 1), the `listUsers()` fixture.
+    expect(optionValues).not.toContain('1');
+    expect(api.getTicketAssignmentContext).toHaveBeenCalled();
+  });
 });

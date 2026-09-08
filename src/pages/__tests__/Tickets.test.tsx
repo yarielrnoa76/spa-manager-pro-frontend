@@ -156,6 +156,19 @@ describe('Tickets — list', () => {
     await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ unassigned_only: true })));
   });
 
+  /**
+   * Final adversarial correction, Correction 1: `TicketController::index()` was missing
+   * `category:id,name` from its eager-load list even though `TicketIndexResource` always
+   * projected `category_id` and a `category` field — an omission that left this column blank.
+   */
+  it('renders each row\'s own category', async () => {
+    const user = userEvent.setup();
+    await openList(user);
+    const row = (await screen.findByText('Primero')).closest('tr')!;
+
+    expect(within(row).getByText('General')).toBeTruthy();
+  });
+
   it('never calls api.listUsers() for the ticket list or its filters', async () => {
     const user = userEvent.setup();
     await openList(user);

@@ -144,10 +144,20 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
     // Editing tickets inline
     const [editingTicketId, setEditingTicketId] = useState<number | null>(null);
+    // Final adversarial correction, Correction 2: `status`/`cancel_reason` removed from this
+    // form entirely -- a status transition is no longer something "Guardar Detalles" can bundle
+    // silently. This form is now editorial-only.
     const [ticketEditForm, setTicketEditForm] = useState({
-        subject: '', description: '', category_id: '', priority_id: '', status: '', cancel_reason: '',
+        subject: '', description: '', category_id: '', priority_id: '',
     });
     const [ticketSaving, setTicketSaving] = useState(false);
+    // The explicit, separate status-transition action (Iniciar tratamiento / Completar /
+    // Cancelar con motivo) -- its own request, its own loading flag, its own error, never mixed
+    // into the editorial save.
+    const [ticketStatusSaving, setTicketStatusSaving] = useState(false);
+    const [ticketStatusError, setTicketStatusError] = useState<string | null>(null);
+    const [cancelingTicketId, setCancelingTicketId] = useState<number | null>(null);
+    const [cancelReasonDraft, setCancelReasonDraft] = useState('');
     const [ticketCategories, setTicketCategories] = useState<any[]>([]);
     const [ticketPriorities, setTicketPriorities] = useState<any[]>([]);
 
@@ -247,10 +257,14 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
 
     useEffect(() => {
         if (isOpen) {
-            if (hasPerm('edit_sale') || hasPerm('edit_ticket') || hasPerm('view_ticket')) {
-                api.listUsers().then(u => Array.isArray(u) ? setUsers(u) : setUsers([])).catch(console.error);
-            }
+            // Final adversarial correction, Correction 3: `users`/`filteredUsers` feed EXCLUSIVELY
+            // the sale's own seller selector (`edit_sale`-gated, below) -- never ticket
+            // assignment, which has used the dedicated `GET /tickets/{ticket}/assignment-context`
+            // authority since the prior correction pass. Requesting it for `edit_ticket`/
+            // `view_ticket` alone (as this used to) fetched a tenant-wide user list a
+            // ticket-only actor has no use for and no authorization-relevant reason to receive.
             if (hasPerm('edit_sale')) {
+                api.listUsers().then(u => Array.isArray(u) ? setUsers(u) : setUsers([])).catch(console.error);
                 api.listPaymentMethods().then(pm => Array.isArray(pm) ? setPaymentMethods(pm) : setPaymentMethods([])).catch(() => setPaymentMethods([]));
             }
             if (hasPerm('view_branch') || hasPerm('edit_lead')) {
@@ -659,19 +673,28 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const startEditTicket = (ticket: any) => {
         setEditingTicketId(ticket.id);
         setTicketEditForm({
-            status: ticket.status || 'New',
-            cancel_reason: ticket.cancel_reason || '',
             subject: ticket.subject || '',
             description: ticket.description || '',
             category_id: ticket.category_id ? String(ticket.category_id) : '',
             priority_id: ticket.priority_id ? String(ticket.priority_id) : '',
         });
+        setCancelingTicketId(null);
+        setCancelReasonDraft('');
+        setTicketStatusError(null);
     };
 
-    // Purely editorial + the ticket's own canonical status transition -- responsable is never a
-    // key this function ever touches. `updateTicketStatus()` remains its own separate, canonical
-    // operation (a status transition is not an assignment decision), never silently merged with
-    // an assignment call the way it used to be interleaved with one.
+    const closeTicketEditor = () => {
+        setEditingTicketId(null);
+        setCancelingTicketId(null);
+        setCancelReasonDraft('');
+        setTicketStatusError(null);
+    };
+
+    /**
+     * Final adversarial correction, Correction 2: purely editorial -- `subject`, `description`,
+     * `category_id`, `priority_id` only. Never touches status or the responsable; a failure here
+     * can only ever mean an editorial failure, never a status transition that partially applied.
+     */
     const saveTicketEdit = async () => {
         if (!editingTicketId) return;
         setTicketSaving(true);
@@ -682,11 +705,6 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                 category_id: ticketEditForm.category_id,
                 priority_id: ticketEditForm.priority_id,
             });
-            await api.updateTicketStatus(
-                editingTicketId,
-                ticketEditForm.status,
-                ticketEditForm.status === 'Cancelled' ? ticketEditForm.cancel_reason : undefined
-            );
             setEditingTicketId(null);
             await loadSale();
         } catch (err) {
@@ -694,6 +712,33 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             alert('Error al actualizar el ticket');
         } finally {
             setTicketSaving(false);
+        }
+    };
+
+    /**
+     * Final adversarial correction, Correction 2: the ticket's own canonical status transition
+     * (`POST /tickets/{id}/status`, unchanged -- no new endpoint, no duplicated authority) as its
+     * own explicit, separate, visible action -- never silently bundled into "Guardar Detalles",
+     * and never invoked when the target status already matches the ticket's own current status
+     * (a genuine no-op the server would accept, but sending it anyway would be an unnecessary
+     * request and a spurious audit/transition entry). A failure here surfaces as
+     * `ticketStatusError`, distinct from `ticketAssignment.error` and the editorial `alert()`
+     * above, so the user always knows exactly which action failed.
+     */
+    const changeTicketStatus = async (ticket: { id: number; status: string }, status: string, cancelReason?: string) => {
+        if (ticket.status === status) return;
+        setTicketStatusError(null);
+        setTicketStatusSaving(true);
+        try {
+            await api.updateTicketStatus(ticket.id, status, cancelReason);
+            setCancelingTicketId(null);
+            setCancelReasonDraft('');
+            await loadSale();
+        } catch (err) {
+            console.error('Error updating ticket status', err);
+            setTicketStatusError(err instanceof Error ? err.message : 'No se pudo actualizar el estado del ticket.');
+        } finally {
+            setTicketStatusSaving(false);
         }
     };
 
@@ -1593,15 +1638,6 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                     </select>
                                                                 </div>
                                                                 <div>
-                                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Estado</label>
-                                                                    <select className="w-full text-sm font-bold text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500" value={ticketEditForm.status} onChange={e => setTicketEditForm({ ...ticketEditForm, status: e.target.value })}>
-                                                                        <option value="New">Nuevo</option>
-                                                                        <option value="InProgress">En Proceso</option>
-                                                                        <option value="Completed">Completado</option>
-                                                                        <option value="Cancelled">Cancelado</option>
-                                                                    </select>
-                                                                </div>
-                                                                <div>
                                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Responsable</label>
                                                                     {/* Adversarial correction, defect 1: the SAME shared assignment authority
                                                                         LeadModal/Tickets.tsx use -- candidates and capabilities come exclusively
@@ -1628,35 +1664,94 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                 </p>
                                                             )}
 
-                                                            {ticketEditForm.status === 'Cancelled' && (
-                                                                <div>
-                                                                    <label className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-1.5">Motivo de Cancelación (Obligatorio)</label>
-                                                                    <textarea
-                                                                        className="w-full text-sm font-medium text-gray-700 bg-red-50/30 px-3 py-2 rounded-lg border border-red-200 outline-none focus:ring-2 focus:ring-red-500 resize-none"
-                                                                        rows={2}
-                                                                        value={ticketEditForm.cancel_reason}
-                                                                        onChange={e => setTicketEditForm({ ...ticketEditForm, cancel_reason: e.target.value })}
-                                                                    />
-                                                                </div>
-                                                            )}
-
                                                             <div className="flex justify-end gap-2 pt-2">
                                                                 <button
-                                                                    onClick={() => setEditingTicketId(null)}
+                                                                    onClick={closeTicketEditor}
                                                                     className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1"
                                                                     disabled={ticketSaving}
                                                                 >
-                                                                    <XCircle size={14} /> Cancelar
+                                                                    <XCircle size={14} /> Cerrar
                                                                 </button>
                                                                 <button
                                                                     onClick={saveTicketEdit}
-                                                                    disabled={ticketSaving || (ticketEditForm.status === 'Cancelled' && !ticketEditForm.cancel_reason.trim())}
+                                                                    disabled={ticketSaving}
                                                                     className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
                                                                 >
                                                                     <Save size={14} />
-                                                                    {ticketSaving ? 'Guardando...' : 'Guardar Ticket'}
+                                                                    {ticketSaving ? 'Guardando...' : 'Guardar Detalles'}
                                                                 </button>
                                                             </div>
+
+                                                            {/* Final adversarial correction, Correction 2: the status transition is its
+                                                                own explicit, separate, visible action -- never bundled into "Guardar
+                                                                Detalles". Reuses the ticket's own canonical `POST /tickets/{id}/status`
+                                                                (the same endpoint Tickets.tsx/LeadModal already use), never a new one.
+                                                                Terminal tickets (Completed/Cancelled) offer no further transition. */}
+                                                            {!['Completed', 'Cancelled'].includes(ticket.status) && (
+                                                                <div className="border-t border-gray-200 pt-3 space-y-2">
+                                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Cambiar Estado</label>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {ticket.status === 'New' && (
+                                                                            <button
+                                                                                onClick={() => changeTicketStatus(ticket, 'InProgress')}
+                                                                                disabled={ticketStatusSaving}
+                                                                                className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                                            >
+                                                                                Iniciar Tratamiento
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={() => changeTicketStatus(ticket, 'Completed')}
+                                                                            disabled={ticketStatusSaving}
+                                                                            className="px-3 py-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg transition-colors"
+                                                                        >
+                                                                            Completar
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { setCancelingTicketId(ticket.id); setCancelReasonDraft(''); setTicketStatusError(null); }}
+                                                                            disabled={ticketStatusSaving}
+                                                                            className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 rounded-lg transition-colors"
+                                                                        >
+                                                                            Cancelar Ticket
+                                                                        </button>
+                                                                    </div>
+
+                                                                    {cancelingTicketId === ticket.id && (
+                                                                        <div className="space-y-2">
+                                                                            <label className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-1.5">Motivo de Cancelación (Obligatorio)</label>
+                                                                            <textarea
+                                                                                className="w-full text-sm font-medium text-gray-700 bg-red-50/30 px-3 py-2 rounded-lg border border-red-200 outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                                                                                rows={2}
+                                                                                placeholder="Motivo de la cancelación..."
+                                                                                value={cancelReasonDraft}
+                                                                                onChange={e => setCancelReasonDraft(e.target.value)}
+                                                                            />
+                                                                            <div className="flex justify-end gap-2">
+                                                                                <button
+                                                                                    onClick={() => setCancelingTicketId(null)}
+                                                                                    disabled={ticketStatusSaving}
+                                                                                    className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-200 rounded-lg transition-colors"
+                                                                                >
+                                                                                    Volver
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => changeTicketStatus(ticket, 'Cancelled', cancelReasonDraft)}
+                                                                                    disabled={ticketStatusSaving || !cancelReasonDraft.trim()}
+                                                                                    className="px-4 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 rounded-lg transition-colors"
+                                                                                >
+                                                                                    {ticketStatusSaving ? 'Cancelando...' : 'Confirmar Cancelación'}
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {ticketStatusError && (
+                                                                        <p data-testid="ticket-status-error" role="alert" className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                                                            {ticketStatusError}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
