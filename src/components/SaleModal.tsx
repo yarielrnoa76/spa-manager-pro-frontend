@@ -6,6 +6,8 @@ import CreateTicketModal from "./CreateTicketModal";
 import { ConversationChat } from "./ConversationChat";
 import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund, SaleGroup } from "../types/payments";
 import { usePaymentStatusPolling } from "../hooks/usePaymentStatusPolling";
+import { useTicketAssignmentControl } from "../hooks/useTicketAssignmentControl";
+import { TicketResponsableSelect, TicketAssignmentDialog } from "./TicketAssignmentControl";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -143,23 +145,13 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     // Editing tickets inline
     const [editingTicketId, setEditingTicketId] = useState<number | null>(null);
     const [ticketEditForm, setTicketEditForm] = useState({
-        subject: '', description: '', category_id: '', priority_id: '', responsable_id: '', status: '', cancel_reason: '',
-        // Phase 1B.5D Lead/Ticket Ownership block: the responsable this form OBSERVED when it
-        // opened. Sent back as the optimistic `expected_responsable_id` precondition so a
-        // concurrent change by someone else is reported (409) instead of silently overwritten.
-        initial_responsable_id: '' as string,
+        subject: '', description: '', category_id: '', priority_id: '', status: '', cancel_reason: '',
     });
     const [ticketSaving, setTicketSaving] = useState(false);
     const [ticketCategories, setTicketCategories] = useState<any[]>([]);
     const [ticketPriorities, setTicketPriorities] = useState<any[]>([]);
 
     const [users, setUsers] = useState<any[]>([]);
-    // Tickets/Tasks global surface extension (§14 caller audit): the ticket responsable
-    // selector below must never use `users` (the SALE's own seller-authority list, populated by
-    // `api.listUsers()`) as a candidate source -- that list is neither tenant/branch-filtered
-    // nor policy-checked for TICKET assignment, the same gap closed elsewhere by
-    // `GET /tickets/{ticket}/assignment-context`. Populated by `startEditTicket()`.
-    const [ticketAssignmentCandidates, setTicketAssignmentCandidates] = useState<Array<{ id: number; name: string; role: string | null }>>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [leadSaving, setLeadSaving] = useState(false);
     const [isEditingLead, setIsEditingLead] = useState(false);
@@ -632,6 +624,38 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     };
 
     // --- Ticket edit helpers ---
+    //
+    // Adversarial correction, defect 1: this used to run a second, parallel assignment flow --
+    // `updateTicket()` (editorial) followed unconditionally by `assignTicket({ reassign_lead:
+    // false })` with a swallowed `.catch(() => {})`, followed by a THIRD, separate
+    // `updateTicketStatus()` request -- with no confirmation, no "Solo el ticket / Ticket y lead"
+    // choice, and no visible failure if the assignment step was rejected (409/422/403/network).
+    // The responsable is now owned entirely by `useTicketAssignmentControl`, the SAME shared
+    // authority `LeadModal` and the global `Tickets.tsx` surface use: candidates and capabilities
+    // come exclusively from `GET /tickets/{ticket}/assignment-context` (never `api.listUsers()`),
+    // every effective change opens the three-option confirmation dialog, and a rejected or
+    // conflicting submission surfaces as `ticketAssignment.error` -- never silently discarded.
+    const ticketAssignment = useTicketAssignmentControl({
+        ticketId: editingTicketId,
+        onSubmit: async (payload) => {
+            if (!editingTicketId) return;
+            // The current editorial draft is bundled into the SAME atomic `PUT /tickets/{id}`
+            // request as the assignment decision -- the pre-existing atomic contract already
+            // established by LeadModal/Tickets.tsx, never a second, independently-committing
+            // assignment call.
+            await api.updateTicket(editingTicketId, {
+                subject: ticketEditForm.subject,
+                description: ticketEditForm.description,
+                category_id: ticketEditForm.category_id,
+                priority_id: ticketEditForm.priority_id,
+                ...payload,
+            });
+        },
+        onSettled: () => {
+            loadSale();
+        },
+    });
+
     const startEditTicket = (ticket: any) => {
         setEditingTicketId(ticket.id);
         setTicketEditForm({
@@ -641,15 +665,13 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             description: ticket.description || '',
             category_id: ticket.category_id ? String(ticket.category_id) : '',
             priority_id: ticket.priority_id ? String(ticket.priority_id) : '',
-            responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : '',
-            initial_responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : ''
         });
-        setTicketAssignmentCandidates([]);
-        api.getTicketAssignmentContext(ticket.id)
-            .then(ctx => setTicketAssignmentCandidates(ctx.candidates))
-            .catch(() => setTicketAssignmentCandidates([]));
     };
 
+    // Purely editorial + the ticket's own canonical status transition -- responsable is never a
+    // key this function ever touches. `updateTicketStatus()` remains its own separate, canonical
+    // operation (a status transition is not an assignment decision), never silently merged with
+    // an assignment call the way it used to be interleaved with one.
     const saveTicketEdit = async () => {
         if (!editingTicketId) return;
         setTicketSaving(true);
@@ -660,20 +682,6 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                 category_id: ticketEditForm.category_id,
                 priority_id: ticketEditForm.priority_id,
             });
-            // Only call the assignment authority when the responsable actually changed: an
-            // unchanged value is a server-side no-op anyway, but not sending it at all keeps
-            // this screen from ever producing a spurious 409 for an edit that never touched
-            // ownership. `reassign_lead` is false here — this screen offers no lead choice, so
-            // it must never silently move the lead too.
-            if (ticketEditForm.responsable_id !== ticketEditForm.initial_responsable_id) {
-                await api.assignTicket(editingTicketId, {
-                    responsable_id: ticketEditForm.responsable_id ? Number(ticketEditForm.responsable_id) : null,
-                    reassign_lead: false,
-                    expected_responsable_id: ticketEditForm.initial_responsable_id
-                        ? Number(ticketEditForm.initial_responsable_id)
-                        : null,
-                }).catch(() => { });
-            }
             await api.updateTicketStatus(
                 editingTicketId,
                 ticketEditForm.status,
@@ -1509,13 +1517,25 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center mb-2">
                                         <h4 className="text-sm font-black text-gray-800 uppercase tracking-tight">Tickets del Cliente</h4>
-                                        <button
-                                            onClick={() => setIsCreatingTicket(true)}
-                                            className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-indigo-700 transition-all shadow-md"
-                                        >
-                                            Crear Ticket
-                                        </button>
+                                        {hasPerm('create_ticket') && sale?.lead_id && (
+                                            <button
+                                                onClick={() => setIsCreatingTicket(true)}
+                                                className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-indigo-700 transition-all shadow-md"
+                                            >
+                                                Crear Ticket
+                                            </button>
+                                        )}
                                     </div>
+                                    {/* Adversarial correction: a ticket is always operative work on a
+                                        LEAD -- a sale with no lead has nothing for a ticket to attach
+                                        to, so creation from here must be impossible, not merely
+                                        pointed at an arbitrary lead. Explained rather than silently
+                                        hidden alongside the empty-tickets state. */}
+                                    {!sale?.lead_id && (
+                                        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl p-3">
+                                            Esta venta no tiene un lead asociado; no se puede crear un ticket desde aquí.
+                                        </div>
+                                    )}
                                     {sale?.lead?.tickets?.length === 0 ? (
                                         <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl py-12 flex flex-col items-center justify-center text-gray-400 gap-2">
                                             <TicketIcon size={32} />
@@ -1583,16 +1603,30 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                 </div>
                                                                 <div>
                                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Responsable</label>
-                                                                    <select className="w-full text-sm font-bold text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500" value={ticketEditForm.responsable_id} onChange={e => setTicketEditForm({ ...ticketEditForm, responsable_id: e.target.value })}>
-                                                                        <option value="">Sin Asignar</option>
-                                                                        {ticketAssignmentCandidates.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                                                    </select>
+                                                                    {/* Adversarial correction, defect 1: the SAME shared assignment authority
+                                                                        LeadModal/Tickets.tsx use -- candidates and capabilities come exclusively
+                                                                        from `GET /tickets/{ticket}/assignment-context`, and picking a value here
+                                                                        opens the three-option confirmation dialog rather than mutating anything
+                                                                        immediately. */}
+                                                                    <TicketResponsableSelect
+                                                                        context={ticketAssignment.context}
+                                                                        contextState={ticketAssignment.contextState}
+                                                                        currentResponsableName={ticket.responsable?.name ?? null}
+                                                                        onChange={ticketAssignment.requestChange}
+                                                                        disabled={ticketAssignment.submitting}
+                                                                    />
                                                                 </div>
                                                                 <div className="col-span-2">
                                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Descripción</label>
                                                                     <textarea rows={3} className="w-full text-sm font-medium text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500 resize-none" value={ticketEditForm.description} onChange={e => setTicketEditForm({ ...ticketEditForm, description: e.target.value })} />
                                                                 </div>
                                                             </div>
+
+                                                            {ticketAssignment.error && (
+                                                                <p data-testid="assignment-error" role="alert" className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                                                    {ticketAssignment.error}
+                                                                </p>
+                                                            )}
 
                                                             {ticketEditForm.status === 'Cancelled' && (
                                                                 <div>
@@ -1687,12 +1721,16 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                 />
             )}
 
-            {isCreatingTicket && (
+            {/* Adversarial correction, defect 1/9: only ever mounted when the loaded sale HAS a
+                lead -- `lockedLead` is the sale's own already-loaded lead object, never merely an
+                id resolved against a separately-fetched, possibly-incomplete lead list. There is
+                no path by which this can create a ticket against any lead other than this sale's. */}
+            {isCreatingTicket && sale?.lead && (
                 <CreateTicketModal
                     isOpen={true}
                     onClose={() => setIsCreatingTicket(false)}
                     onSuccess={() => { loadSale(); setIsCreatingTicket(false); }}
-                    initialLeadId={sale?.lead_id}
+                    lockedLead={sale.lead}
                     initialData={{
                         branch_id: sale?.branch_id,
                         subject: `Ticket relacionado con Venta #${sale?.id}`,
@@ -1700,6 +1738,16 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                     }}
                 />
             )}
+
+            <TicketAssignmentDialog
+                ticketNumber={sale?.lead?.tickets?.find((t) => t.id === editingTicketId)?.ticket_number ?? ''}
+                pending={ticketAssignment.pending}
+                error={ticketAssignment.error}
+                submitting={ticketAssignment.submitting}
+                canReassignLead={ticketAssignment.context?.capabilities.can_reassign_lead ?? false}
+                onConfirm={ticketAssignment.confirm}
+                onCancel={ticketAssignment.cancel}
+            />
         </div>
     );
 }

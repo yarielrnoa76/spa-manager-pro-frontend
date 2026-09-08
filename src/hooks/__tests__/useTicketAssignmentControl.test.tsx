@@ -23,6 +23,7 @@ const context = (overrides: Partial<Awaited<ReturnType<typeof api.getTicketAssig
   ticket_status: 'New',
   ticket_responsable_id: 7,
   lead_responsable_id: 7,
+  current_responsable: { id: 7, name: 'Alice', role: 'sales' },
   capabilities: { is_terminal: false, can_assign: true, can_deassign: true, can_reassign_lead: true },
   candidates: [
     { id: 7, name: 'Alice', role: 'sales' },
@@ -82,7 +83,14 @@ describe('useTicketAssignmentControl', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('a target that already matches the lead responsable submits directly, ticket-only', async () => {
+  /**
+   * Adversarial correction, defect 3: a target that already matches the lead's own responsable
+   * used to submit DIRECTLY, ticket-only, with no confirmation at all. The approved contract
+   * requires every effective assignment to open the three-option dialog, even when one of its
+   * two affirmative choices would be a no-op for the lead — so this now opens the dialog exactly
+   * like any other differing target, and NOTHING is sent until `confirm()` is called.
+   */
+  it('a target that already matches the lead responsable still opens the dialog, never submits directly', async () => {
     vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(
       context({ ticket_responsable_id: null, lead_responsable_id: 9 }),
     );
@@ -90,14 +98,20 @@ describe('useTicketAssignmentControl', () => {
     const { result } = renderHook(() => useTicketAssignmentControl({ ticketId: 100, onSubmit }));
     await waitFor(() => expect(result.current.contextState).toBe('success'));
 
-    await act(async () => result.current.requestChange(9));
+    act(() => result.current.requestChange(9));
 
-    expect(result.current.pending).toBeNull();
+    expect(result.current.pending).toMatchObject({ kind: 'assign', targetId: 9 });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await act(async () => result.current.confirm(true));
+
     expect(onSubmit).toHaveBeenCalledWith({
       responsable_id: 9,
-      reassign_lead: false,
+      reassign_lead: true,
       expected_responsable_id: null,
+      expected_lead_assigned_to: 9,
     });
+    expect(result.current.pending).toBeNull();
   });
 
   it('confirm(false) submits ticket-only without expected_lead_assigned_to', async () => {

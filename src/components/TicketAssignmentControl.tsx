@@ -52,6 +52,14 @@ export function TicketResponsableSelect({
     );
   }
 
+  // Adversarial correction, defect 8: the ticket's current responsable might no longer pass the
+  // candidate filter (e.g. moved to another branch since assignment). `current_responsable` is
+  // never folded into `candidates` — it is rendered here as its own, explicitly non-selectable
+  // option, so the control can never look "unassigned" when it is not, and can never let the
+  // actor silently re-confirm someone who is no longer a valid target.
+  const currentId = context.ticket_responsable_id;
+  const isOrphaned = currentId !== null && !context.candidates.some((c) => c.id === currentId);
+
   return (
     <select
       data-testid="ticket-assignment-select"
@@ -61,6 +69,11 @@ export function TicketResponsableSelect({
       onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
     >
       <option value="">-- Sin asignar --</option>
+      {isOrphaned && context.current_responsable && (
+        <option key={context.current_responsable.id} value={context.current_responsable.id} disabled data-testid="ticket-assignment-orphaned-current">
+          {context.current_responsable.name} (actual, ya no asignable)
+        </option>
+      )}
       {context.candidates.map((c) => (
         <option key={c.id} value={c.id}>
           {c.name}{c.role ? ` (${c.role})` : ''}
@@ -75,6 +88,7 @@ export function TicketAssignmentDialog({
   pending,
   error,
   submitting,
+  canReassignLead,
   onConfirm,
   onCancel,
 }: {
@@ -86,6 +100,14 @@ export function TicketAssignmentDialog({
   } | null;
   error: string | null;
   submitting: boolean;
+  /**
+   * Adversarial correction, defect 2: mirrors `assignment-context`'s own
+   * `capabilities.can_reassign_lead` — `false` when the actor cannot write the lead, no lead is
+   * accessible, or the ticket is terminal. "Ticket y lead" is never offered in that case; the
+   * backend's own `LeadPolicy::update()` gate remains the final authority regardless of what this
+   * dialog renders.
+   */
+  canReassignLead: boolean;
   onConfirm: (reassignLead: boolean) => void;
   onCancel: () => void;
 }) {
@@ -115,14 +137,16 @@ export function TicketAssignmentDialog({
           >
             {pending.kind === 'deassign' ? 'Desasignar solo el ticket' : 'Solo el ticket'}
           </button>
-          <button
-            data-testid="assignment-dialog-ticket-and-lead"
-            disabled={submitting}
-            onClick={() => onConfirm(true)}
-            className="w-full py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-bold rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition"
-          >
-            {pending.kind === 'deassign' ? 'Desasignar ticket y lead' : 'Ticket y lead'}
-          </button>
+          {canReassignLead && (
+            <button
+              data-testid="assignment-dialog-ticket-and-lead"
+              disabled={submitting}
+              onClick={() => onConfirm(true)}
+              className="w-full py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-bold rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition"
+            >
+              {pending.kind === 'deassign' ? 'Desasignar ticket y lead' : 'Ticket y lead'}
+            </button>
+          )}
           <button
             data-testid="assignment-dialog-cancel"
             disabled={submitting}

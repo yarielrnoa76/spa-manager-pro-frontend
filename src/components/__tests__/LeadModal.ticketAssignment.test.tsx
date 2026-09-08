@@ -72,6 +72,7 @@ const assignmentContext = (ticketResponsableId: number | null, leadResponsableId
   ticket_status: "New",
   ticket_responsable_id: ticketResponsableId,
   lead_responsable_id: leadResponsableId,
+  current_responsable: CANDIDATES.find((c) => c.id === ticketResponsableId) ?? null,
   capabilities: { is_terminal: false, can_assign: true, can_deassign: true, can_reassign_lead: true },
   candidates: CANDIDATES,
 });
@@ -256,7 +257,13 @@ describe("LeadModal — ticket assignment dialog", () => {
     expect(payload.expected_responsable_id).toBeNull();
   });
 
-  it("does not ask when the new responsable already equals the lead's assignee", async () => {
+  /**
+   * Adversarial correction, defect 3: a target that already equals the lead's own assignee used
+   * to submit directly with no confirmation at all. Every effective assignment now opens the
+   * three-option dialog unconditionally — nothing is sent until the user explicitly confirms one
+   * of the two affirmative choices.
+   */
+  it("still asks for confirmation when the new responsable already equals the lead's assignee", async () => {
     vi.mocked(api.getTicket).mockResolvedValue(ticketDetail(null));
     vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(null, 9));
 
@@ -270,9 +277,12 @@ describe("LeadModal — ticket assignment dialog", () => {
 
     await user.selectOptions(await responsableSelect(), "9");
 
-    await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
-    expect(screen.queryByTestId("assignment-dialog")).toBeNull();
+    expect(await screen.findByTestId("assignment-dialog")).toBeTruthy();
+    expect(api.updateTicket).not.toHaveBeenCalled();
 
+    await user.click(await screen.findByTestId("assignment-dialog-ticket-only"));
+
+    await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.updateTicket).mock.calls[0];
     expect(payload).toMatchObject({ responsable_id: 9, reassign_lead: false });
   });

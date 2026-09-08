@@ -7,7 +7,16 @@ interface CreateTicketModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
-    initialLeadId?: number | string;
+    /**
+     * Adversarial correction, defect 1/9: when set, the lead is FIXED to this exact object --
+     * never merely an id resolved by searching a separately-fetched `api.listLeads()` page, which
+     * is not guaranteed to include this specific lead (pagination, filters) and, worse, silently
+     * fell through to the "pick any lead" search UI whenever it didn't. A caller with an already-
+     * loaded lead (e.g. `SaleModal`, which must use exclusively the sale's own lead) passes it
+     * directly here; `api.listLeads()` is never fetched at all in that case, so there is no path
+     * by which this modal could ever offer a DIFFERENT lead than the one the caller locked.
+     */
+    lockedLead?: Lead | null;
     initialData?: Partial<{
         branch_id: string | number;
         subject: string;
@@ -15,15 +24,15 @@ interface CreateTicketModalProps {
     }>;
 }
 
-const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, onSuccess, initialLeadId, initialData }) => {
+const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, onSuccess, lockedLead, initialData }) => {
     const [categories, setCategories] = useState<TicketCategory[]>([]);
     const [priorities, setPriorities] = useState<TicketPriority[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [leads, setLeads] = useState<Lead[]>([]);
 
     const [formData, setFormData] = useState({
-        lead_id: initialLeadId || '',
-        branch_id: initialData?.branch_id || '',
+        lead_id: lockedLead ? String(lockedLead.id) : '',
+        branch_id: lockedLead?.branch_id ? String(lockedLead.branch_id) : (initialData?.branch_id || ''),
         category_id: '',
         priority_id: '',
         subject: initialData?.subject || '',
@@ -37,12 +46,16 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
 
     useEffect(() => {
         if (isOpen) {
-            Promise.all([
+            // A locked lead never needs (and must never use) the open-ended lead search: fetching
+            // `listLeads()` here would be the exact path that let this modal fall back to an
+            // arbitrary lead when the locked one wasn't in that page.
+            const tasks: [Promise<TicketCategory[]>, Promise<TicketPriority[]>, Promise<Branch[]>, Promise<Lead[]>] = [
                 api.listTicketCategories().catch(() => []),
                 api.listTicketPriorities().catch(() => []),
                 api.listBranches().catch(() => []),
-                api.listLeads().catch(() => [])
-            ]).then(([cats, pris, brs, lds]) => {
+                lockedLead ? Promise.resolve([]) : api.listLeads().catch(() => []),
+            ];
+            Promise.all(tasks).then(([cats, pris, brs, lds]) => {
                 const safeCats = Array.isArray(cats) ? cats : [];
                 const safePris = Array.isArray(pris) ? pris : [];
                 const safeBrs = Array.isArray(brs) ? brs : [];
@@ -53,7 +66,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                 setLeads(Array.isArray(lds) ? lds : []);
 
                 // Auto-select basic stuff if possible
-                if (safeBrs.length > 0 && !formData.branch_id) {
+                if (!lockedLead && safeBrs.length > 0 && !formData.branch_id) {
                     setFormData(prev => ({ ...prev, branch_id: safeBrs[0].id.toString() }));
                 }
                 if (safeCats.length > 0 && !formData.category_id) {
@@ -93,7 +106,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
         }
     };
 
-    const selectedLead = leads.find(l => l.id.toString() === formData.lead_id.toString());
+    const selectedLead = lockedLead ?? leads.find(l => l.id.toString() === formData.lead_id.toString());
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
@@ -114,7 +127,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                         {/* Lead Selection */}
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                             <label className="block text-sm font-bold text-gray-700 mb-2">Cliente / Prospecto *</label>
-                            {selectedLead && !initialLeadId ? (
+                            {selectedLead && !lockedLead ? (
                                 <div className="flex items-center justify-between bg-white border border-indigo-200 p-3 rounded-lg shadow-sm">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
@@ -133,9 +146,9 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({ isOpen, onClose, 
                                         Cambiar
                                     </button>
                                 </div>
-                            ) : initialLeadId && selectedLead ? (
+                            ) : lockedLead ? (
                                 <div className="flex items-center gap-2 p-3 bg-indigo-50 text-indigo-800 rounded-lg border border-indigo-100">
-                                    <LinkIcon size={16} /> Ticket vinculado automáticamente a <strong>{selectedLead.name}</strong>
+                                    <LinkIcon size={16} /> Ticket vinculado automáticamente a <strong>{lockedLead.name}</strong>
                                 </div>
                             ) : (
                                 <div className="space-y-2">

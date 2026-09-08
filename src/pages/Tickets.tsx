@@ -67,6 +67,12 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
 
     const canCreate = hasPerm('create_ticket');
     const canManageConfig = hasPerm('manage_ticket_config');
+    // Adversarial correction, defect 6: Start/Complete/Cancel used to render for anyone who could
+    // merely VIEW a ticket. The backend's own `TicketController::updateStatus()` gates on
+    // `TicketPolicy::update()` (edit_ticket), which is the same authority `edit_ticket` checks
+    // here — this hides a control that would otherwise guarantee a 403 round trip, it is never
+    // the actual authorization boundary.
+    const canEditTicket = hasPerm('edit_ticket');
 
     const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'admin'>('dashboard');
 
@@ -130,11 +136,22 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
     const [categories, setCategories] = useState<TicketCategory[]>([]);
     const [priorities, setPriorities] = useState<TicketPriority[]>([]);
 
+    // Adversarial correction, defect 7: `dashboard.workload_by_responsable` is deliberately
+    // active-tickets-only (it answers "who currently has work"), so a responsable whose tickets
+    // are ALL Completed/Cancelled would silently disappear from a filter sourced from it. This is
+    // a separate, minimal, server-side collection over every ticket the actor can see, any status.
+    const [responsableOptions, setResponsableOptions] = useState<Array<{ id: number; name: string | null }>>([]);
+
     const loadConfig = useCallback(async () => {
         try {
-            const [cats, pris] = await Promise.all([api.listTicketCategories(), api.listTicketPriorities()]);
+            const [cats, pris, responsables] = await Promise.all([
+                api.listTicketCategories(),
+                api.listTicketPriorities(),
+                api.getTicketResponsableOptions(),
+            ]);
             setCategories(cats);
             setPriorities(pris);
+            setResponsableOptions(responsables);
         } catch {
             // Non-fatal: dropdowns simply stay empty.
         }
@@ -448,21 +465,25 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                     {priorities.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
 
-                {dashboard && dashboard.workload_by_responsable.length > 0 && (
+                {responsableOptions.length > 0 && (
                     <select
-                        className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                         value={filters.responsable_id}
-                        onChange={(e) => setFilters({ ...filters, responsable_id: e.target.value, page: 1 })}
+                        disabled={filters.unassigned_only}
+                        // "Sin responsable" and a specific responsable are mutually exclusive
+                        // (the backend itself rejects the combination with a 422) — picking one
+                        // here always clears the other rather than letting them coexist.
+                        onChange={(e) => setFilters({ ...filters, responsable_id: e.target.value, unassigned_only: false, page: 1 })}
                     >
                         <option value="all">Todos los responsables</option>
-                        {dashboard.workload_by_responsable.map((r) => (
-                            <option key={r.responsable_id} value={r.responsable_id}>{r.name ?? `#${r.responsable_id}`}</option>
+                        {responsableOptions.map((r) => (
+                            <option key={r.id} value={r.id}>{r.name ?? `#${r.id}`}</option>
                         ))}
                     </select>
                 )}
 
                 <button
-                    onClick={() => setFilters({ ...filters, unassigned_only: !filters.unassigned_only, page: 1 })}
+                    onClick={() => setFilters({ ...filters, unassigned_only: !filters.unassigned_only, responsable_id: 'all', page: 1 })}
                     className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${filters.unassigned_only ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                 >
                     Sin responsable
@@ -630,7 +651,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                 )}
                             </div>
 
-                            {!['Completed', 'Cancelled'].includes(t.status) && (
+                            {canEditTicket && !['Completed', 'Cancelled'].includes(t.status) && (
                                 <div className="flex gap-2">
                                     {t.status === 'New' && (
                                         <button onClick={() => handleStatusChange(t.id, 'InProgress')} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-indigo-700">
@@ -768,6 +789,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                 pending={assignment.pending}
                 error={assignment.error}
                 submitting={assignment.submitting}
+                canReassignLead={assignment.context?.capabilities.can_reassign_lead ?? false}
                 onConfirm={assignment.confirm}
                 onCancel={assignment.cancel}
             />

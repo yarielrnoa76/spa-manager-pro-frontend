@@ -21,6 +21,13 @@ export type TicketAssignmentContext = {
   ticket_status: string;
   ticket_responsable_id: number | null;
   lead_responsable_id: number | null;
+  /**
+   * Adversarial correction, defect 8: the ticket's CURRENT responsable, resolved independently
+   * of `candidates` — present even when that responsable would no longer pass the candidate
+   * filter, so the UI can distinguish "assigned to someone no longer selectable" from
+   * "unassigned" instead of a `<select>` whose value matches no option.
+   */
+  current_responsable: TicketAssignmentCandidate | null;
   capabilities: {
     is_terminal: boolean;
     can_assign: boolean;
@@ -142,9 +149,15 @@ export function useTicketAssignmentControl({ ticketId, onSubmit, onSettled }: Us
 
   /**
    * Called when the user picks a new target (or clears the selection) in the responsable
-   * control. A target that already matches the lead's own assignee raises no divergence to
-   * resolve and is submitted directly as ticket-only; anything else opens the three-option
-   * dialog. Picking the currently-observed value is a no-op.
+   * control. Picking the currently-observed value is a no-op (nothing to decide). Every other
+   * choice — including a target that already matches the lead's own assignee — opens the
+   * three-option dialog; NOTHING is ever sent to the server before the user confirms.
+   *
+   * Adversarial correction, defect 3: this used to submit a ticket-only assignment directly,
+   * with no confirmation, whenever the chosen target already matched `lead_responsable_id`. That
+   * contradicted the approved contract — every effective assignment, reassignment or
+   * deassignment must open the confirmation dialog, even when one of its two affirmative choices
+   * would be a no-op for the lead. There is no longer a direct-submit path here at all.
    */
   const requestChange = useCallback(
     (targetId: number | null) => {
@@ -163,15 +176,10 @@ export function useTicketAssignmentControl({ ticketId, onSubmit, onSettled }: Us
         expectedLeadAssignedTo: leadResponsable,
       };
 
-      if (targetId !== null && targetId === leadResponsable) {
-        void submitDecision(decision, false);
-        return;
-      }
-
       setError(null);
       setPending(decision);
     },
-    [context, nameOf, submitDecision],
+    [context, nameOf],
   );
 
   const confirm = useCallback(

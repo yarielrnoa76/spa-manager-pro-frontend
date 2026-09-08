@@ -1001,7 +1001,11 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                             >
                                                 ← Ver lista
                                             </button>
-                                            {!isEditingSelectedTicket && (
+                                            {/* Audit-driven extension of defect 6: a view-only user (view_ticket
+                                                without edit_ticket) must not see an editorial "Editar" affordance
+                                                that would only ever produce a 403 -- the same rule Tickets.tsx now
+                                                applies to its own status controls. */}
+                                            {!isEditingSelectedTicket && hasPerm('edit_ticket') && (
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -1120,7 +1124,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     )}
 
                                     {/* Actions */}
-                                    {!isEditingSelectedTicket && (
+                                    {/* Audit-driven extension of defect 6: identical gate to Tickets.tsx's own
+                                        status controls -- a view-only actor never sees a control the backend's
+                                        `TicketPolicy::update()` (edit_ticket) gate would reject anyway. */}
+                                    {!isEditingSelectedTicket && hasPerm('edit_ticket') && (
                                         <div className="flex gap-2">
                                             {selectedTicket.status === 'New' && (
                                                 <button
@@ -1381,6 +1388,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 pending={ticketAssignment.pending}
                 error={ticketAssignment.error}
                 submitting={ticketAssignment.submitting}
+                canReassignLead={ticketAssignment.context?.capabilities.can_reassign_lead ?? false}
                 onConfirm={ticketAssignment.confirm}
                 onCancel={ticketAssignment.cancel}
             />

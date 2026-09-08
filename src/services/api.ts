@@ -1061,6 +1061,11 @@ export const api = {
       ticket_status: string;
       ticket_responsable_id: number | null;
       lead_responsable_id: number | null;
+      // Adversarial correction, defect 8: the ticket's CURRENT responsable, computed
+      // independently of `candidates` — present even when that responsable no longer passes the
+      // candidate filter (e.g. moved to another branch), so the UI can tell "assigned to someone
+      // no longer selectable" apart from "unassigned" instead of a `<select>` matching no option.
+      current_responsable: { id: number; name: string; role: string | null } | null;
       capabilities: {
         is_terminal: boolean;
         can_assign: boolean;
@@ -1069,6 +1074,16 @@ export const api = {
       };
       candidates: Array<{ id: number; name: string; role: string | null }>;
     }>(`/api/tickets/${id}/assignment-context`, { method: "GET", auth: true });
+  },
+
+  /**
+   * Adversarial correction, defect 7: a minimal, server-side collection of responsables present
+   * on ANY visible ticket (any status) — distinct from `getTicketDashboardSummary()`'s own
+   * `workload_by_responsable`, which is deliberately active-tickets-only and would silently drop
+   * a responsable whose tickets are all Completed/Cancelled. Never `listUsers()`.
+   */
+  async getTicketResponsableOptions() {
+    return request<Array<{ id: number; name: string | null }>>(`/api/tickets/responsable-options`, { method: "GET", auth: true });
   },
 
   // --- Ticket Categories & Priorities ---

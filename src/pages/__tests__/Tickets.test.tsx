@@ -24,6 +24,7 @@ vi.mock('../../services/api', async (importOriginal) => {
       listTickets: vi.fn(),
       getTicket: vi.fn(),
       getTicketAssignmentContext: vi.fn(),
+      getTicketResponsableOptions: vi.fn(),
       assignTicket: vi.fn(),
       updateTicketStatus: vi.fn(),
       addTicketComment: vi.fn(),
@@ -81,6 +82,14 @@ const SALES_USER: UserData = {
   is_super_admin: false, permissions: ['view_ticket', 'create_ticket', 'edit_ticket'],
 };
 
+// Adversarial correction, defect 6: a view-only user holds `view_ticket` but NOT `edit_ticket` —
+// the same permission the backend's `TicketPolicy::update()` gate requires for
+// `updateTicketStatus()`. Status controls must never render for this user.
+const VIEW_ONLY_USER: UserData = {
+  id: '3', name: 'Viewer', email: 'viewer@example.com', role: { id: 3, name: 'viewer' },
+  is_super_admin: false, permissions: ['view_ticket'],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getTicketDashboardSummary).mockResolvedValue(DASHBOARD);
@@ -90,9 +99,11 @@ beforeEach(() => {
   vi.mocked(api.getTicket).mockResolvedValue({ ...TICKET_ROW, description: 'Detalle', comments: [] });
   vi.mocked(api.getTicketAssignmentContext).mockResolvedValue({
     ticket_status: 'New', ticket_responsable_id: 5, lead_responsable_id: 5,
+    current_responsable: { id: 5, name: 'Alice', role: 'sales' },
     capabilities: { is_terminal: false, can_assign: true, can_deassign: true, can_reassign_lead: true },
     candidates: [{ id: 5, name: 'Alice', role: 'sales' }],
   });
+  vi.mocked(api.getTicketResponsableOptions).mockResolvedValue([{ id: 5, name: 'Alice' }]);
 });
 
 describe('Tickets — dashboard states', () => {
@@ -200,6 +211,96 @@ describe('Tickets — detail and assignment', () => {
 
     expect(await screen.findByTestId('ticket-assignment-readonly')).toBeTruthy();
     expect(screen.queryByTestId('ticket-assignment-select')).toBeNull();
+  });
+});
+
+describe('Tickets — status controls respect edit_ticket (defect 6)', () => {
+  it('hides Start/Complete/Cancel for a view-only user (view_ticket without edit_ticket)', async () => {
+    const user = userEvent.setup();
+    render(<Tickets user={VIEW_ONLY_USER} />);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+    await screen.findByText('Detalle');
+
+    expect(screen.queryByText('Empezar a tratar')).toBeNull();
+    expect(screen.queryByText('Finalizar')).toBeNull();
+    expect(screen.queryByText('Cancelar')).toBeNull();
+  });
+
+  it('shows Start/Complete/Cancel for a user holding edit_ticket', async () => {
+    const user = userEvent.setup();
+    render(<Tickets user={ADMIN_USER} />);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+    await screen.findByText('Detalle');
+
+    expect(screen.getByText('Empezar a tratar')).toBeTruthy();
+    expect(screen.getByText('Finalizar')).toBeTruthy();
+  });
+});
+
+describe('Tickets — responsable filter (defects 7/8)', () => {
+  it('sources the responsable filter from a dedicated, all-status endpoint, never workload_by_responsable alone', async () => {
+    // A responsable absent from the active-only workload widget but present in the dedicated
+    // all-status collection (e.g. they only ever had Completed/Cancelled tickets).
+    vi.mocked(api.getTicketResponsableOptions).mockResolvedValue([
+      { id: 5, name: 'Alice' },
+      { id: 42, name: 'TerminalOnlyBob' },
+    ]);
+    const user = userEvent.setup();
+    render(<Tickets user={ADMIN_USER} />);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await screen.findByText('Primero');
+
+    await waitFor(() => expect(api.getTicketResponsableOptions).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('TerminalOnlyBob')).toBeTruthy();
+    expect(api.listUsers).not.toHaveBeenCalled();
+  });
+
+  it('picking a specific responsable clears "Sin responsable", and vice versa', async () => {
+    vi.mocked(api.getTicketResponsableOptions).mockResolvedValue([{ id: 5, name: 'Alice' }]);
+    const user = userEvent.setup();
+    render(<Tickets user={ADMIN_USER} />);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await screen.findByText('Primero');
+
+    const responsableSelect = await screen.findByDisplayValue('Todos los responsables');
+    await user.selectOptions(responsableSelect, '5');
+    await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ responsable_id: '5' })));
+    let lastCall = vi.mocked(api.listTickets).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(lastCall.unassigned_only).toBeUndefined();
+
+    // The combination is mutually exclusive: while a specific responsable is selected, the
+    // dropdown itself stays enabled, but clicking "Sin responsable" now must clear it — the
+    // backend itself rejects the combination with a 422, so the UI can never send both.
+    await user.click(screen.getByRole('button', { name: /Sin responsable/i }));
+    await waitFor(() => expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ unassigned_only: true })));
+    lastCall = vi.mocked(api.listTickets).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(lastCall.responsable_id).toBeUndefined();
+
+    // And the responsable dropdown itself is now disabled while "Sin responsable" is active
+    // (and was reset back to "all" rather than left showing the just-cleared selection).
+    expect((screen.getByDisplayValue('Todos los responsables') as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it('shows a ticket\'s current responsable as a distinct, non-selectable option when no longer a valid candidate', async () => {
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue({
+      ticket_status: 'New', ticket_responsable_id: 5, lead_responsable_id: 5,
+      current_responsable: { id: 5, name: 'Alice', role: 'sales' },
+      capabilities: { is_terminal: false, can_assign: true, can_deassign: true, can_reassign_lead: true },
+      // Alice is no longer a valid candidate (e.g. moved branch) but is still the ticket's own
+      // current responsable.
+      candidates: [{ id: 9, name: 'Bruno', role: 'sales' }],
+    });
+    const user = userEvent.setup();
+    render(<Tickets user={ADMIN_USER} />);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+
+    const orphaned = await screen.findByTestId('ticket-assignment-orphaned-current');
+    expect(orphaned.textContent).toMatch(/Alice/);
+    expect((orphaned as HTMLOptionElement).disabled).toBe(true);
+    expect((await screen.findByTestId('ticket-assignment-select') as HTMLSelectElement).value).toBe('5');
   });
 });
 
