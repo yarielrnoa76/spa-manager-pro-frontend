@@ -950,7 +950,7 @@ export const api = {
         }
       }
     });
-    return request<{ data: any[]; last_page: number; total: number }>(`/api/tickets?${searchParams.toString()}`, { method: "GET", auth: true });
+    return request<{ data: any[]; current_page: number; last_page: number; total: number; per_page: number }>(`/api/tickets?${searchParams.toString()}`, { method: "GET", auth: true });
   },
 
   async getTicket(id: number) {
@@ -1019,6 +1019,56 @@ export const api = {
 
   async addTicketComment(id: number, comment: string) {
     return request(`/api/tickets/${id}/comments`, { method: "POST", body: { comment }, auth: true });
+  },
+
+  /**
+   * Tickets/Tasks global surface. Server-side, tenant-scoped, ViewScope-respecting aggregates
+   * over every ticket the actor can see — never computed client-side from `tickets.length` or a
+   * paginated page.
+   */
+  async getTicketDashboardSummary() {
+    return request<{
+      total: number;
+      new: number;
+      in_progress: number;
+      completed: number;
+      cancelled: number;
+      overdue: number;
+      unassigned: number;
+      by_status: Record<string, number>;
+      by_priority: Array<{ priority_id: number; name: string | null; count: number }>;
+      workload_by_responsable: Array<{ responsable_id: number; name: string | null; count: number }>;
+      recent: Array<{
+        id: number;
+        ticket_number: string;
+        subject: string;
+        status: string;
+        created_at: string;
+        lead_name: string | null;
+        responsable_name: string | null;
+      }>;
+    }>(`/api/tickets/dashboard-summary`, { method: "GET", auth: true });
+  },
+
+  /**
+   * The single candidate/capability authority for one ticket's assignment decision — shared by
+   * the lead's own Tickets tab and the global Tickets/Tasks surface. Never `api.listUsers()`:
+   * candidates here are already filtered server-side for tenant/branch/permission/policy
+   * compatibility, and carry no PII beyond id/name/role.
+   */
+  async getTicketAssignmentContext(id: number) {
+    return request<{
+      ticket_status: string;
+      ticket_responsable_id: number | null;
+      lead_responsable_id: number | null;
+      capabilities: {
+        is_terminal: boolean;
+        can_assign: boolean;
+        can_deassign: boolean;
+        can_reassign_lead: boolean;
+      };
+      candidates: Array<{ id: number; name: string; role: string | null }>;
+    }>(`/api/tickets/${id}/assignment-context`, { method: "GET", auth: true });
   },
 
   // --- Ticket Categories & Priorities ---

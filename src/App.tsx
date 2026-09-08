@@ -219,6 +219,9 @@ const App: React.FC = () => {
     ...(canSeeRefunds
       ? [{ to: "/refunds", icon: History, label: "Devoluciones" }]
       : []),
+    ...(hasPerm("view_ticket")
+      ? [{ to: "/tickets", icon: Ticket, label: "Tickets / Tasks" }]
+      : []),
     ...(hasPerm("view_support_tickets") || hasPerm("view_all_support_tickets")
       ? [{ to: "/support-tickets", icon: Ticket, label: "Soporte Técnico" }]
       : []),
@@ -479,6 +482,10 @@ const App: React.FC = () => {
               <Route path="/expenses" element={<Expenses user={user} />} />
               <Route path="/refunds" element={<Refunds user={user} />} />
               <Route path="/notifications" element={<Notifications />} />
+              <Route
+                path="/tickets"
+                element={hasPerm("view_ticket") ? <Tickets user={user} /> : <Navigate to="/" replace />}
+              />
               <Route path="/support-tickets" element={<SupportTickets user={user} />} />
               <Route path="/support-tickets/config" element={<SupportTicketConfig user={user} />} />
               <Route path="/support-tickets/:id" element={<SupportTicketDetail user={user} />} />

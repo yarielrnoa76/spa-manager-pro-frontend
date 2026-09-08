@@ -5,7 +5,14 @@ import LeadModal from "../LeadModal";
 import { api, ApiError } from "../../services/api";
 
 /**
- * Phase 1B.5D — Lead/Ticket Ownership, Visibility and Notification block (§14).
+ * Phase 1B.5D — Lead/Ticket Ownership, Visibility and Notification block (§14), extended by the
+ * Tickets/Tasks global surface (§10/§11): the responsable control now comes from
+ * `useTicketAssignmentControl`/`TicketAssignmentControl.tsx`, the SAME shared authority the
+ * global Tickets/Tasks surface uses — candidates and capabilities come exclusively from
+ * `GET /tickets/{ticket}/assignment-context`, never `api.listUsers()`. Selecting a new
+ * responsable acts immediately (no "Guardar Cambios" gate); editorial fields (subject/
+ * description) are still bundled into the SAME `PUT` request so an edit and a reassignment made
+ * together still commit atomically.
  *
  * Covers the three-option assignment/deassignment dialog, the explicit `reassign_lead` +
  * `expected_*` payload, 409 handling, the five ticket load states, and lead-switch state
@@ -28,6 +35,7 @@ vi.mock("../../services/api", async (importOriginal) => {
       getTicket: vi.fn(),
       updateTicket: vi.fn(),
       getTicketLeadContext: vi.fn(),
+      getTicketAssignmentContext: vi.fn(),
       listConversations: vi.fn(),
       getLead: vi.fn(),
       createLead: vi.fn(),
@@ -36,9 +44,9 @@ vi.mock("../../services/api", async (importOriginal) => {
   };
 });
 
-const RESPONSIBLES = [
-  { id: 7, name: "Alice", role: { id: 2, name: "sales" } },
-  { id: 9, name: "Bruno", role: { id: 2, name: "sales" } },
+const CANDIDATES = [
+  { id: 7, name: "Alice", role: "sales" },
+  { id: 9, name: "Bruno", role: "sales" },
 ];
 
 const TICKET_ROW = {
@@ -58,6 +66,14 @@ const ticketDetail = (responsableId: number | null) => ({
   responsable: responsableId === 7 ? { id: 7, name: "Alice" } : null,
   lead_id: 55,
   comments: [],
+});
+
+const assignmentContext = (ticketResponsableId: number | null, leadResponsableId: number | null) => ({
+  ticket_status: "New",
+  ticket_responsable_id: ticketResponsableId,
+  lead_responsable_id: leadResponsableId,
+  capabilities: { is_terminal: false, can_assign: true, can_deassign: true, can_reassign_lead: true },
+  candidates: CANDIDATES,
 });
 
 const leadToEdit = (assignedTo: string | number | null = 7) => ({
@@ -86,7 +102,7 @@ beforeEach(() => {
     is_super_admin: false,
   });
   vi.mocked(api.listBranches).mockResolvedValue([{ id: "1", name: "Main", code: "M1", address: "" }]);
-  vi.mocked(api.listUsers).mockResolvedValue(RESPONSIBLES);
+  vi.mocked(api.listUsers).mockResolvedValue([]);
   vi.mocked(api.listTicketCategories).mockResolvedValue([{ id: 1, name: "General" }]);
   vi.mocked(api.listTicketPriorities).mockResolvedValue([{ id: 1, name: "Medium" }]);
   vi.mocked(api.listTickets).mockResolvedValue({ data: [TICKET_ROW], last_page: 1, total: 1 });
@@ -95,6 +111,7 @@ beforeEach(() => {
     id: 55, name: "Carla", last_name: "Diaz", phone: "555-0100", email: "carla@example.com",
     source: "whatsapp", status: "new", branch_id: 1, assigned_to: 7, created_at: null,
   });
+  vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(7, 7));
   vi.mocked(api.listConversations).mockResolvedValue({ data: [] });
   vi.mocked(api.getLead).mockResolvedValue({ appointments: [], sales: [] });
   vi.mocked(api.updateTicket).mockResolvedValue({});
@@ -117,7 +134,7 @@ const openTicketEditor = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(await screen.findByRole("button", { name: /^Editar$/i }));
 };
 
-const responsableSelect = () => screen.getByRole("combobox", { name: "" }) as HTMLSelectElement;
+const responsableSelect = () => screen.findByTestId("ticket-assignment-select") as Promise<HTMLSelectElement>;
 
 describe("LeadModal — ticket assignment dialog", () => {
   it("asks the three-option question when the new responsable differs from the lead's assignee", async () => {
@@ -125,9 +142,8 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    const select = await screen.findByDisplayValue("Alice (sales)");
+    const select = await responsableSelect();
     await user.selectOptions(select, "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
 
     const dialog = await screen.findByTestId("assignment-dialog");
     expect(dialog).toBeTruthy();
@@ -144,8 +160,7 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    await user.selectOptions(await screen.findByDisplayValue("Alice (sales)"), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "9");
     await screen.findByTestId("assignment-dialog");
 
     await user.click(screen.getByTestId("assignment-dialog-cancel"));
@@ -159,8 +174,7 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    await user.selectOptions(await screen.findByDisplayValue("Alice (sales)"), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "9");
     await user.click(await screen.findByTestId("assignment-dialog-ticket-only"));
 
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
@@ -181,8 +195,7 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    await user.selectOptions(await screen.findByDisplayValue("Alice (sales)"), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "9");
     await user.click(await screen.findByTestId("assignment-dialog-ticket-and-lead"));
 
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
@@ -201,8 +214,7 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    await user.selectOptions(await screen.findByDisplayValue("Alice (sales)"), "");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "");
 
     await screen.findByTestId("assignment-dialog");
     expect(screen.getByTestId("assignment-dialog-ticket-only").textContent).toBe("Desasignar solo el ticket");
@@ -226,13 +238,13 @@ describe("LeadModal — ticket assignment dialog", () => {
       id: 55, name: "Carla", last_name: "Diaz", phone: "555-0100", email: "carla@example.com",
       source: "whatsapp", status: "new", branch_id: 1, assigned_to: null, created_at: null,
     });
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(null, null));
 
     const user = userEvent.setup();
     renderModal(leadToEdit(null));
     await openTicketEditor(user);
 
-    await user.selectOptions(responsableSelect(), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "9");
     await user.click(await screen.findByTestId("assignment-dialog-ticket-only"));
 
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
@@ -246,6 +258,7 @@ describe("LeadModal — ticket assignment dialog", () => {
 
   it("does not ask when the new responsable already equals the lead's assignee", async () => {
     vi.mocked(api.getTicket).mockResolvedValue(ticketDetail(null));
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue(assignmentContext(null, 9));
 
     const user = userEvent.setup();
     renderModal(leadToEdit(9));
@@ -255,8 +268,7 @@ describe("LeadModal — ticket assignment dialog", () => {
     });
     await openTicketEditor(user);
 
-    await user.selectOptions(responsableSelect(), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
+    await user.selectOptions(await responsableSelect(), "9");
 
     await waitFor(() => expect(api.updateTicket).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("assignment-dialog")).toBeNull();
@@ -274,10 +286,8 @@ describe("LeadModal — ticket assignment dialog", () => {
     renderModal();
     await openTicketEditor(user);
 
-    await user.selectOptions(await screen.findByDisplayValue("Alice (sales)"), "9");
-    await user.click(screen.getByRole("button", { name: /Guardar Cambios/i }));
-
     const getTicketCallsBefore = vi.mocked(api.getTicket).mock.calls.length;
+    await user.selectOptions(await responsableSelect(), "9");
     await user.click(await screen.findByTestId("assignment-dialog-ticket-only"));
 
     const banner = await screen.findByTestId("assignment-error");
@@ -289,6 +299,23 @@ describe("LeadModal — ticket assignment dialog", () => {
     await waitFor(() =>
       expect(vi.mocked(api.getTicket).mock.calls.length).toBeGreaterThan(getTicketCallsBefore),
     );
+  });
+
+  it("a terminal ticket shows a read-only responsable, never the select", async () => {
+    vi.mocked(api.getTicket).mockResolvedValue({ ...ticketDetail(7), status: "Completed" });
+    vi.mocked(api.getTicketAssignmentContext).mockResolvedValue({
+      ...assignmentContext(7, 7),
+      ticket_status: "Completed",
+      capabilities: { is_terminal: true, can_assign: false, can_deassign: false, can_reassign_lead: false },
+      candidates: [],
+    });
+
+    const user = userEvent.setup();
+    renderModal();
+    await openTicketEditor(user);
+
+    expect(await screen.findByTestId("ticket-assignment-readonly")).toBeTruthy();
+    expect(screen.queryByTestId("ticket-assignment-select")).toBeNull();
   });
 });
 

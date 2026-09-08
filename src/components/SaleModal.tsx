@@ -154,6 +154,12 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
     const [ticketPriorities, setTicketPriorities] = useState<any[]>([]);
 
     const [users, setUsers] = useState<any[]>([]);
+    // Tickets/Tasks global surface extension (§14 caller audit): the ticket responsable
+    // selector below must never use `users` (the SALE's own seller-authority list, populated by
+    // `api.listUsers()`) as a candidate source -- that list is neither tenant/branch-filtered
+    // nor policy-checked for TICKET assignment, the same gap closed elsewhere by
+    // `GET /tickets/{ticket}/assignment-context`. Populated by `startEditTicket()`.
+    const [ticketAssignmentCandidates, setTicketAssignmentCandidates] = useState<Array<{ id: number; name: string; role: string | null }>>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [leadSaving, setLeadSaving] = useState(false);
     const [isEditingLead, setIsEditingLead] = useState(false);
@@ -638,6 +644,10 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
             responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : '',
             initial_responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : ''
         });
+        setTicketAssignmentCandidates([]);
+        api.getTicketAssignmentContext(ticket.id)
+            .then(ctx => setTicketAssignmentCandidates(ctx.candidates))
+            .catch(() => setTicketAssignmentCandidates([]));
     };
 
     const saveTicketEdit = async () => {
@@ -1575,7 +1585,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Responsable</label>
                                                                     <select className="w-full text-sm font-bold text-gray-700 bg-white px-3 py-2 rounded-lg border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500" value={ticketEditForm.responsable_id} onChange={e => setTicketEditForm({ ...ticketEditForm, responsable_id: e.target.value })}>
                                                                         <option value="">Sin Asignar</option>
-                                                                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                                                        {ticketAssignmentCandidates.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                                                     </select>
                                                                 </div>
                                                                 <div className="col-span-2">

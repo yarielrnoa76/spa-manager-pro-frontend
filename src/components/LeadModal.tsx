@@ -10,6 +10,8 @@ import {
     getOrCreatePendingSubmissionUuid,
     clearPendingSubmission,
 } from "./LeadModal.submissionIdentity";
+import { TicketResponsableSelect, TicketAssignmentDialog } from "./TicketAssignmentControl";
+import { useTicketAssignmentControl } from "../hooks/useTicketAssignmentControl";
 
 /**
  * Phase 1B.5D Lead/Ticket Ownership block (§14). The five distinguishable outcomes of loading
@@ -29,27 +31,6 @@ type TicketLeadContext = {
     branch_id: number | null;
     assigned_to: number | null;
     created_at: string | null;
-};
-
-/**
- * A decision the user has been asked to make but has not yet confirmed. Nothing is sent to the
- * server while this is non-null -- `Cancelar` simply discards it, producing zero requests.
- *
- * `expectedResponsableId` / `expectedLeadAssignedTo` capture the state the UI actually OBSERVED
- * when the dialog opened; they are sent back as optimistic preconditions so a change made by
- * someone else in the meantime is reported (409) instead of silently overwritten.
- */
-type PendingAssignment = {
-    kind: 'assign' | 'deassign';
-    ticketId: number;
-    ticketNumber: string;
-    targetId: number | null;
-    targetName: string | null;
-    currentResponsableName: string | null;
-    leadAssigneeName: string | null;
-    expectedResponsableId: number | null;
-    expectedLeadAssignedTo: number | null;
-    editorial: { subject: string; description: string };
 };
 
 type LeadModalProps = {
@@ -84,10 +65,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
     // Minimum relational lead context for the OPEN ticket, fetched from the ticket-authorized
     // endpoint. Never used to widen anything: it is display-only.
     const [ticketLeadContext, setTicketLeadContext] = useState<TicketLeadContext | null>(null);
-    // The pending three-option assignment/deassignment decision, or null when no dialog is open.
-    const [pendingAssignment, setPendingAssignment] = useState<PendingAssignment | null>(null);
-    const [assignmentError, setAssignmentError] = useState<string | null>(null);
-    const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
     const [leadConversations, setLeadConversations] = useState<any[]>([]);
 
     const [leadAppointments, setLeadAppointments] = useState<any[]>([]);
@@ -137,10 +114,12 @@ const LeadModal: React.FC<LeadModalProps> = ({
         description: "",
         due_date: "",
     });
+    // Tickets/Tasks global surface extension: `responsable_id` removed from this EDITORIAL-only
+    // state -- the responsable is now owned entirely by `useTicketAssignmentControl`, the same
+    // shared authority the global Tickets/Tasks surface uses, never a second, divergent copy.
     const [editTicketData, setEditTicketData] = useState({
         subject: "",
         description: "",
-        responsable_id: "",
     });
     const [newTicketComment, setNewTicketComment] = useState("");
 
@@ -248,9 +227,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
         setTicketsState('idle');
         setSelectedTicket(null);
         setTicketLeadContext(null);
-        setPendingAssignment(null);
-        setAssignmentError(null);
-        setAssignmentSubmitting(false);
         setLeadAppointments([]);
         setLeadSales([]);
         setLeadConversations([]);
@@ -333,10 +309,8 @@ const LeadModal: React.FC<LeadModalProps> = ({
             setEditTicketData({
                 subject: ticket.subject,
                 description: ticket.description || "",
-                responsable_id: ticket.responsable_id ? String(ticket.responsable_id) : "",
             });
             setIsEditingSelectedTicket(false);
-            setAssignmentError(null);
             await loadTicketLeadContext(ticketId);
         } catch (err: any) {
             console.error("Error fetching ticket", err);
@@ -344,73 +318,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
         } finally {
             setLoading(false);
         }
-    };
-
-    /**
-     * Phase 1B.5D Lead/Ticket Ownership block (§14).
-     *
-     * Editorial fields and the responsable are separated here exactly as the backend separates
-     * them. When the responsable actually changes, the user is asked an explicit question
-     * before ANY request is made:
-     *
-     *  - a new responsable that differs from the lead's own assignee opens the three-option
-     *    reassignment dialog (`Solo el ticket` / `Ticket y lead` / `Cancelar`);
-     *  - clearing the responsable opens the equivalent deassignment dialog;
-     *  - a new responsable that already equals the lead's assignee needs no question: there is
-     *    no divergence to resolve, so it is submitted directly as ticket-only.
-     *
-     * `reassign_lead` is never inferred, and `Cancelar` produces zero requests.
-     */
-    const handleUpdateTicket = async () => {
-        if (!selectedTicket) return;
-
-        const editorial = {
-            subject: editTicketData.subject,
-            description: editTicketData.description,
-        };
-
-        const currentResponsableId: number | null =
-            selectedTicket.responsable_id != null ? Number(selectedTicket.responsable_id) : null;
-        const targetId: number | null =
-            editTicketData.responsable_id === "" ? null : Number(editTicketData.responsable_id);
-
-        if (targetId === currentResponsableId) {
-            await submitEditorialOnly(selectedTicket.id, editorial);
-            return;
-        }
-
-        // The lead's own current assignee, observed from the ticket-authorized context endpoint
-        // when available and from the open lead form otherwise. Never invented.
-        const leadAssignedTo: number | null =
-            ticketLeadContext?.assigned_to != null
-                ? Number(ticketLeadContext.assigned_to)
-                : (formData.assigned_to === "" ? null : Number(formData.assigned_to));
-
-        const nameOf = (id: number | null): string | null =>
-            id === null ? null : (responsibles.find((r: any) => Number(r.id) === id)?.name ?? `#${id}`);
-
-        const decision: PendingAssignment = {
-            kind: targetId === null ? 'deassign' : 'assign',
-            ticketId: selectedTicket.id,
-            ticketNumber: selectedTicket.ticket_number,
-            targetId,
-            targetName: nameOf(targetId),
-            currentResponsableName: nameOf(currentResponsableId),
-            leadAssigneeName: nameOf(leadAssignedTo),
-            expectedResponsableId: currentResponsableId,
-            expectedLeadAssignedTo: leadAssignedTo,
-            editorial,
-        };
-
-        // A new responsable that already matches the lead's assignee raises no lead/ticket
-        // divergence, so there is nothing to ask.
-        if (targetId !== null && targetId === leadAssignedTo) {
-            await submitAssignment(decision, false);
-            return;
-        }
-
-        setAssignmentError(null);
-        setPendingAssignment(decision);
     };
 
     const submitEditorialOnly = async (
@@ -431,62 +338,31 @@ const LeadModal: React.FC<LeadModalProps> = ({
     };
 
     /**
-     * Sends the editorial change and the assignment in ONE request, so the backend commits or
-     * rolls them back together. Both `expected_*` preconditions are always sent explicitly;
-     * `expected_lead_assigned_to` only accompanies `reassign_lead: true`, where it is the
-     * dimension being written.
-     *
-     * A 409 means someone else changed the assignment while the dialog was open: the user is
-     * told, the local state is reloaded from the server, and no further decision is offered
-     * until they have seen the current state.
+     * Tickets/Tasks global surface extension: the SAME shared assignment authority the global
+     * surface uses -- there is no second, LeadModal-specific implementation of "decide, confirm
+     * and submit a ticket assignment" any more. `onSubmit` bundles the CURRENT editorial draft
+     * (`editTicketData`) into the same `PUT /tickets/{id}` request as the assignment payload, so
+     * an edit made together with a reassignment still commits or rolls back as one transaction,
+     * exactly as before this extraction.
      */
-    const submitAssignment = async (decision: PendingAssignment, reassignLead: boolean) => {
-        setAssignmentSubmitting(true);
-        setAssignmentError(null);
-        try {
-            const payload: Record<string, unknown> = {
-                ...decision.editorial,
-                responsable_id: decision.targetId,
-                reassign_lead: reassignLead,
-                expected_responsable_id: decision.expectedResponsableId,
-            };
-
-            if (reassignLead) {
-                payload.expected_lead_assigned_to = decision.expectedLeadAssignedTo;
-            }
-
-            await api.updateTicket(decision.ticketId, payload);
-
-            setPendingAssignment(null);
-            setIsEditingSelectedTicket(false);
-            await handleOpenTicket(decision.ticketId);
+    const ticketAssignment = useTicketAssignmentControl({
+        ticketId: selectedTicket?.id ?? null,
+        onSubmit: async (payload) => {
+            if (!selectedTicket) return;
+            await api.updateTicket(selectedTicket.id, {
+                subject: editTicketData.subject,
+                description: editTicketData.description,
+                ...payload,
+            });
+        },
+        onSettled: async () => {
+            if (selectedTicket) await handleOpenTicket(selectedTicket.id);
             if (leadToEdit) {
                 await loadLeadTickets(leadToEdit.id);
                 await loadLeadDataExtras(leadToEdit.id);
             }
-        } catch (err: unknown) {
-            const status = err instanceof ApiError ? err.status : undefined;
-
-            if (status === 409) {
-                setPendingAssignment(null);
-                // Reload FIRST, then surface the message: `handleOpenTicket()` clears any stale
-                // banner when a ticket is opened, so setting the message before it would wipe
-                // the very explanation the user needs.
-                await handleOpenTicket(decision.ticketId);
-                if (leadToEdit) await loadLeadTickets(leadToEdit.id);
-                setAssignmentError(
-                    'Otro usuario modificó la asignación de este ticket o su lead mientras decidías. ' +
-                    'Se recargó el estado actual; revísalo antes de volver a decidir.',
-                );
-            } else {
-                setAssignmentError(
-                    err instanceof Error ? err.message : 'No se pudo actualizar la asignación.',
-                );
-            }
-        } finally {
-            setAssignmentSubmitting(false);
-        }
-    };
+        },
+    });
 
     const handleStatusUpdate = async (ticketId: number, status: string) => {
         setLoading(true);
@@ -1145,13 +1021,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                         </span>
                                     </div>
 
-                                    {assignmentError && (
+                                    {ticketAssignment.error && (
                                         <div
                                             data-testid="assignment-error"
                                             role="alert"
                                             className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold"
                                         >
-                                            {assignmentError}
+                                            {ticketAssignment.error}
                                         </div>
                                     )}
 
@@ -1194,16 +1070,13 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                             </div>
                                             <div>
                                                 <label className="block text-[10px] font-black text-indigo-400 uppercase mb-1">Responsable</label>
-                                                <select
-                                                    value={editTicketData.responsable_id}
-                                                    onChange={e => setEditTicketData({ ...editTicketData, responsable_id: e.target.value })}
-                                                    className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                                >
-                                                    <option value="">-- Sin asignar --</option>
-                                                    {filteredResponsibles.map(r => (
-                                                        <option key={r.id} value={r.id}>{r.name} ({r.role?.name})</option>
-                                                    ))}
-                                                </select>
+                                                <TicketResponsableSelect
+                                                    context={ticketAssignment.context}
+                                                    contextState={ticketAssignment.contextState}
+                                                    currentResponsableName={selectedTicket.responsable?.name ?? null}
+                                                    onChange={ticketAssignment.requestChange}
+                                                    disabled={ticketAssignment.submitting}
+                                                />
                                             </div>
                                             <div className="flex gap-2">
                                                 <button
@@ -1213,7 +1086,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                     Cancelar
                                                 </button>
                                                 <button
-                                                    onClick={handleUpdateTicket}
+                                                    onClick={() => submitEditorialOnly(selectedTicket.id, {
+                                                        subject: editTicketData.subject,
+                                                        description: editTicketData.description,
+                                                    })}
                                                     disabled={loading || !editTicketData.subject}
                                                     className="flex-1 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
                                                 >
@@ -1493,72 +1369,21 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 </div >
             </div >
 
-            {pendingAssignment && (
-                /*
-                 * Phase 1B.5D Lead/Ticket Ownership block (§4.2/§4.3, §14): the three-option
-                 * decision. Exactly three choices, always in this order, and NOTHING is sent to
-                 * the server until one of the two affirmative ones is pressed -- `Cancelar`
-                 * closes the dialog and produces zero requests.
-                 */
-                <div
-                    data-testid="assignment-dialog"
-                    role="dialog"
-                    aria-modal="true"
-                    className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-                >
-                    <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 p-5 space-y-4">
-                        <h4 className="text-sm font-black text-gray-900 uppercase tracking-wider">
-                            {pendingAssignment.kind === 'deassign' ? 'Quitar responsable' : 'Cambiar responsable'}
-                        </h4>
-
-                        <p data-testid="assignment-dialog-question" className="text-sm text-gray-700 leading-relaxed">
-                            {pendingAssignment.kind === 'deassign'
-                                ? `Este ticket pertenece al lead ${formData.name || ''}, actualmente asignado a ${pendingAssignment.leadAssigneeName ?? 'nadie'}. ¿Deseas quitar también el responsable del lead?`
-                                : `Este ticket pertenece al lead ${formData.name || ''}, actualmente asignado a ${pendingAssignment.leadAssigneeName ?? 'nadie'}. ¿Deseas asignar también el lead a ${pendingAssignment.targetName ?? ''}?`}
-                        </p>
-
-                        <div className="flex flex-col gap-2">
-                            <button
-                                data-testid="assignment-dialog-ticket-only"
-                                disabled={assignmentSubmitting}
-                                onClick={() => submitAssignment(pendingAssignment, false)}
-                                className="w-full py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                {pendingAssignment.kind === 'deassign' ? 'Desasignar solo el ticket' : 'Solo el ticket'}
-                            </button>
-                            <button
-                                data-testid="assignment-dialog-ticket-and-lead"
-                                disabled={assignmentSubmitting}
-                                onClick={() => submitAssignment(pendingAssignment, true)}
-                                className="w-full py-2.5 bg-gray-900 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-black disabled:opacity-50"
-                            >
-                                {pendingAssignment.kind === 'deassign' ? 'Desasignar ticket y lead' : 'Ticket y lead'}
-                            </button>
-                            <button
-                                data-testid="assignment-dialog-cancel"
-                                disabled={assignmentSubmitting}
-                                onClick={() => {
-                                    setPendingAssignment(null);
-                                    setAssignmentError(null);
-                                }}
-                                className="w-full py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-xl disabled:opacity-50"
-                            >
-                                Cancelar
-                            </button>
-                        </div>
-
-                        {assignmentError && (
-                            <p data-testid="assignment-dialog-error" className="text-xs font-bold text-red-600">
-                                {assignmentError}
-                            </p>
-                        )}
-
-                        <p className="text-[10px] text-gray-400 leading-snug">
-                            Los demás tickets de este lead nunca cambian con esta acción.
-                        </p>
-                    </div>
-                </div>
-            )}
+            {/*
+              * Tickets/Tasks global surface extension: the SAME shared dialog component the
+              * global surface renders (`TicketAssignmentControl.tsx`) -- exactly three choices,
+              * always in this order, and nothing is sent to the server until one of the two
+              * affirmative ones is pressed. `Cancelar` closes the dialog and produces zero
+              * requests. Preserves every `data-testid` the pre-existing test suite asserts.
+              */}
+            <TicketAssignmentDialog
+                ticketNumber={selectedTicket?.ticket_number ?? ''}
+                pending={ticketAssignment.pending}
+                error={ticketAssignment.error}
+                submitting={ticketAssignment.submitting}
+                onConfirm={ticketAssignment.confirm}
+                onCancel={ticketAssignment.cancel}
+            />
 
             {isCreatingAppointment && (
                 <CreateAppointmentModal
