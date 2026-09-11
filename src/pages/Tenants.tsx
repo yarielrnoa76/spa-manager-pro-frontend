@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { api } from "../services/api";
+import { api, ApiError } from "../services/api";
 import { Tenant } from "../types";
 import {
     Building2,
@@ -124,6 +124,7 @@ const Tenants: React.FC = () => {
     const [editTenant, setEditTenant] = useState<Tenant | null>(null);
     const [deleteTenant, setDeleteTenant] = useState<Tenant | null>(null);
     const [justCreatedTenant, setJustCreatedTenant] = useState<Tenant | null>(null);
+    const [selectingTenantId, setSelectingTenantId] = useState<number | null>(null);
 
     const fetchTenants = useCallback(async () => {
         setLoading(true);
@@ -169,15 +170,39 @@ const Tenants: React.FC = () => {
     };
 
     /**
-     * Voluntary "Select and configure Tenant" action offered after creation — never triggered
-     * automatically. Reuses the exact same mechanism App.tsx's TenantSelector already uses
-     * (api.setCurrentTenantId() + a full reload to re-derive all state from the new context),
-     * rather than writing to localStorage directly or introducing a second tenant-context
-     * mechanism.
+     * Gate 1C: GET/PUT/DELETE /api/tenants/{tenant} now require {tenant} to match the
+     * SuperAdmin's currently-selected tenant server-side — editing or deleting a DIFFERENT
+     * tenant than the one selected 404s. Rather than silently operating on the wrong tenant
+     * (or failing with a confusing 404 once the modal is already open), select the target
+     * tenant explicitly first and only proceed once the server has confirmed it.
      */
-    const handleSelectAndConfigure = (tenantId: number) => {
-        api.setCurrentTenantId(tenantId);
-        window.location.reload();
+    const selectThenOpen = async (tenant: Tenant, open: (t: Tenant) => void) => {
+        setSelectingTenantId(tenant.id);
+        try {
+            await api.switchTenant(tenant.id);
+            open(tenant);
+        } catch (err: unknown) {
+            const message = err instanceof ApiError ? err.message : "No se pudo seleccionar el tenant.";
+            alert(message);
+        } finally {
+            setSelectingTenantId(null);
+        }
+    };
+
+    /**
+     * Voluntary "Select and configure Tenant" action offered after creation — never triggered
+     * automatically. Gate 1A: switchTenant() (POST /api/tenant/switch) is the only operation
+     * that may change the effective tenant server-side; a full reload afterwards re-derives
+     * every screen's state (including App.tsx's own selector) from that confirmed context.
+     */
+    const handleSelectAndConfigure = async (tenantId: number) => {
+        try {
+            await api.switchTenant(tenantId);
+            window.location.reload();
+        } catch (err: unknown) {
+            const message = err instanceof ApiError ? err.message : "No se pudo seleccionar el tenant.";
+            alert(message);
+        }
     };
 
     return (
@@ -260,16 +285,18 @@ const Tenants: React.FC = () => {
 
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => setEditTenant(t)}
-                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition"
+                                    onClick={() => selectThenOpen(t, setEditTenant)}
+                                    disabled={selectingTenantId === t.id}
+                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition disabled:opacity-60 disabled:cursor-wait"
                                 >
-                                    <Edit3 size={14} /> Edit
+                                    <Edit3 size={14} /> {selectingTenantId === t.id ? "..." : "Edit"}
                                 </button>
                                 <button
-                                    onClick={() => setDeleteTenant(t)}
-                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition"
+                                    onClick={() => selectThenOpen(t, setDeleteTenant)}
+                                    disabled={selectingTenantId === t.id}
+                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition disabled:opacity-60 disabled:cursor-wait"
                                 >
-                                    <Trash2 size={14} /> Delete
+                                    <Trash2 size={14} /> {selectingTenantId === t.id ? "..." : "Delete"}
                                 </button>
                             </div>
                         </div>

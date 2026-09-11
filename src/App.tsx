@@ -35,7 +35,7 @@ import SupportTickets from "./pages/Support/SupportTickets";
 import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
 import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
 
-import { api } from "./services/api";
+import { api, ApiError } from "./services/api";
 import { Tenant } from "./types";
 
 import Dashboard from "./pages/Dashboard";
@@ -89,13 +89,37 @@ const FullScreenLoading = ({ text = "Loading..." }: { text?: string }) => (
   </div>
 );
 
-/* ───────── TENANT SELECTOR (SuperAdmin Only) ───────── */
+/* ───────── TENANT SELECTOR ─────────
+ * Gate 1B contract: visible for EVERY authenticated user as a context indicator, never as a
+ * grant of authority. A regular user always sees their own fixed tenant, disabled, with no
+ * dropdown and no way to trigger a switch. Only a SuperAdmin gets the interactive dropdown,
+ * and even then the switch is never applied locally -- onSelect must await the real
+ * POST /api/tenant/switch confirmation (see handleTenantSelect below) before anything in the
+ * UI reflects a new tenant. Visibility here grants nothing by itself; the backend is what
+ * enforces the boundary regardless of what this component renders.
+ */
 const TenantSelector: React.FC<{
   tenants: Tenant[];
   currentTenantId: number | null;
+  currentTenantName: string;
+  interactive: boolean;
+  switching: boolean;
   onSelect: (tenantId: number) => void;
-}> = ({ tenants, currentTenantId, onSelect }) => {
+}> = ({ tenants, currentTenantId, currentTenantName, interactive, switching, onSelect }) => {
   const [open, setOpen] = useState(false);
+
+  if (!interactive) {
+    return (
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-500 cursor-not-allowed"
+        title="Tu cuenta está fijada a este tenant. No puedes cambiarlo."
+        aria-disabled="true"
+      >
+        <Building2 size={14} />
+        <span className="max-w-[140px] truncate">{currentTenantName}</span>
+      </div>
+    );
+  }
 
   const currentTenant = tenants.find((t) => t.id === currentTenantId);
 
@@ -103,11 +127,12 @@ const TenantSelector: React.FC<{
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition"
+        disabled={switching}
+        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition disabled:opacity-60 disabled:cursor-wait"
       >
         <Building2 size={14} />
         <span className="max-w-[140px] truncate">
-          {currentTenant?.name || "Select Tenant"}
+          {switching ? "Cambiando…" : currentTenant?.name || "Seleccione un tenant"}
         </span>
         <ChevronDown size={14} />
       </button>
@@ -123,8 +148,8 @@ const TenantSelector: React.FC<{
               <button
                 key={t.id}
                 onClick={() => {
-                  onSelect(t.id);
                   setOpen(false);
+                  onSelect(t.id);
                 }}
                 className={`w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition flex items-center justify-between ${t.id === currentTenantId
                   ? "bg-indigo-50 text-indigo-700 font-semibold"
@@ -154,6 +179,7 @@ export interface UserData {
   tenant_id?: number | null;
   tenant?: { id: number; name: string; slug?: string } | null;
   is_super_admin?: boolean;
+  active_tenant_id?: number | null;
   branch?: { id: number; name: string } | null;
   role: { id: number; name: string };
   permissions: string[];
@@ -165,13 +191,15 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   // Tenant state
+  //
+  // Gate 1A contract: the browser is never the authority for which tenant is selected.
+  // currentTenantId starts unset and is set ONLY from a confirmed server response --
+  // api.me()'s active_tenant_id on boot (SuperAdmin) / tenant_id (regular user), or
+  // api.switchTenant()'s own success response. It is never seeded from localStorage.
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [currentTenantId, setCurrentTenantId] = useState<number | null>(
-    (() => {
-      const stored = localStorage.getItem("current_tenant_id");
-      return stored ? parseInt(stored, 10) : null;
-    })()
-  );
+  const [currentTenantId, setCurrentTenantId] = useState<number | null>(null);
+  const [tenantSwitching, setTenantSwitching] = useState(false);
+  const [tenantSwitchError, setTenantSwitchError] = useState<string | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -247,11 +275,26 @@ const App: React.FC = () => {
     }
   }, [isSuperAdmin]);
 
-  const handleTenantSelect = (tenantId: number) => {
-    setCurrentTenantId(tenantId);
-    api.setCurrentTenantId(tenantId);
-    // Force reload current page data
-    window.location.reload();
+  /**
+   * Gate 1A/1B: switchTenant() (POST /api/tenant/switch) is the ONLY operation allowed to
+   * change the effective tenant -- never local state written ahead of the server's answer.
+   * On success, the UI reflects exactly what the server confirmed, then does a full reload to
+   * re-derive every screen's data from the new context (never a partial, piecemeal refresh
+   * that could leave stale branch/filter/dashboard state from the previous tenant visible).
+   * On failure, nothing changes: no optimistic update, no silent "success" state.
+   */
+  const handleTenantSelect = async (tenantId: number) => {
+    setTenantSwitchError(null);
+    setTenantSwitching(true);
+    try {
+      const data = await api.switchTenant(tenantId);
+      setCurrentTenantId(data.tenant.id);
+      window.location.reload();
+    } catch (err: unknown) {
+      const message = err instanceof ApiError ? err.message : "No se pudo cambiar de tenant.";
+      setTenantSwitchError(message);
+      setTenantSwitching(false);
+    }
   };
 
   const bootstrapAuth = async () => {
@@ -268,10 +311,16 @@ const App: React.FC = () => {
       const me = await api.me();
       setUser(me);
 
-      // For non-SuperAdmin, always set their tenant
-      if (me && !me.is_super_admin && me.tenant_id) {
-        setCurrentTenantId(me.tenant_id);
-        api.setCurrentTenantId(me.tenant_id);
+      // Gate 1A: currentTenantId always comes from THIS server response, never from
+      // localStorage or any client-side cache -- me.tenant_id for a regular user (fixed,
+      // never editable by them), me.active_tenant_id for a SuperAdmin (null until they
+      // explicitly select one via switchTenant()).
+      if (me) {
+        if (!me.is_super_admin) {
+          setCurrentTenantId(me.tenant_id ?? null);
+        } else {
+          setCurrentTenantId(me.active_tenant_id ?? null);
+        }
       }
     } finally {
       setBooting(false);
@@ -408,21 +457,22 @@ const App: React.FC = () => {
 
           {/* RIGHT SIDE */}
           <div className="ml-auto flex items-center gap-2 lg:gap-4 min-w-0">
-            {/* Tenant indicator/selector */}
-            {isSuperAdmin && tenants.length > 0 ? (
+            {/* Tenant indicator/selector -- visible for every authenticated user (Gate 1B):
+                a fixed, disabled indicator for regular users, an interactive dropdown only
+                for SuperAdmin. Visibility here never grants authority by itself. */}
+            <div className="flex flex-col items-end gap-1">
               <TenantSelector
                 tenants={tenants}
                 currentTenantId={currentTenantId}
+                currentTenantName={currentTenantName}
+                interactive={isSuperAdmin}
+                switching={tenantSwitching}
                 onSelect={handleTenantSelect}
               />
-            ) : (
-              <div className="hidden sm:flex items-center gap-2 text-xs">
-                <span className="px-2.5 py-1 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-full text-indigo-700 font-semibold flex items-center gap-1.5">
-                  <Building2 size={12} />
-                  {currentTenantName}
-                </span>
-              </div>
-            )}
+              {tenantSwitchError && (
+                <span className="text-xs text-red-600 max-w-[220px] text-right">{tenantSwitchError}</span>
+              )}
+            </div>
 
             <NotificationBell />
 

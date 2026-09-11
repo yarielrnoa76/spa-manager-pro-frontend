@@ -290,6 +290,11 @@ export const api = {
       tenant_id?: number | null;
       tenant?: { id: number; name: string; slug?: string } | null;
       is_super_admin?: boolean;
+      // Gate 1A contract: the SuperAdmin's server-side effective tenant selection (null for
+      // every tenant-scoped user, and null for a SuperAdmin who hasn't selected one yet).
+      // This is the ONLY source of truth for "which tenant is currently selected" -- never
+      // localStorage, never a request header.
+      active_tenant_id?: number | null;
       branch?: { id: number; name: string } | null;
       role: { id: number; name: string };
       permissions: string[];
