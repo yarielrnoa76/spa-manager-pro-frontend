@@ -248,8 +248,9 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
 
       <div className="flex gap-3 flex-wrap items-center bg-gray-50 border p-4 rounded-xl">
         <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Seleccionar Rol Existente</label>
+          <label htmlFor="role-select" className="block text-xs font-bold text-gray-600 mb-1 uppercase">Seleccionar Rol Existente</label>
           <select
+            id="role-select"
             className="border rounded-lg px-3 py-2 w-full"
             value={selectedRoleId}
             onChange={(e) => setSelectedRoleId(e.target.value)}
