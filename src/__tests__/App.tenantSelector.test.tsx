@@ -214,6 +214,13 @@ describe('Tenant selector — stale context across tabs/sessions', () => {
 
     expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
 
+    // Fails closed by REPLACING the app, not merely overlaying it — the stale tenant's own
+    // name/selector and every other control from the previous render must be gone from the DOM
+    // entirely, not just visually covered, so nothing behind the block screen is still
+    // clickable or submittable.
+    expect(screen.queryByText('Tenant Seven')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Seleccione un tenant/i })).toBeNull();
+
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /Recargar/i }));
     expect(window.location.reload).toHaveBeenCalled();
@@ -241,6 +248,7 @@ describe('Tenant selector — stale context across tabs/sessions', () => {
     );
 
     expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
+    expect(screen.queryByText('Tenant Seven')).toBeNull();
   });
 
   it('does not block on unrelated localStorage writes', async () => {
@@ -262,5 +270,47 @@ describe('Tenant selector — stale context across tabs/sessions', () => {
     );
 
     expect(screen.queryByText(/El tenant activo cambió/i)).toBeNull();
+  });
+
+  it('a second device/session with no shared localStorage is blocked purely by the 409 response, never by a storage event', async () => {
+    // The backend guard (SetTenantContext::hasStaleTenantPrecondition()) only ever fires this
+    // for a SuperAdmin whose X-Tenant-ID no longer matches the account's real active tenant —
+    // exactly the "independent session/device" scenario, where there is no shared localStorage
+    // and thus no `storage` event at all. This test never dispatches one, proving the
+    // TENANT_CONTEXT_STALE_EVENT trigger alone is sufficient.
+    vi.mocked(api.me).mockResolvedValue(superAdminUser(7));
+    vi.mocked(api.listTenants).mockResolvedValue([
+      { id: 7, name: 'Tenant Seven', slug: 'seven', status: 'active' } as never,
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Tenant Seven')).toBeTruthy();
+
+    window.dispatchEvent(new CustomEvent(TENANT_CONTEXT_STALE_EVENT));
+
+    expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
+    expect(screen.queryByText('Tenant Seven')).toBeNull();
+  });
+
+  it('a regular user is blocked the same way if the stale event fires (defense in depth) — the block is not role-specific', async () => {
+    vi.mocked(api.me).mockResolvedValue(regularUser());
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Acme Spa')).toBeTruthy();
+
+    window.dispatchEvent(new CustomEvent(TENANT_CONTEXT_STALE_EVENT));
+
+    expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
+    expect(screen.queryByText('Acme Spa')).toBeNull();
   });
 });

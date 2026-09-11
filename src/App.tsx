@@ -347,9 +347,16 @@ const App: React.FC = () => {
   }, [user, isSuperAdmin, loadTenants]);
 
   // Own session/device: a mutating request just got rejected because the account's real
-  // active tenant moved on since this tab last confirmed it.
+  // active tenant moved on since this tab last confirmed it. Beyond blocking the render (the
+  // early return below fails closed on its own), also drop this tab's own cached
+  // tenant-dependent state immediately -- the stale tenant list and id are never left sitting
+  // around for anything to read, even incidentally, before the user reloads.
   useEffect(() => {
-    const handleStale = () => setTenantContextStale(true);
+    const handleStale = () => {
+      setTenantContextStale(true);
+      setTenants([]);
+      setCurrentTenantId(null);
+    };
     window.addEventListener(TENANT_CONTEXT_STALE_EVENT, handleStale);
     return () => window.removeEventListener(TENANT_CONTEXT_STALE_EVENT, handleStale);
   }, []);
@@ -362,6 +369,8 @@ const App: React.FC = () => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "current_tenant_id" && e.newValue !== e.oldValue) {
         setTenantContextStale(true);
+        setTenants([]);
+        setCurrentTenantId(null);
       }
     };
     window.addEventListener("storage", handleStorage);
@@ -398,6 +407,35 @@ const App: React.FC = () => {
 
   if (user && isLoginRoute) return <Navigate to="/" replace />;
 
+  // Gate: stale tenant context. Fails closed by REPLACING the entire authenticated app with
+  // this blocking screen -- not merely overlaying it -- so no sidebar link, button, form, or
+  // any other mutable control from the stale render is ever still present in the DOM to be
+  // clicked or submitted. The only escape is the explicit, manual reload; there is no
+  // background content behind this screen at all.
+  if (tenantContextStale) {
+    return (
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        className="min-h-screen bg-gray-50 flex items-center justify-center p-4"
+      >
+        <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">El tenant activo cambió</h3>
+          <p className="text-sm text-gray-600">
+            El contexto de tenant se actualizó desde otra pestaña o sesión. Ninguna acción se
+            aplicó al tenant incorrecto. Recarga para continuar con el contexto correcto.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+          >
+            Recargar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Determine display tenant name
   const currentTenantName =
     isSuperAdmin
@@ -408,27 +446,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {tenantContextStale && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
-        >
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">El tenant activo cambió</h3>
-            <p className="text-sm text-gray-600">
-              El contexto de tenant se actualizó desde otra pestaña o sesión. Ninguna acción se
-              aplicó al tenant incorrecto. Recarga para continuar con el contexto correcto.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
-            >
-              Recargar
-            </button>
-          </div>
-        </div>
-      )}
       {/* Mobile sidebar backdrop */}
       {isSidebarOpen && (
         <div
