@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { api } from "../services/api";
+import { api, ApiError } from "../services/api";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 type Permission = { id: number; name: string };
@@ -10,7 +10,8 @@ type Role = {
   is_system_role?: boolean;
   view_scope?: string;
   resource_scopes?: Record<string, string>;
-  permissions?: Permission[]
+  permissions?: Permission[];
+  users_count?: number;
 };
 
 export default function RolesPermissionsSettings({ canManage = true }: { canManage?: boolean }) {
@@ -20,6 +21,13 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
   const [newRoleName, setNewRoleName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Gate 2 (Section 11.2): "catálogo backend como fuente" — the valid scope options per
+  // resource (and which resources even admit resource_scopes at all) come from this endpoint,
+  // never a hardcoded, driftable copy. Inventory/Users/Products/Roles each have their own
+  // restricted set (e.g. Inventory never admits 'own').
+  const [scopeCatalog, setScopeCatalog] = useState<Record<string, string[]>>({});
+  const [deletingRoleId, setDeletingRoleId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // The global platform role (tenant_id = null, e.g. `superadmin`) authorizes via a bypass in
   // User::hasPermission() — it is never assigned permissions and is immutable from this
@@ -111,12 +119,14 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
   };
 
   const load = async () => {
-    const [rolesRes, permsRes] = await Promise.all([
-      api.get<Role[]>("/roles?with_permissions=1"),
+    const [rolesRes, permsRes, catalogRes] = await Promise.all([
+      api.get<Role[]>("/roles?with_permissions=1&with_user_count=1"),
       api.get<Permission[]>("/permissions"),
+      api.get<Record<string, string[]>>("/permissions/resource-scope-catalog"),
     ]);
     setRoles(Array.isArray(rolesRes) ? rolesRes : []);
     setPerms(Array.isArray(permsRes) ? permsRes : []);
+    setScopeCatalog(catalogRes && typeof catalogRes === "object" ? catalogRes : {});
   };
 
   useEffect(() => {
@@ -164,19 +174,53 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post("/roles", { name: newRoleName });
+      const res = await api.post<{ id?: number; data?: { id?: number } }>("/roles", { name: newRoleName });
       setNewRoleName("");
       await load();
       // Auto-select the newly created role
       // Check if response has data property, or is direct object
-      const newRole = (res as any)?.data || res;
+      const newRole = res?.data || res;
       if (newRole?.id) {
         setSelectedRoleId(String(newRole.id));
       }
-    } catch (e: any) {
-      setError(e?.message || "Error al crear rol");
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Error al crear rol");
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Gate 2 (Section 11.2): a custom role with no users assigned may be deleted; the backend
+   * rejects one still in use with 409 ROLE_IN_USE carrying users_count, which must be shown
+   * clearly rather than as a generic error. A protected system role (global or tenant) is
+   * never offered a delete action at all — the button simply doesn't render for those.
+   */
+  const deleteRole = async (role: Role) => {
+    if (!canManage || role.is_system_role) return;
+    if (!window.confirm(`¿Eliminar el rol "${role.name}"? Esta acción no se puede deshacer.`)) return;
+
+    setDeleteError(null);
+    setDeletingRoleId(role.id);
+    try {
+      await api.delete(`/roles/${role.id}`);
+      if (String(role.id) === selectedRoleId) setSelectedRoleId("");
+      await load();
+    } catch (e: unknown) {
+      const status = e instanceof ApiError ? e.status : undefined;
+      const code = e instanceof ApiError ? e.code : undefined;
+      if (code === "ROLE_IN_USE" || status === 409) {
+        const count = e instanceof ApiError ? (e.data as { users_count?: number } | undefined)?.users_count : undefined;
+        setDeleteError(
+          count != null
+            ? `Este rol está en uso por ${count} usuario(s) y no puede eliminarse hasta reasignarlos.`
+            : "Este rol está en uso y no puede eliminarse hasta reasignar a sus usuarios.",
+        );
+      } else {
+        setDeleteError(e instanceof ApiError ? e.message : "Error al eliminar el rol.");
+      }
+    } finally {
+      setDeletingRoleId(null);
     }
   };
 
@@ -189,8 +233,8 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
         resource_scopes: nextScopes
       });
       await load();
-    } catch (e: any) {
-      setError(e?.message || "Error al actualizar alcance del recurso");
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Error al actualizar alcance del recurso");
     }
   };
 
@@ -292,9 +336,20 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm text-gray-600">
-            <div>
-              Configurar Permisos del Rol:{" "}
-              <span className="font-bold text-gray-900">{selectedRole.name}</span>
+            <div className="flex items-center gap-3">
+              <span>
+                Configurar Permisos del Rol:{" "}
+                <span className="font-bold text-gray-900">{selectedRole.name}</span>
+              </span>
+              {canManage && !selectedRole.is_system_role && (
+                <button
+                  onClick={() => deleteRole(selectedRole)}
+                  disabled={deletingRoleId === selectedRole.id}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                >
+                  {deletingRoleId === selectedRole.id ? "Eliminando…" : "Eliminar rol"}
+                </button>
+              )}
             </div>
             <div className="relative w-full md:w-64">
               <input
@@ -306,6 +361,40 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
               />
             </div>
           </div>
+
+          {deleteError && (
+            <div className="border rounded-lg p-3 bg-red-50 text-red-700 text-sm">{deleteError}</div>
+          )}
+
+          {/* Gate 2 (Section 11.2): one row per resource the backend catalog actually defines
+              — never a hardcoded subset — so Inventory/Users/Products/Roles/Logs each get
+              exactly the scope options they support server-side. */}
+          {Object.keys(scopeCatalog).length > 0 && (
+            <div className="border rounded-xl bg-white p-4 shadow-sm">
+              <h5 className="text-sm font-bold text-gray-800 mb-3">Alcances por Recurso</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.entries(scopeCatalog).map(([resource, validScopes]) => (
+                  <div key={resource} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2">
+                    <span className="text-sm font-semibold text-gray-700 capitalize">
+                      {resource.replaceAll("_", " ")}
+                    </span>
+                    <select
+                      className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none disabled:opacity-60"
+                      disabled={!canManage}
+                      value={selectedRole.resource_scopes?.[resource] ?? validScopes[validScopes.length - 1]}
+                      onChange={(e) => updateResourceScope(resource, e.target.value)}
+                    >
+                      {validScopes.map((scope) => (
+                        <option key={scope} value={scope}>
+                          {scope === "own" ? "Solo lo Propio" : scope === "branch" ? "Sucursal" : "Todo"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-3 mt-4">
             {Object.entries(groupedPerms).map(([groupName, groupPerms]) => {
@@ -336,23 +425,6 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
                     </button>
 
                     <div className="flex items-center gap-3">
-                      {/* Per-resource scope selector */}
-                      {["leads", "appointments", "sales", "tickets", "refunds", "conversations"].includes(groupName) && (
-                        <div className="flex items-center gap-2 border-r pr-3 mr-1">
-                          <span className="text-[10px] font-bold text-indigo-400 uppercase">Alcance:</span>
-                          <select
-                            className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none"
-                            disabled={!canManage}
-                            value={selectedRole.resource_scopes?.[groupName] || selectedRole.view_scope || 'all'}
-                            onChange={(e) => updateResourceScope(groupName, e.target.value)}
-                           >
-                            <option value="own">Solo lo Propio</option>
-                            <option value="branch">Sucursal</option>
-                            <option value="all">Todo</option>
-                          </select>
-                        </div>
-                      )}
-
                       <span className="hidden sm:inline-block text-xs font-semibold text-gray-500 tracking-wide uppercase">
                         {assignedCount}/{groupPerms.length} asignados
                       </span>
