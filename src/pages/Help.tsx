@@ -3,7 +3,7 @@ import {
     HelpCircle, Ticket, Calendar, Package, DollarSign, UserPlus,
     ChevronDown, ChevronUp, BookOpen, Info, MessageSquare,
     Search, ExternalLink, ArrowRight, Settings, Activity,
-    BarChart3, Bell, Radio, Shield, Key, Link, Globe2
+    BarChart3, Bell, Radio, Shield, Key, Globe2
 } from 'lucide-react';
 
 type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'communication' | 'audit' | 'settings' | 'notifications';
@@ -757,13 +757,58 @@ const Help: React.FC = () => {
                                 </ul>
                             </HelpSection>
 
-                            <HelpSection title="Roles, Permisos y Usuarios" icon={ExternalLink}>
-                                <p>El sistema de control de acceso funciona en dos niveles:</p>
+                            <HelpSection title="Permiso vs. Alcance (Scope)" icon={Key} defaultOpen={true}>
+                                <p>El control de acceso combina siempre dos conceptos independientes — nunca uno sustituye al otro:</p>
                                 <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
-                                    <li><strong>Roles:</strong> Agrupe permisos bajo un nombre lógico (Vendedor, Cajero, Administrador, etc.).</li>
-                                    <li><strong>Permisos:</strong> Controles granulares como <em>view_leads</em>, <em>delete_product</em>, <em>view_branch</em>, <em>view_conversations</em>, <em>reply_all_conversations</em>, etc. que determinan qué secciones y acciones son accesibles.</li>
-                                    <li><strong>Usuarios:</strong> Cada miembro del equipo se asocia a un rol, una sucursal y un tenant.</li>
+                                    <li><strong>Permiso</strong> — concede la <em>acción</em> en sí (por ejemplo, <em>view_leads</em>, <em>delete_product</em>, <em>manage_roles</em>). Sin el permiso correspondiente, la acción está bloqueada sin importar el alcance configurado.</li>
+                                    <li><strong>Alcance (scope)</strong> — limita <em>sobre qué filas</em> aplica ese permiso: propias, de la sucursal, o de todo el tenant. Un alcance sin el permiso correspondiente no concede acceso; un permiso sin un alcance válido tampoco.</li>
+                                    <li>Un alcance ausente, nulo, desconocido o incompatible con el recurso siempre falla cerrado — nunca se interpreta como "todo".</li>
                                 </ul>
+                                <p className="mt-3">Los tres niveles de alcance:</p>
+                                <ul className="list-disc pl-5 mt-2 text-sm space-y-2">
+                                    <li><strong>Propio (own):</strong> solo los registros creados por, o asignados a, el propio usuario.</li>
+                                    <li><strong>Sucursal (branch):</strong> todos los registros de la sucursal del usuario.</li>
+                                    <li><strong>Todo (all):</strong> todos los registros del tenant, sin importar sucursal.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">No todos los módulos admiten los tres niveles. <strong>Inventario</strong> y <strong>Usuarios</strong> nunca admiten "Propio" — solo Sucursal o Todo, ya que no tiene sentido operativo que un producto o un usuario le "pertenezca" a una sola persona. <strong>Productos</strong> y <strong>Roles</strong> solo admiten "Todo". La pantalla de Roles y Permisos siempre le mostrará únicamente las opciones que el backend realmente admite para cada recurso.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Roles Automáticos del Sistema" icon={Shield}>
+                                <p>Cada tenant nuevo recibe automáticamente tres roles de sistema, protegidos:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li><strong>Admin:</strong> acceso total dentro de su propio tenant.</li>
+                                    <li><strong>Manager:</strong> gestión operativa con visibilidad ampliada, sin las capacidades administrativas más sensibles (roles, usuarios, configuración del tenant).</li>
+                                    <li><strong>Sales:</strong> enfocado en ventas y atención al cliente, con alcance típicamente limitado a su sucursal o a lo propio.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">Estos roles pueden ajustarse en sus permisos y alcances, pero <strong>no pueden eliminarse</strong>, y su nombre no puede modificarse desde esta pantalla — ni siquiera por un SuperAdmin. Los identifica el sistema mismo (columna <em>is_system_role</em>), nunca su nombre literal: crear un rol propio llamado igual a uno de sistema no le otorga ninguno de sus privilegios.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Roles Personalizados" icon={ExternalLink}>
+                                <p>Puede crear roles propios (por ejemplo "Cajero Turno Noche") desde Configuración → Roles y Permisos:</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li>Un rol nuevo comienza <strong>sin ningún permiso ni alcance efectivo</strong> — debe configurarlos explícitamente antes de asignarlo a un usuario.</li>
+                                    <li>Puede editar sus permisos y alcances en cualquier momento; los cambios se guardan de inmediato contra el servidor y se reflejan sin recargar la página.</li>
+                                    <li><strong>Eliminación:</strong> un rol personalizado sin usuarios asignados puede eliminarse desde el botón "Eliminar rol". Si el rol todavía tiene usuarios asignados, el sistema lo rechaza indicando cuántos usuarios lo están usando — debe reasignarlos primero.</li>
+                                    <li>Ningún nombre de rol otorga autoridad por sí mismo: el sistema nunca decide qué puede hacer un usuario basándose en cómo se llama su rol, siempre en los permisos y alcances configurados server-side.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="SuperAdmin y el Selector de Tenant" icon={Globe2}>
+                                <p>El SuperAdmin es la única cuenta de autoridad de plataforma (no pertenece a ningún tenant), pero sus operaciones normales del día a día quedan limitadas al tenant que tenga seleccionado en cada momento — igual que cualquier otro usuario, solo que puede cambiar de tenant.</p>
+                                <ul className="list-disc pl-5 mt-4 text-sm space-y-2">
+                                    <li><strong>Selector superior:</strong> todo usuario autenticado ve un indicador de tenant en la esquina superior derecha. Para un usuario regular aparece <em>deshabilitado</em>, mostrando únicamente su propio tenant — es solo un indicador de contexto, nunca un control.</li>
+                                    <li>Para el SuperAdmin, ese mismo indicador es un menú desplegable interactivo. Al elegir un tenant, la aplicación confirma el cambio contra el servidor antes de reflejarlo — si el cambio falla (por ejemplo, un tenant suspendido), la pantalla no cambia y se muestra el error.</li>
+                                    <li>Sin un tenant seleccionado, el SuperAdmin ve un estado explícito de "Seleccione un Tenant" y no puede operar los módulos propios de un tenant hasta elegir uno.</li>
+                                    <li>El navegador nunca es la autoridad: la selección vive en el servidor, no en el almacenamiento local del navegador. Cambiar de tenant en una pestaña actualiza el contexto de toda la sesión.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Aislamiento entre Tenants" icon={Info}>
+                                <p>Cada usuario tenant-scoped pertenece a exactamente un tenant y nunca puede ver ni modificar datos de otro, sin excepción — esto lo garantiza siempre el servidor, nunca la interfaz. El backend es la autoridad final: incluso si algo en el navegador sugiriera lo contrario, la respuesta real del servidor es la que determina qué se puede ver o hacer.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Usuarios" icon={ExternalLink}>
+                                <p>Cada miembro del equipo se asocia a un rol, una sucursal y un tenant. Los permisos y alcances efectivos de un usuario son siempre los de su rol asignado en el momento de cada solicitud — nunca un valor cacheado en el navegador.</p>
                             </HelpSection>
                         </div>
                     )}
