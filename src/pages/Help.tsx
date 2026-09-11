@@ -800,6 +800,7 @@ const Help: React.FC = () => {
                                     <li>Para el SuperAdmin, ese mismo indicador es un menú desplegable interactivo. Al elegir un tenant, la aplicación confirma el cambio contra el servidor antes de reflejarlo — si el cambio falla (por ejemplo, un tenant suspendido), la pantalla no cambia y se muestra el error.</li>
                                     <li>Sin un tenant seleccionado, el SuperAdmin ve un estado explícito de "Seleccione un Tenant" y no puede operar los módulos propios de un tenant hasta elegir uno.</li>
                                     <li>El navegador nunca es la autoridad: la selección vive en el servidor, no en el almacenamiento local del navegador. Cambiar de tenant en una pestaña actualiza el contexto de toda la sesión.</li>
+                                    <li><strong>Contexto obsoleto entre pestañas o dispositivos:</strong> si el tenant activo cambia desde otra pestaña o sesión del mismo SuperAdmin, esta pantalla lo detecta y bloquea con un aviso explícito antes de permitir cualquier acción nueva — nunca aplica en silencio una acción sobre un tenant distinto del que se está mostrando.</li>
                                 </ul>
                             </HelpSection>
 

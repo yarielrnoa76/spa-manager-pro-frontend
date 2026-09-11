@@ -92,6 +92,19 @@ if (!API_URL) {
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+/**
+ * Gate: stale tenant context (Granular Resource Visibility / Role Lifecycle finalization,
+ * "contexto obsoleto y múltiples pestañas"). The backend rejects a mutating request whose
+ * X-Tenant-ID no longer matches the account's real, server-side active tenant with
+ * 409 TENANT_CONTEXT_STALE (SetTenantContext::hasStaleTenantPrecondition()) — this can happen
+ * when another session/device/tab of the same SuperAdmin account switched tenants after this
+ * one last confirmed its context. Dispatched as a DOM event (not a direct App.tsx import, to
+ * keep this module free of a React dependency) so the app shell can react in one place: block
+ * whatever the caller was doing, refresh the confirmed context, and explain to the user, rather
+ * than each of the many call sites needing to know about this response shape individually.
+ */
+export const TENANT_CONTEXT_STALE_EVENT = "spa:tenant-context-stale";
+
 export type ApiErrorPayload = {
   ok?: boolean;
   code?: string;
@@ -210,6 +223,10 @@ async function request<T>(
         errors: data?.errors || {},
         data,
       });
+    }
+
+    if (res.status === 409 && data?.code === "TENANT_CONTEXT_STALE" && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(TENANT_CONTEXT_STALE_EVENT));
     }
 
     throw new ApiError(data?.message || `Request failed (${res.status})`, {

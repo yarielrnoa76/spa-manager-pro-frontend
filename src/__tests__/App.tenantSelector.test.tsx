@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '../App';
-import { api, ApiError } from '../services/api';
+import { api, ApiError, TENANT_CONTEXT_STALE_EVENT } from '../services/api';
 import type { UserData } from '../App';
 
 /**
@@ -182,5 +182,85 @@ describe('Tenant selector — SuperAdmin', () => {
     expect(window.location.reload).not.toHaveBeenCalled();
     // Still shows the unselected state — the failed attempt never got applied locally.
     expect(screen.getByRole('button', { name: /Seleccione un tenant/i })).toBeTruthy();
+  });
+});
+
+/**
+ * Gate: stale tenant context across tabs/sessions (mandate §5, "contexto obsoleto y múltiples
+ * pestañas"). Two independent triggers, both must block the UI with an explanation and a
+ * reload rather than let the user keep acting on a context that no longer matches reality:
+ * (a) this tab's own request got rejected 409 TENANT_CONTEXT_STALE by the backend, and
+ * (b) a DIFFERENT tab of the same browser changed the shared localStorage selection.
+ */
+describe('Tenant selector — stale context across tabs/sessions', () => {
+  it('blocks with an explanation when this tab\'s own request is rejected as stale', async () => {
+    vi.mocked(api.me).mockResolvedValue(superAdminUser(7));
+    vi.mocked(api.listTenants).mockResolvedValue([
+      { id: 7, name: 'Tenant Seven', slug: 'seven', status: 'active' } as never,
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Tenant Seven')).toBeTruthy();
+    expect(screen.queryByText(/El tenant activo cambió/i)).toBeNull();
+
+    // Simulates api.ts's request() dispatching this after a real 409 TENANT_CONTEXT_STALE —
+    // this test does not need to go through a mocked call site to prove App.tsx reacts.
+    window.dispatchEvent(new CustomEvent(TENANT_CONTEXT_STALE_EVENT));
+
+    expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Recargar/i }));
+    expect(window.location.reload).toHaveBeenCalled();
+  });
+
+  it('blocks when a DIFFERENT tab changes the shared tenant selection (storage event)', async () => {
+    vi.mocked(api.me).mockResolvedValue(superAdminUser(7));
+    vi.mocked(api.listTenants).mockResolvedValue([
+      { id: 7, name: 'Tenant Seven', slug: 'seven', status: 'active' } as never,
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Tenant Seven')).toBeTruthy();
+
+    // A `storage` event is dispatched by the browser only in OTHER tabs of the same origin,
+    // never the tab that made the localStorage write itself — StorageEvent's constructor
+    // requires jsdom's DOM StorageEvent, constructed directly here to simulate that.
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'current_tenant_id', oldValue: '7', newValue: '9' }),
+    );
+
+    expect(await screen.findByText(/El tenant activo cambió/i)).toBeTruthy();
+  });
+
+  it('does not block on unrelated localStorage writes', async () => {
+    vi.mocked(api.me).mockResolvedValue(superAdminUser(7));
+    vi.mocked(api.listTenants).mockResolvedValue([
+      { id: 7, name: 'Tenant Seven', slug: 'seven', status: 'active' } as never,
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Tenant Seven')).toBeTruthy();
+
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'auth_token', oldValue: 'a', newValue: 'b' }),
+    );
+
+    expect(screen.queryByText(/El tenant activo cambió/i)).toBeNull();
   });
 });

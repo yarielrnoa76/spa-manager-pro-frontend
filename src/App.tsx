@@ -35,7 +35,7 @@ import SupportTickets from "./pages/Support/SupportTickets";
 import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
 import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
 
-import { api, ApiError } from "./services/api";
+import { api, ApiError, TENANT_CONTEXT_STALE_EVENT } from "./services/api";
 import { Tenant } from "./types";
 
 import Dashboard from "./pages/Dashboard";
@@ -200,6 +200,14 @@ const App: React.FC = () => {
   const [currentTenantId, setCurrentTenantId] = useState<number | null>(null);
   const [tenantSwitching, setTenantSwitching] = useState(false);
   const [tenantSwitchError, setTenantSwitchError] = useState<string | null>(null);
+  // Gate: stale tenant context across tabs/sessions. Set when either (a) a mutating request
+  // this tab made was rejected 409 TENANT_CONTEXT_STALE (this account's real active tenant
+  // moved on since this tab last confirmed its context), or (b) another tab of the SAME
+  // browser changed `current_tenant_id` in the shared localStorage (the `storage` event only
+  // ever fires in tabs OTHER than the one that made the change). Blocks with an explanation
+  // and a reload rather than silently continuing on a UI that may no longer match reality —
+  // never an automatic reload, which could discard whatever the user was doing.
+  const [tenantContextStale, setTenantContextStale] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -338,6 +346,28 @@ const App: React.FC = () => {
     }
   }, [user, isSuperAdmin, loadTenants]);
 
+  // Own session/device: a mutating request just got rejected because the account's real
+  // active tenant moved on since this tab last confirmed it.
+  useEffect(() => {
+    const handleStale = () => setTenantContextStale(true);
+    window.addEventListener(TENANT_CONTEXT_STALE_EVENT, handleStale);
+    return () => window.removeEventListener(TENANT_CONTEXT_STALE_EVENT, handleStale);
+  }, []);
+
+  // Same browser, a DIFFERENT tab: localStorage is shared across tabs of one origin, and the
+  // `storage` event fires only in tabs that did NOT make the change -- exactly the tab whose
+  // on-screen state (header, loaded lists) is now stale relative to the account's real
+  // selection, even though its own next request would silently pick up the new tenant.
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "current_tenant_id" && e.newValue !== e.oldValue) {
+        setTenantContextStale(true);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const isLoginRoute = location.pathname === "/login";
   const isPaymentResultRoute = location.pathname.startsWith("/pay/");
 
@@ -378,6 +408,27 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {tenantContextStale && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">El tenant activo cambió</h3>
+            <p className="text-sm text-gray-600">
+              El contexto de tenant se actualizó desde otra pestaña o sesión. Ninguna acción se
+              aplicó al tenant incorrecto. Recarga para continuar con el contexto correcto.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+            >
+              Recargar
+            </button>
+          </div>
+        </div>
+      )}
       {/* Mobile sidebar backdrop */}
       {isSidebarOpen && (
         <div
