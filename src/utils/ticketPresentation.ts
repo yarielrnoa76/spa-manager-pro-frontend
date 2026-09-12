@@ -21,8 +21,10 @@ type TicketCommentAuthorSource = Pick<TicketComment, "creator" | "created_by">;
 
 /**
  * A comment's author, never a bare id. Priority: `creator.name` (even when `created_by` is
- * serialized as a string) > a legible "deleted user" fallback carrying the id > `Sistema` only
- * when neither is present at all.
+ * serialized as a string) > a neutral "unavailable" fallback carrying the id > `Sistema` only
+ * when neither is present at all. An absent `creator` is never assumed to mean the user was
+ * deleted -- it may just as well be visibility, historical-record integrity, or another
+ * controlled reason, so the fallback names the id without asserting a specific cause.
  */
 export function getTicketCommentAuthorLabel(comment: TicketCommentAuthorSource): string {
   const creatorName = comment.creator?.name;
@@ -30,7 +32,7 @@ export function getTicketCommentAuthorLabel(comment: TicketCommentAuthorSource):
 
   const createdBy = comment.created_by;
   if (createdBy !== null && createdBy !== undefined && createdBy !== "") {
-    return `Usuario eliminado (#${createdBy})`;
+    return `Usuario no disponible (#${createdBy})`;
   }
 
   return "Sistema";

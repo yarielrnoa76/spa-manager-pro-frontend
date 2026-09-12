@@ -46,15 +46,21 @@ describe("getTicketCommentAuthorLabel", () => {
     ).toBe("Ana Pérez");
   });
 
-  it("falls back to a legible deleted-user label carrying the id when creator is absent", () => {
+  it("falls back to a neutral 'unavailable' label carrying the id when creator is absent", () => {
     expect(getTicketCommentAuthorLabel({ creator: undefined, created_by: 10 })).toBe(
-      "Usuario eliminado (#10)",
+      "Usuario no disponible (#10)",
     );
   });
 
-  it("falls back to the same legible label when creator is explicitly null", () => {
+  it("falls back to the same neutral label when creator is explicitly null", () => {
     expect(getTicketCommentAuthorLabel({ creator: null, created_by: 10 })).toBe(
-      "Usuario eliminado (#10)",
+      "Usuario no disponible (#10)",
+    );
+  });
+
+  it("falls back to the same neutral label when created_by is a string", () => {
+    expect(getTicketCommentAuthorLabel({ creator: null, created_by: "10" })).toBe(
+      "Usuario no disponible (#10)",
     );
   });
 

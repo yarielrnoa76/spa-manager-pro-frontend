@@ -605,13 +605,21 @@ describe('Tickets — comment author and timestamp (Correction 4)', () => {
     expect(screen.getByText('Ana Pérez')).toBeTruthy();
   });
 
-  it('shows a legible "Usuario eliminado (#id)" fallback when creator is absent but created_by exists', async () => {
+  it('shows a neutral "Usuario no disponible (#id)" fallback when creator is absent but created_by exists', async () => {
     await openDetailWithComments([
       { id: 3, comment: 'Hola', created_by: 10, created_at: '2026-09-12T10:49:00Z' },
     ]);
 
-    expect(screen.getByText('Usuario eliminado (#10)')).toBeTruthy();
+    expect(screen.getByText('Usuario no disponible (#10)')).toBeTruthy();
     expect(screen.queryByText('10')).toBeNull();
+  });
+
+  it('shows the same neutral fallback when created_by is a string and creator is absent', async () => {
+    await openDetailWithComments([
+      { id: 5, comment: 'Hola', created_by: '10', created_at: '2026-09-12T10:49:00Z' },
+    ]);
+
+    expect(screen.getByText('Usuario no disponible (#10)')).toBeTruthy();
   });
 
   it('shows "Sistema" only when neither creator nor created_by exist', async () => {

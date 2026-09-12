@@ -158,7 +158,7 @@ describe("LeadModal — ticket comment author and timestamp (Correction 4)", () 
     expect(screen.queryByText("10")).toBeNull();
   });
 
-  it("shows a legible deleted-user fallback when creator is absent but created_by exists", async () => {
+  it("shows a neutral 'unavailable' fallback when creator is absent but created_by exists", async () => {
     vi.mocked(api.getTicket).mockResolvedValue(
       ticketDetail([{ id: 2, comment: "Hola", created_by: 10, created_at: "2026-09-12T10:49:00Z" }]),
     );
@@ -167,7 +167,19 @@ describe("LeadModal — ticket comment author and timestamp (Correction 4)", () 
     await openTicketDetail(user);
     await screen.findByText("Detalle");
 
-    expect(screen.getByText("Usuario eliminado (#10)")).toBeTruthy();
+    expect(screen.getByText("Usuario no disponible (#10)")).toBeTruthy();
+  });
+
+  it("shows the same neutral fallback when created_by is a string and creator is absent", async () => {
+    vi.mocked(api.getTicket).mockResolvedValue(
+      ticketDetail([{ id: 5, comment: "Hola", created_by: "10", created_at: "2026-09-12T10:49:00Z" }]),
+    );
+    const user = userEvent.setup();
+    renderModal();
+    await openTicketDetail(user);
+    await screen.findByText("Detalle");
+
+    expect(screen.getByText("Usuario no disponible (#10)")).toBeTruthy();
   });
 
   it("shows Sistema only when neither creator nor created_by exist", async () => {
