@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { format as dateFnsFormat } from 'date-fns';
 import Tickets from '../Tickets';
 import { api, ApiError } from '../../services/api';
@@ -103,10 +103,34 @@ const LocationProbe = () => {
   return <div data-testid="location-probe">{location.pathname}</div>;
 };
 
+/** Drives real browser-history navigation (a relative delta, exactly what Back/Forward do)
+ * against the MemoryRouter's own history stack -- not a direct navigate('/some/path') call. */
+const HistoryControls = () => {
+  const navigate = useNavigate();
+  return (
+    <div>
+      <button onClick={() => navigate(-1)}>Ir atrás</button>
+      <button onClick={() => navigate(1)}>Ir adelante</button>
+    </div>
+  );
+};
+
 const renderTickets = (user: UserData, initialEntries: string[] = ['/tickets']) =>
   render(
     <MemoryRouter initialEntries={initialEntries}>
       <LocationProbe />
+      <Routes>
+        <Route path="/tickets" element={<Tickets user={user} />} />
+        <Route path="/tickets/:ticketId" element={<Tickets user={user} />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+const renderTicketsWithHistoryControls = (user: UserData) =>
+  render(
+    <MemoryRouter initialEntries={['/tickets']}>
+      <LocationProbe />
+      <HistoryControls />
       <Routes>
         <Route path="/tickets" element={<Tickets user={user} />} />
         <Route path="/tickets/:ticketId" element={<Tickets user={user} />} />
@@ -375,8 +399,18 @@ describe('Tickets — deep link /tickets/:ticketId (Correction 1)', () => {
     expect(screen.getByRole('button', { name: /Listado/i }).className).toMatch(/text-indigo-600/);
   });
 
-  it.each(['abc', '1.5', '-1', '0'])(
-    'a malformed ticket id (%s) in the URL never calls api.getTicket()',
+  it.each([
+    'abc',
+    '1.5',
+    '-1',
+    '0',
+    // Past Number.MAX_SAFE_INTEGER (9007199254740991): a digit string alone isn't proof it can
+    // be represented exactly by Number(...), so these must be rejected too, never handed to
+    // api.getTicket() as a possibly-wrong id.
+    '9007199254740992',
+    '999999999999999999999999999999',
+  ])(
+    'a malformed or unsafe ticket id (%s) in the URL never calls api.getTicket()',
     async (badId) => {
       renderTickets(ADMIN_USER, [`/tickets/${badId}`]);
 
@@ -384,6 +418,8 @@ describe('Tickets — deep link /tickets/:ticketId (Correction 1)', () => {
       // Give any stray effect a turn before asserting nothing fired.
       await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets'));
       expect(api.getTicket).not.toHaveBeenCalled();
+      // No residual ticket data from a previous case leaks through either.
+      expect(screen.queryByText('Detalle')).toBeNull();
     },
   );
 
@@ -429,6 +465,56 @@ describe('Tickets — deep link /tickets/:ticketId (Correction 1)', () => {
 
     await waitFor(() => expect(api.getTicket).toHaveBeenCalledWith(1));
     expect(screen.getByTestId('location-probe').textContent).toBe('/tickets/1');
+  });
+});
+
+/**
+ * Microcorrection: the URL is the single source of truth for `selectedTicketId` -- browser
+ * Back/Forward must keep the detail panel and the address bar coherent, never leaving a
+ * previously-opened ticket panel open once the URL itself has moved back to the bare `/tickets`.
+ */
+describe('Tickets — URL is the source of truth across browser history (microcorrection)', () => {
+  it('open a row -> Back closes the detail -> Forward reopens the same ticket -> manual close lands on /tickets', async () => {
+    const user = userEvent.setup();
+    renderTicketsWithHistoryControls(ADMIN_USER);
+
+    // 1. Opening a row from /tickets navigates to /tickets/{id} and shows the detail.
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+    await waitFor(() => expect(api.getTicket).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getTicket).toHaveBeenCalledWith(1));
+    expect(screen.getByTestId('location-probe').textContent).toBe('/tickets/1');
+    expect(await screen.findByText('Detalle')).toBeTruthy();
+
+    // 2. Back through browser history to /tickets closes the detail -- not left dangling open.
+    await user.click(screen.getByRole('button', { name: 'Ir atrás' }));
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets'));
+    await waitFor(() => expect(screen.queryByText('Detalle')).toBeNull());
+
+    // 3. Forward again reopens the SAME ticket the URL now names.
+    await user.click(screen.getByRole('button', { name: 'Ir adelante' }));
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets/1'));
+    expect(await screen.findByText('Detalle')).toBeTruthy();
+    // Exactly one extra fetch for the reopen -- no duplicate call bundled with it.
+    await waitFor(() => expect(api.getTicket).toHaveBeenCalledTimes(2));
+
+    // 4. Manual close still lands on /tickets, exactly as before this microcorrection.
+    const detailPanel = screen.getByText('Detalle').closest('.overflow-hidden') as HTMLElement;
+    const header = detailPanel.querySelector('.border-b.bg-gray-50') as HTMLElement;
+    await user.click(within(header).getByRole('button'));
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets'));
+    expect(screen.queryByText('Detalle')).toBeNull();
+  });
+
+  it('never fires a duplicate api.getTicket() call for the same navigation to /tickets/{id}', async () => {
+    const user = userEvent.setup();
+    renderTickets(ADMIN_USER);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+
+    await user.click(await screen.findByText('Primero'));
+    await screen.findByText('Detalle');
+
+    expect(api.getTicket).toHaveBeenCalledTimes(1);
   });
 });
 

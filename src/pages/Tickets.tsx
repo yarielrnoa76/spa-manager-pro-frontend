@@ -214,38 +214,53 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
     }, [selectedTicketId, filters]);
 
     // --- Deep link: /tickets/:ticketId opens this ticket directly, on the Listado tab ---
-    // Always the ticket's own internal `id` -- never resolved by `ticket_number`.
+    // Always the ticket's own internal `id` -- never resolved by `ticket_number`. The URL is the
+    // single source of truth for `selectedTicketId`: browser Back/Forward, a manual close, and a
+    // row click all funnel through a navigate() call, and the sync effect below is the ONLY place
+    // that ever sets `selectedTicketId` -- it never diverges from what the address bar shows.
     const parsedTicketIdFromRoute = useMemo(() => {
-        if (!ticketIdParam) return null;
-        return VALID_TICKET_ID_PARAM.test(ticketIdParam) ? Number(ticketIdParam) : null;
+        if (!ticketIdParam || !VALID_TICKET_ID_PARAM.test(ticketIdParam)) return null;
+        const value = Number(ticketIdParam);
+        // A digit string alone isn't enough: it can still exceed Number.MAX_SAFE_INTEGER, past
+        // which `Number(...)` can no longer represent the value exactly -- reject it rather than
+        // hand api.getTicket() an id that may not even be the one the URL actually named.
+        return value > 0 && Number.isSafeInteger(value) ? value : null;
     }, [ticketIdParam]);
 
     const openTicketDetail = useCallback((id: number) => {
         setActiveTab('list');
-        setSelectedTicketId(id);
         navigate(`/tickets/${id}`);
     }, [navigate]);
 
     const closeDetail = useCallback(() => {
-        setSelectedTicketId(null);
         navigate('/tickets');
     }, [navigate]);
 
     useEffect(() => {
-        // A malformed id in the URL (empty, non-numeric, decimal, negative, zero) must never
-        // reach api.getTicket() -- fall back to the plain list rather than guess at intent.
+        // A malformed or unsafely-large id in the URL must never reach api.getTicket() -- fall
+        // back to the plain list rather than guess at intent.
         if (ticketIdParam !== undefined && parsedTicketIdFromRoute === null) {
             navigate('/tickets', { replace: true });
         }
     }, [ticketIdParam, parsedTicketIdFromRoute, navigate]);
 
+    // The URL -> selectedTicketId sync, unconditional in both directions: a valid id in the
+    // route selects it, and its ABSENCE (the bare /tickets path) clears it -- Back/Forward
+    // through browser history re-fires this effect exactly the same way a fresh navigation
+    // does, so the detail panel always matches the address bar, never a stale prior selection.
+    // Assigning the same value React already holds is a no-op re-render, so this never causes an
+    // extra call to api.getTicket() beyond the one the actual id change requires.
     useEffect(() => {
-        if (parsedTicketIdFromRoute !== null && parsedTicketIdFromRoute !== selectedTicketId) {
+        if (parsedTicketIdFromRoute !== null) {
             setActiveTab('list');
             setSelectedTicketId(parsedTicketIdFromRoute);
+        } else if (ticketIdParam === undefined) {
+            setSelectedTicketId(null);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [parsedTicketIdFromRoute]);
+        // A malformed id (ticketIdParam defined, parsedTicketIdFromRoute null) is left alone
+        // here -- the redirect effect above owns that case, avoiding a flash of "cleared" state
+        // before it navigates away.
+    }, [parsedTicketIdFromRoute, ticketIdParam]);
 
     // --- Shared assignment control (Tickets/Tasks global surface, §10/§11) ---
     const assignment = useTicketAssignmentControl({
