@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Bell, CheckCircle, Ticket as TicketIcon, Info, MessageSquare, Trash2, CheckSquare } from "lucide-react";
+import { Bell, CheckCircle, Ticket as TicketIcon, Info, MessageSquare, Trash2, CheckSquare, LifeBuoy } from "lucide-react";
 import { api } from "../services/api";
 import { Notification } from "../types";
 import { useNavigate } from "react-router-dom";
+import { classifyNotification, getNotificationFamilyLabel } from "../utils/notificationPresentation";
 
 const Notifications: React.FC = () => {
   const navigate = useNavigate();
@@ -69,16 +70,28 @@ const Notifications: React.FC = () => {
     }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case "support_ticket_created": return <TicketIcon className="text-emerald-600" size={20} />;
-      case "support_ticket_status_changed": return <CheckCircle className="text-amber-600" size={20} />;
-      case "support_ticket_commented": return <MessageSquare className="text-blue-600" size={20} />;
-      case "support_ticket_assigned":
-      case "ticket_assigned": return <TicketIcon className="text-indigo-600" size={20} />;
-      default: return <Info className="text-gray-400" size={20} />;
+  // Two independent families share this page (see notificationPresentation.ts): Soporte técnico
+  // (`support_ticket_*` -> /support-tickets/{id}) and Ticket / Task (`ticket_assigned`,
+  // `lead_ticket_needs_review` -> /tickets/{id}). Icon/color alone is never sufficient -- the
+  // family label is rendered as explicit text below.
+  const getIcon = (n: Notification) => {
+    const family = classifyNotification(n);
+    if (family === "support_ticket") {
+      switch (n.type) {
+        case "support_ticket_created": return <TicketIcon className="text-emerald-600" size={20} />;
+        case "support_ticket_status_changed": return <CheckCircle className="text-amber-600" size={20} />;
+        case "support_ticket_commented": return <MessageSquare className="text-blue-600" size={20} />;
+        default: return <LifeBuoy className="text-emerald-600" size={20} />;
+      }
     }
+    if (family === "operative_ticket") return <TicketIcon className="text-indigo-600" size={20} />;
+    return <Info className="text-gray-400" size={20} />;
   };
+
+  const familyBadgeClass = (family: ReturnType<typeof classifyNotification>) =>
+    family === "support_ticket"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : "bg-indigo-50 text-indigo-700 border-indigo-200";
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -136,7 +149,10 @@ const Notifications: React.FC = () => {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {notifications.map((n) => (
+            {notifications.map((n) => {
+              const family = classifyNotification(n);
+              const familyLabel = getNotificationFamilyLabel(n);
+              return (
               <div
                 key={n.id}
                 className={`p-4 flex items-start gap-4 transition-colors hover:bg-gray-50 ${
@@ -144,7 +160,7 @@ const Notifications: React.FC = () => {
                 }`}
               >
                 <div className="mt-1 flex-shrink-0 bg-white p-2 rounded-full border shadow-sm">
-                  {getIcon(n.type)}
+                  {getIcon(n)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-4">
@@ -161,6 +177,11 @@ const Notifications: React.FC = () => {
                           <span className="ml-2 inline-block w-2 h-2 bg-indigo-600 rounded-full"></span>
                         )}
                       </h4>
+                      {familyLabel && (
+                        <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full border ${familyBadgeClass(family)}`}>
+                          {familyLabel}
+                        </span>
+                      )}
                       <p className="text-sm text-gray-600 mt-1">{n.body}</p>
                       <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
                         <span>{formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: es })}</span>
@@ -168,7 +189,7 @@ const Notifications: React.FC = () => {
                         <span>{format(new Date(n.created_at), "PPp", { locale: es })}</span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {!n.read_at && (
                         <button
@@ -190,7 +211,8 @@ const Notifications: React.FC = () => {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

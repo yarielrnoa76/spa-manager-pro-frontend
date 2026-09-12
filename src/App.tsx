@@ -604,6 +604,10 @@ const App: React.FC = () => {
                 path="/tickets"
                 element={hasPerm("view_ticket") ? <Tickets user={user} /> : <Navigate to="/" replace />}
               />
+              <Route
+                path="/tickets/:ticketId"
+                element={hasPerm("view_ticket") ? <Tickets user={user} /> : <Navigate to="/" replace />}
+              />
               <Route path="/support-tickets" element={<SupportTickets user={user} />} />
               <Route path="/support-tickets/config" element={<SupportTicketConfig user={user} />} />
               <Route path="/support-tickets/:id" element={<SupportTicketDetail user={user} />} />

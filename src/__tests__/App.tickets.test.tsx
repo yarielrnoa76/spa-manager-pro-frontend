@@ -106,4 +106,34 @@ describe('App — Tickets / Tasks menu and route guard', () => {
 
     expect(await screen.findByRole('heading', { name: /Tickets \/ Tasks/i })).toBeTruthy();
   });
+
+  /**
+   * Manual Ingestion K6 UX closure, Correction 1: the deep-link route `/tickets/:ticketId` must
+   * carry the exact same `view_ticket` gate as the bare `/tickets` route — typing a ticket id
+   * directly in the URL must never bypass it.
+   */
+  it('renders the Tickets/Tasks surface at /tickets/:ticketId for an authorized user, never a redirect', async () => {
+    vi.mocked(api.me).mockResolvedValue(baseUser(['view_ticket']));
+
+    render(
+      <MemoryRouter initialEntries={['/tickets/1']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: /Tickets \/ Tasks/i })).toBeTruthy();
+  });
+
+  it('redirects away from /tickets/:ticketId typed directly when the user lacks view_ticket', async () => {
+    vi.mocked(api.me).mockResolvedValue(baseUser([]));
+
+    render(
+      <MemoryRouter initialEntries={['/tickets/1']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(api.me).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/Tickets \/ Tasks/i)).toBeNull());
+  });
 });

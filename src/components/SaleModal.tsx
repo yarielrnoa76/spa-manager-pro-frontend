@@ -8,6 +8,7 @@ import { PaymentRequest, PaymentTimelineEntry, PaymentTransaction, PaymentRefund
 import { usePaymentStatusPolling } from "../hooks/usePaymentStatusPolling";
 import { useTicketAssignmentControl } from "../hooks/useTicketAssignmentControl";
 import { TicketResponsableSelect, TicketAssignmentDialog } from "./TicketAssignmentControl";
+import { getTicketStatusLabel } from "../utils/ticketPresentation";
 
 type SaleModalProps = {
     isOpen: boolean;
@@ -1603,7 +1604,7 @@ const SaleModal: React.FC<SaleModalProps> = ({ isOpen, onClose, saleId, user, on
                                                                 ticket.status === 'cancelled' ? 'bg-red-100 text-red-700' :
                                                                     ticket.status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
                                                                         'bg-orange-100 text-orange-700'
-                                                                }`}>{ticket.status}</span>
+                                                                }`}>{getTicketStatusLabel(ticket.status)}</span>
                                                             {hasPerm('edit_ticket') && editingTicketId !== ticket.id && (
                                                                 <button
                                                                     onClick={() => startEditTicket(ticket)}

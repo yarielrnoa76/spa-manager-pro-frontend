@@ -12,6 +12,7 @@ import {
 } from "./LeadModal.submissionIdentity";
 import { TicketResponsableSelect, TicketAssignmentDialog } from "./TicketAssignmentControl";
 import { useTicketAssignmentControl } from "../hooks/useTicketAssignmentControl";
+import { getTicketStatusLabel, getTicketCommentAuthorLabel, getTicketCommentTimestampLabel } from "../utils/ticketPresentation";
 
 /**
  * Phase 1B.5D Lead/Ticket Ownership block (§14). The five distinguishable outcomes of loading
@@ -1021,7 +1022,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                             selectedTicket.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                                 'bg-amber-50 text-amber-700 border-amber-100'
                                             }`}>
-                                            {selectedTicket.status}
+                                            {getTicketStatusLabel(selectedTicket.status)}
                                         </span>
                                     </div>
 
@@ -1159,9 +1160,9 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                             )}
                                             {selectedTicket.comments?.map((c: any) => (
                                                 <div key={c.id} className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <span className="text-[10px] font-black text-indigo-700">{c.creator?.name || 'Sistema'}</span>
-                                                        <span className="text-[9px] text-gray-400">{new Date(c.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <div className="mb-1">
+                                                        <p className="text-[10px] font-black text-indigo-700">{getTicketCommentAuthorLabel(c)}</p>
+                                                        <p className="text-[9px] text-gray-400">{getTicketCommentTimestampLabel(c.created_at)}</p>
                                                     </div>
                                                     <p className="text-xs text-gray-700">{c.comment}</p>
                                                 </div>
@@ -1351,7 +1352,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                                                     ticket.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                                                         'bg-amber-50 text-amber-700 border-amber-100'
                                                                     }`}>
-                                                                    {ticket.status}
+                                                                    {getTicketStatusLabel(ticket.status)}
                                                                 </span>
                                                             </div>
                                                             <p className="text-sm font-bold text-gray-800 group-hover:text-indigo-600 transition-colors">{ticket.subject}</p>

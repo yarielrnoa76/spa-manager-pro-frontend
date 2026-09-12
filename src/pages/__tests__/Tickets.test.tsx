@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { format as dateFnsFormat } from 'date-fns';
 import Tickets from '../Tickets';
 import { api, ApiError } from '../../services/api';
 import type { UserData } from '../../App';
@@ -90,6 +92,28 @@ const VIEW_ONLY_USER: UserData = {
   is_super_admin: false, permissions: ['view_ticket'],
 };
 
+/**
+ * Tickets.tsx now reads `:ticketId` off the route and calls `useNavigate()` to keep the URL in
+ * sync (Correction 1) -- it requires a Router ancestor, and rendering it under the SAME two-route
+ * shape App.tsx itself uses (`/tickets` and `/tickets/:ticketId` both to `<Tickets/>`) is what
+ * lets `useParams()` actually resolve `:ticketId` for the deep-link tests below.
+ */
+const LocationProbe = () => {
+  const location = useLocation();
+  return <div data-testid="location-probe">{location.pathname}</div>;
+};
+
+const renderTickets = (user: UserData, initialEntries: string[] = ['/tickets']) =>
+  render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <LocationProbe />
+      <Routes>
+        <Route path="/tickets" element={<Tickets user={user} />} />
+        <Route path="/tickets/:ticketId" element={<Tickets user={user} />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getTicketDashboardSummary).mockResolvedValue(DASHBOARD);
@@ -108,7 +132,7 @@ beforeEach(() => {
 
 describe('Tickets — dashboard states', () => {
   it('shows loading, then the real server-side totals (never tickets.length)', async () => {
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     const totalLabel = await screen.findByText('Total Tickets');
     await waitFor(() => expect(within(totalLabel.parentElement!).getByText('3')).toBeTruthy());
     expect(api.getTicketDashboardSummary).toHaveBeenCalledTimes(1);
@@ -116,20 +140,20 @@ describe('Tickets — dashboard states', () => {
 
   it('shows a forbidden state, never an empty dashboard, for a 403', async () => {
     vi.mocked(api.getTicketDashboardSummary).mockRejectedValue(new ApiError('nope', { status: 403 }));
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     expect(await screen.findByText(/No tienes permiso/i)).toBeTruthy();
   });
 
   it('shows an error state with retry, never an empty dashboard, for a network failure', async () => {
     vi.mocked(api.getTicketDashboardSummary).mockRejectedValue(new TypeError('Failed to fetch'));
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     expect(await screen.findByText(/No se pudo cargar/i)).toBeTruthy();
   });
 });
 
 describe('Tickets — list', () => {
   const openList = async (user: ReturnType<typeof userEvent.setup>) => {
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
   };
 
@@ -187,7 +211,7 @@ describe('Tickets — list', () => {
 describe('Tickets — detail and assignment', () => {
   it('loads the full ticket detail via the authorized endpoint, not the list row alone', async () => {
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
 
@@ -198,7 +222,7 @@ describe('Tickets — detail and assignment', () => {
   it('opens the lead ficha only after server re-authorization; a 403 never hides the ticket', async () => {
     vi.mocked(api.getLead).mockRejectedValue(new ApiError('forbidden', { status: 403 }));
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
     await screen.findByText('Detalle');
@@ -218,7 +242,7 @@ describe('Tickets — detail and assignment', () => {
       candidates: [],
     });
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
 
@@ -230,7 +254,7 @@ describe('Tickets — detail and assignment', () => {
 describe('Tickets — status controls respect edit_ticket (defect 6)', () => {
   it('hides Start/Complete/Cancel for a view-only user (view_ticket without edit_ticket)', async () => {
     const user = userEvent.setup();
-    render(<Tickets user={VIEW_ONLY_USER} />);
+    renderTickets(VIEW_ONLY_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
     await screen.findByText('Detalle');
@@ -242,7 +266,7 @@ describe('Tickets — status controls respect edit_ticket (defect 6)', () => {
 
   it('shows Start/Complete/Cancel for a user holding edit_ticket', async () => {
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
     await screen.findByText('Detalle');
@@ -261,7 +285,7 @@ describe('Tickets — responsable filter (defects 7/8)', () => {
       { id: 42, name: 'TerminalOnlyBob' },
     ]);
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await screen.findByText('Primero');
 
@@ -273,7 +297,7 @@ describe('Tickets — responsable filter (defects 7/8)', () => {
   it('picking a specific responsable clears "Sin responsable", and vice versa', async () => {
     vi.mocked(api.getTicketResponsableOptions).mockResolvedValue([{ id: 5, name: 'Alice' }]);
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await screen.findByText('Primero');
 
@@ -306,7 +330,7 @@ describe('Tickets — responsable filter (defects 7/8)', () => {
       candidates: [{ id: 9, name: 'Bruno', role: 'sales' }],
     });
     const user = userEvent.setup();
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await user.click(await screen.findByRole('button', { name: /Listado/i }));
     await user.click(await screen.findByText('Primero'));
 
@@ -319,16 +343,196 @@ describe('Tickets — responsable filter (defects 7/8)', () => {
 
 describe('Tickets — permissions', () => {
   it('Sales holds create_ticket (sees the create button) but never manage_ticket_config (no config tab)', async () => {
-    render(<Tickets user={SALES_USER} />);
+    renderTickets(SALES_USER);
     await screen.findByText('Total Tickets');
     expect(screen.getByRole('button', { name: /Nuevo Ticket/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Configuración/i })).toBeNull();
   });
 
   it('shows the create button and the config tab for Admin', async () => {
-    render(<Tickets user={ADMIN_USER} />);
+    renderTickets(ADMIN_USER);
     await screen.findByText('Total Tickets');
     expect(screen.getByRole('button', { name: /Nuevo Ticket/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Configuración/i })).toBeTruthy();
+  });
+});
+
+/**
+ * Manual Ingestion K6 UX closure, Correction 1: the backend already sends operative notifications
+ * with `/tickets/{id}`, but App.tsx only ever recognized the bare `/tickets` path, so the id fell
+ * through to the dashboard fallback route. `/tickets/:ticketId` must open this exact screen, tab
+ * Listado, load via `api.getTicket(id)` using the ticket's own internal id — never `ticket_number`
+ * — and never leak ticket data on a rejected request.
+ */
+describe('Tickets — deep link /tickets/:ticketId (Correction 1)', () => {
+  it('opens directly on Listado and loads the ticket via api.getTicket(id) from a fresh mount', async () => {
+    renderTickets(ADMIN_USER, ['/tickets/1']);
+
+    expect(await screen.findByRole('heading', { name: /Tickets \/ Tasks/i })).toBeTruthy();
+    await waitFor(() => expect(api.getTicket).toHaveBeenCalledWith(1));
+    expect(await screen.findByText('Detalle')).toBeTruthy();
+    // The Listado tab is the active one, not the Dashboard.
+    expect(screen.getByRole('button', { name: /Listado/i }).className).toMatch(/text-indigo-600/);
+  });
+
+  it.each(['abc', '1.5', '-1', '0'])(
+    'a malformed ticket id (%s) in the URL never calls api.getTicket()',
+    async (badId) => {
+      renderTickets(ADMIN_USER, [`/tickets/${badId}`]);
+
+      await screen.findByRole('heading', { name: /Tickets \/ Tasks/i });
+      // Give any stray effect a turn before asserting nothing fired.
+      await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets'));
+      expect(api.getTicket).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a 403 on the deep-linked ticket shows a controlled forbidden state, never the Dashboard', async () => {
+    vi.mocked(api.getTicket).mockRejectedValue(new ApiError('forbidden', { status: 403 }));
+    renderTickets(ADMIN_USER, ['/tickets/1']);
+
+    expect(await screen.findByRole('heading', { name: /Tickets \/ Tasks/i })).toBeTruthy();
+    expect(await screen.findByText(/No tienes permiso/i)).toBeTruthy();
+    // Never any ticket content leaked from a rejected request.
+    expect(screen.queryByText('Detalle')).toBeNull();
+  });
+
+  it('a load error on the deep-linked ticket shows a controlled error state, never the Dashboard', async () => {
+    vi.mocked(api.getTicket).mockRejectedValue(new TypeError('Failed to fetch'));
+    renderTickets(ADMIN_USER, ['/tickets/1']);
+
+    expect(await screen.findByRole('heading', { name: /Tickets \/ Tasks/i })).toBeTruthy();
+    expect(await screen.findByText(/No se pudo cargar/i)).toBeTruthy();
+    expect(screen.queryByText('Detalle')).toBeNull();
+  });
+
+  it('closing the detail panel navigates back to /tickets', async () => {
+    renderTickets(ADMIN_USER, ['/tickets/1']);
+    await screen.findByText('Detalle');
+
+    // The list row behind the detail panel shows the same ticket_number, so anchor on the
+    // detail panel's own outer wrapper (via its unique "Detalle" description) and scope down to
+    // its header, which holds exactly one button: the close (X) control.
+    const detailPanel = screen.getByText('Detalle').closest('.overflow-hidden') as HTMLElement;
+    const header = detailPanel.querySelector('.border-b.bg-gray-50') as HTMLElement;
+    const closeButton = within(header).getByRole('button');
+    await userEvent.setup().click(closeButton);
+
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/tickets'));
+  });
+
+  it('selecting a row from the list syncs the URL to /tickets/{id}', async () => {
+    const user = userEvent.setup();
+    renderTickets(ADMIN_USER, ['/tickets']);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+
+    await waitFor(() => expect(api.getTicket).toHaveBeenCalledWith(1));
+    expect(screen.getByTestId('location-probe').textContent).toBe('/tickets/1');
+  });
+});
+
+/**
+ * Correction 5: internal status values (`New`/`InProgress`/`Completed`/`Cancelled`) are never
+ * shown to the user literally — only the mapped Spanish label. The values sent to the backend,
+ * and every internal condition keyed on them, stay exactly as they are.
+ */
+describe('Tickets — status labels are translated, values are not (Correction 5)', () => {
+  it('shows "Nuevo" for a New ticket, never the literal "New", in both the list row and detail', async () => {
+    const user = userEvent.setup();
+    renderTickets(ADMIN_USER);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    const row = (await screen.findByText('Primero')).closest('tr')!;
+
+    expect(within(row).getByText('Nuevo')).toBeTruthy();
+    expect(within(row).queryByText('New')).toBeNull();
+
+    await user.click(within(row).getByText('Primero'));
+    await screen.findByText('Detalle');
+    expect(screen.getAllByText('Nuevo').length).toBeGreaterThan(0);
+  });
+
+  it('the status filter shows "En tratamiento" for InProgress, never the raw value, while the option value stays InProgress', async () => {
+    renderTickets(ADMIN_USER);
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Listado/i }));
+
+    const option = await screen.findByRole('option', { name: 'En tratamiento' }) as HTMLOptionElement;
+    expect(option.value).toBe('InProgress');
+    expect(screen.queryByRole('option', { name: 'InProgress' })).toBeNull();
+  });
+
+  it('maps Completed and Cancelled to Completado and Cancelado in the status filter', async () => {
+    renderTickets(ADMIN_USER);
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Listado/i }));
+
+    const completed = await screen.findByRole('option', { name: 'Completado' }) as HTMLOptionElement;
+    expect(completed.value).toBe('Completed');
+    const cancelled = await screen.findByRole('option', { name: 'Cancelado' }) as HTMLOptionElement;
+    expect(cancelled.value).toBe('Cancelled');
+  });
+
+  it('still sends the literal "InProgress" to the backend when starting treatment', async () => {
+    const user = userEvent.setup();
+    renderTickets(ADMIN_USER);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+    await screen.findByText('Detalle');
+
+    await user.click(screen.getByText('Empezar a tratar'));
+    await waitFor(() => expect(api.updateTicketStatus).toHaveBeenCalledWith(1, 'InProgress'));
+  });
+});
+
+/**
+ * Correction 4: a comment must always show a human-readable author and a full date/time — never
+ * a bare id like `10`.
+ */
+describe('Tickets — comment author and timestamp (Correction 4)', () => {
+  const openDetailWithComments = async (comments: Array<Record<string, unknown>>) => {
+    vi.mocked(api.getTicket).mockResolvedValue({ ...TICKET_ROW, description: 'Detalle', comments });
+    const user = userEvent.setup();
+    renderTickets(ADMIN_USER);
+    await user.click(await screen.findByRole('button', { name: /Listado/i }));
+    await user.click(await screen.findByText('Primero'));
+    await screen.findByText('Detalle');
+  };
+
+  it('shows creator.name and a full day/month/year + hour:minute timestamp', async () => {
+    const createdAt = '2026-09-12T10:49:00Z';
+    await openDetailWithComments([
+      { id: 1, comment: 'Hola', created_by: 10, created_at: createdAt, creator: { id: 10, name: 'Ana Pérez' } },
+    ]);
+
+    expect(screen.getByText('Ana Pérez')).toBeTruthy();
+    // Rendered in the viewer's own local time (never hardcoded to UTC), but always the full
+    // dd/MM/yyyy HH:mm shape -- never a truncated day/month-only stamp.
+    expect(screen.getByText(dateFnsFormat(new Date(createdAt), 'dd/MM/yyyy HH:mm'))).toBeTruthy();
+    // Never a bare numeric id standing in for the author.
+    expect(screen.queryByText('10')).toBeNull();
+  });
+
+  it('prefers creator.name even when created_by is serialized as a string', async () => {
+    await openDetailWithComments([
+      { id: 2, comment: 'Hola', created_by: 'legacy-string-id', created_at: '2026-09-12T10:49:00Z', creator: { id: 10, name: 'Ana Pérez' } },
+    ]);
+
+    expect(screen.getByText('Ana Pérez')).toBeTruthy();
+  });
+
+  it('shows a legible "Usuario eliminado (#id)" fallback when creator is absent but created_by exists', async () => {
+    await openDetailWithComments([
+      { id: 3, comment: 'Hola', created_by: 10, created_at: '2026-09-12T10:49:00Z' },
+    ]);
+
+    expect(screen.getByText('Usuario eliminado (#10)')).toBeTruthy();
+    expect(screen.queryByText('10')).toBeNull();
+  });
+
+  it('shows "Sistema" only when neither creator nor created_by exist', async () => {
+    await openDetailWithComments([
+      { id: 4, comment: 'Hola', created_by: null, created_at: '2026-09-12T10:49:00Z', creator: null },
+    ]);
+
+    expect(screen.getByText('Sistema')).toBeTruthy();
   });
 });

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, CheckCircle, Ticket as TicketIcon, Info, MessageSquare } from 'lucide-react';
+import { Bell, CheckCircle, Ticket as TicketIcon, Info, MessageSquare, LifeBuoy } from 'lucide-react';
 import { api } from '../services/api';
 import { Notification } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { classifyNotification, getNotificationFamilyLabel } from '../utils/notificationPresentation';
 
 const NotificationBell: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -58,16 +59,28 @@ const NotificationBell: React.FC = () => {
         }
     };
 
-    const getIcon = (type: string) => {
-        switch (type) {
-            case 'support_ticket_created': return <TicketIcon className="text-emerald-600" size={16} />;
-            case 'support_ticket_status_changed': return <CheckCircle className="text-amber-600" size={16} />;
-            case 'support_ticket_commented': return <MessageSquare className="text-blue-600" size={16} />;
-            case 'support_ticket_assigned':
-            case 'ticket_assigned': return <TicketIcon className="text-indigo-600" size={16} />;
-            default: return <Info className="text-gray-400" size={16} />;
+    // Two independent families share this bell (see notificationPresentation.ts): Soporte
+    // técnico (`support_ticket_*` -> /support-tickets/{id}) and Ticket / Task (`ticket_assigned`,
+    // `lead_ticket_needs_review` -> /tickets/{id}). Icon/color alone is never sufficient -- the
+    // family label is rendered as explicit text below.
+    const getIcon = (n: Notification) => {
+        const family = classifyNotification(n);
+        if (family === 'support_ticket') {
+            switch (n.type) {
+                case 'support_ticket_created': return <TicketIcon className="text-emerald-600" size={16} />;
+                case 'support_ticket_status_changed': return <CheckCircle className="text-amber-600" size={16} />;
+                case 'support_ticket_commented': return <MessageSquare className="text-blue-600" size={16} />;
+                default: return <LifeBuoy className="text-emerald-600" size={16} />;
+            }
         }
+        if (family === 'operative_ticket') return <TicketIcon className="text-indigo-600" size={16} />;
+        return <Info className="text-gray-400" size={16} />;
     };
+
+    const familyBadgeClass = (family: ReturnType<typeof classifyNotification>) =>
+        family === 'support_ticket'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : 'bg-indigo-50 text-indigo-700 border-indigo-200';
 
     return (
         <div className="relative" ref={dropdownRef}>
@@ -104,7 +117,10 @@ const NotificationBell: React.FC = () => {
                                 <p className="text-sm">No tienes notificaciones</p>
                             </div>
                         ) : (
-                            notifications.map((n) => (
+                            notifications.map((n) => {
+                                const family = classifyNotification(n);
+                                const familyLabel = getNotificationFamilyLabel(n);
+                                return (
                                 <div
                                     key={n.id}
                                     className={`p-4 border-b hover:bg-gray-50 transition-colors cursor-pointer ${!n.read_at ? 'bg-indigo-50/30' : ''}`}
@@ -117,7 +133,7 @@ const NotificationBell: React.FC = () => {
                                     }}
                                 >
                                     <div className="flex gap-3">
-                                        <div className="mt-1">{getIcon(n.type)}</div>
+                                        <div className="mt-1">{getIcon(n)}</div>
                                         <div className="flex-1">
                                             <div className="flex justify-between items-start">
                                                 <p className={`text-sm ${!n.read_at ? 'font-bold' : 'font-medium'} text-gray-900`}>
@@ -125,6 +141,11 @@ const NotificationBell: React.FC = () => {
                                                 </p>
                                                 {!n.read_at && <div className="w-2 h-2 bg-indigo-600 rounded-full mt-1.5"></div>}
                                             </div>
+                                            {familyLabel && (
+                                                <span className={`inline-block mt-1 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full border ${familyBadgeClass(family)}`}>
+                                                    {familyLabel}
+                                                </span>
+                                            )}
                                             <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</p>
                                             <p className="text-[10px] text-gray-400 mt-1">
                                                 {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: es })}
@@ -132,7 +153,8 @@ const NotificationBell: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
 

@@ -608,9 +608,9 @@ export interface TicketComment {
   id: number;
   ticket_id: number;
   comment: string;
-  created_by: string;
+  created_by: number | string | null;
   created_at: string;
-  creator?: { id: number; name: string };
+  creator?: { id: number; name: string } | null;
 }
 
 export interface Ticket {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
     Plus, Search, Ticket as TicketIcon,
     Clock, CheckCircle, XCircle, AlertCircle, ChevronRight, ChevronLeft,
@@ -13,6 +14,10 @@ import CreateTicketModal from '../components/CreateTicketModal';
 import LeadModal from '../components/LeadModal';
 import { TicketResponsableSelect, TicketAssignmentDialog } from '../components/TicketAssignmentControl';
 import { useTicketAssignmentControl } from '../hooks/useTicketAssignmentControl';
+import { getTicketStatusLabel, getTicketCommentAuthorLabel, getTicketCommentTimestampLabel } from '../utils/ticketPresentation';
+
+/** A valid deep-linkable ticket id: a plain positive integer -- never 0, negative, decimal, or non-numeric. */
+const VALID_TICKET_ID_PARAM = /^[1-9]\d*$/;
 
 type LoadState = 'idle' | 'loading' | 'empty' | 'forbidden' | 'error' | 'success';
 
@@ -61,6 +66,9 @@ const statusBadgeClasses = (status: string) => {
 };
 
 const Tickets: React.FC<TicketsProps> = ({ user }) => {
+    const { ticketId: ticketIdParam } = useParams<{ ticketId?: string }>();
+    const navigate = useNavigate();
+
     const isSuperAdmin = user?.is_super_admin === true;
     const perms = useMemo<string[]>(() => Array.isArray(user?.permissions) ? user!.permissions : [], [user]);
     const hasPerm = useCallback((p: string) => isSuperAdmin || perms.includes(p), [isSuperAdmin, perms]);
@@ -204,6 +212,40 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
         loadDashboard();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedTicketId, filters]);
+
+    // --- Deep link: /tickets/:ticketId opens this ticket directly, on the Listado tab ---
+    // Always the ticket's own internal `id` -- never resolved by `ticket_number`.
+    const parsedTicketIdFromRoute = useMemo(() => {
+        if (!ticketIdParam) return null;
+        return VALID_TICKET_ID_PARAM.test(ticketIdParam) ? Number(ticketIdParam) : null;
+    }, [ticketIdParam]);
+
+    const openTicketDetail = useCallback((id: number) => {
+        setActiveTab('list');
+        setSelectedTicketId(id);
+        navigate(`/tickets/${id}`);
+    }, [navigate]);
+
+    const closeDetail = useCallback(() => {
+        setSelectedTicketId(null);
+        navigate('/tickets');
+    }, [navigate]);
+
+    useEffect(() => {
+        // A malformed id in the URL (empty, non-numeric, decimal, negative, zero) must never
+        // reach api.getTicket() -- fall back to the plain list rather than guess at intent.
+        if (ticketIdParam !== undefined && parsedTicketIdFromRoute === null) {
+            navigate('/tickets', { replace: true });
+        }
+    }, [ticketIdParam, parsedTicketIdFromRoute, navigate]);
+
+    useEffect(() => {
+        if (parsedTicketIdFromRoute !== null && parsedTicketIdFromRoute !== selectedTicketId) {
+            setActiveTab('list');
+            setSelectedTicketId(parsedTicketIdFromRoute);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [parsedTicketIdFromRoute]);
 
     // --- Shared assignment control (Tickets/Tasks global surface, §10/§11) ---
     const assignment = useTicketAssignmentControl({
@@ -373,7 +415,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                             <div
                                 key={t.id}
                                 className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-all cursor-pointer"
-                                onClick={() => { setSelectedTicketId(t.id); setActiveTab('list'); }}
+                                onClick={() => openTicketDetail(t.id)}
                             >
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${statusBadgeClasses(t.status)}`}>
                                     <TicketIcon size={18} />
@@ -441,10 +483,10 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                     onChange={(e) => setFilters({ ...filters, status: e.target.value, page: 1 })}
                 >
                     <option value="all">Todos los estados</option>
-                    <option value="New">Nuevo</option>
-                    <option value="InProgress">En Proceso</option>
-                    <option value="Completed">Completado</option>
-                    <option value="Cancelled">Cancelado</option>
+                    <option value="New">{getTicketStatusLabel('New')}</option>
+                    <option value="InProgress">{getTicketStatusLabel('InProgress')}</option>
+                    <option value="Completed">{getTicketStatusLabel('Completed')}</option>
+                    <option value="Cancelled">{getTicketStatusLabel('Cancelled')}</option>
                 </select>
 
                 <select
@@ -541,7 +583,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                                 <tr
                                                     key={t.id}
                                                     className={`hover:bg-indigo-50/50 transition-colors cursor-pointer ${selectedTicketId === t.id ? 'bg-indigo-50' : ''}`}
-                                                    onClick={() => setSelectedTicketId(t.id)}
+                                                    onClick={() => openTicketDetail(t.id)}
                                                 >
                                                     <td className="px-4 py-3 text-xs font-mono font-bold text-gray-500">{t.ticket_number}</td>
                                                     <td className="px-4 py-3 text-xs text-gray-500">{format(new Date(t.created_at), 'dd/MM/yyyy HH:mm')}</td>
@@ -552,7 +594,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                                         ticket list) permanently blank. */}
                                                     <td className="px-4 py-3 text-xs text-gray-600">{t.category?.name ?? '—'}</td>
                                                     <td className="px-4 py-3">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadgeClasses(t.status)}`}>{t.status}</span>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadgeClasses(t.status)}`}>{getTicketStatusLabel(t.status)}</span>
                                                     </td>
                                                     <td className="px-4 py-3 text-xs text-gray-600">{t.priority?.name}</td>
                                                     <td className="px-4 py-3">
@@ -588,7 +630,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                         <TicketIcon size={18} className="text-indigo-600" />
                         {t?.ticket_number ?? 'Ticket'}
                     </h4>
-                    <button onClick={() => setSelectedTicketId(null)} className="p-1.5 hover:bg-gray-200 rounded-lg text-gray-500">
+                    <button onClick={closeDetail} className="p-1.5 hover:bg-gray-200 rounded-lg text-gray-500">
                         <XCircle size={18} />
                     </button>
                 </div>
@@ -620,7 +662,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                     <span className={t.is_overdue ? 'text-red-600 font-bold' : ''}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy HH:mm') : '—'}</span>
                                 </div>
                                 <div><span className="text-gray-400 font-bold uppercase block">Estado</span>
-                                    <span className={`px-2 py-0.5 rounded-full border ${statusBadgeClasses(t.status)}`}>{t.status}</span>
+                                    <span className={`px-2 py-0.5 rounded-full border ${statusBadgeClasses(t.status)}`}>{getTicketStatusLabel(t.status)}</span>
                                 </div>
                             </div>
 
@@ -680,9 +722,9 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                                     {t.comments?.length === 0 && <p className="text-xs text-gray-400 italic">Sin comentarios</p>}
                                     {t.comments?.map((c) => (
                                         <div key={c.id} className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                                            <div className="flex justify-between text-[10px] mb-1">
-                                                <span className="font-bold text-indigo-700">{typeof c.created_by === 'string' ? c.created_by : (c.creator?.name || 'Usuario')}</span>
-                                                <span className="text-gray-400">{format(new Date(c.created_at), 'dd/MM HH:mm')}</span>
+                                            <div className="mb-1">
+                                                <p className="font-bold text-indigo-700 text-[10px]">{getTicketCommentAuthorLabel(c)}</p>
+                                                <p className="text-gray-400 text-[10px]">{getTicketCommentTimestampLabel(c.created_at)}</p>
                                             </div>
                                             <p className="text-xs text-gray-700">{c.comment}</p>
                                         </div>
