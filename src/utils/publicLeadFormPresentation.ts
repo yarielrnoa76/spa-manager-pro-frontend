@@ -104,10 +104,15 @@ export function getPublicLeadFormReadinessStatus(
   return { key: "paused", label: "Pausado" };
 }
 
-/** The list endpoint only ever returns `enabled` -- a plain, honest two-state label, never
- * conflated with the richer readiness-derived status above. */
+/**
+ * The list endpoint only ever returns `enabled` -- never the readiness snapshot. `enabled=true`
+ * is NOT proof the form is effectively published: the platform-wide master flag, or any
+ * prerequisite gate, can still leave it unreachable publicly. "Publicado" is reserved
+ * exclusively for `readiness.published === true` (see getPublicLeadFormReadinessStatus) -- this
+ * label is a plain, honest two-state persisted-flag indicator, never a availability claim.
+ */
 export function getPublicLeadFormEnabledLabel(enabled: boolean): string {
-  return enabled ? "Publicado" : "Pausado";
+  return enabled ? "Habilitado" : "Pausado";
 }
 
 const PUBLIC_LEAD_FORM_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

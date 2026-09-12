@@ -150,9 +150,14 @@ const PublicLeadForms: React.FC<PublicLeadFormsProps> = ({ user }) => {
   // --- Publish / pause ---
   const [publishing, setPublishing] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Confirmation happens BEFORE any request -- opening the dialog never calls the endpoint by
+  // itself. The dialog closes unconditionally once the request settles (success or error), so a
+  // failure (403/404/409/422/...) becomes visible in the detail panel underneath rather than
+  // staying hidden behind the confirmation overlay.
   const handlePublish = async () => {
     if (selectedFormId === null) return;
     setActionError(null);
@@ -164,6 +169,7 @@ const PublicLeadForms: React.FC<PublicLeadFormsProps> = ({ user }) => {
       setActionError(getPublicLeadFormMutationErrorMessage(err));
     } finally {
       setPublishing(false);
+      setPublishConfirmOpen(false);
     }
   };
 
@@ -434,11 +440,14 @@ const PublicLeadForms: React.FC<PublicLeadFormsProps> = ({ user }) => {
 
               {canPublish && !readiness?.published && (
                 <button
-                  onClick={handlePublish}
+                  onClick={() => setPublishConfirmOpen(true)}
                   disabled={publishing || readiness?.activatable !== true}
                   className="flex items-center justify-center gap-2 bg-indigo-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <PlayCircle size={14} /> {publishing ? "Publicando..." : "Publicar"}
+                  {/* This trigger sits behind the full-screen confirmation overlay while
+                      publishing is in flight -- its own label stays static; only the dialog's
+                      own confirm button (the one actually visible) shows progress. */}
+                  <PlayCircle size={14} /> Publicar
                 </button>
               )}
 
@@ -493,6 +502,35 @@ const PublicLeadForms: React.FC<PublicLeadFormsProps> = ({ user }) => {
         onClose={() => setEditorOpen(false)}
         onSuccess={handleEditorSuccess}
       />
+
+      {publishConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6">
+            <h2 className="text-xl font-bold mb-2">Publicar formulario</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              {selectedForm?.name ? `"${selectedForm.name}"` : "Este formulario"} quedará disponible
+              para recibir leads públicamente si todas las condiciones continúan válidas. ¿Confirmas
+              la publicación?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setPublishConfirmOpen(false)}
+                disabled={publishing}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-sm disabled:opacity-50"
+              >
+                {publishing ? "Publicando..." : "Confirmar publicación"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pauseConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

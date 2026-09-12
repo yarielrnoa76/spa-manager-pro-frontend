@@ -99,9 +99,23 @@ describe("getPublicLeadFormReadinessStatus", () => {
 });
 
 describe("getPublicLeadFormEnabledLabel", () => {
-  it("maps enabled=true to Publicado and false to Pausado -- the list's own two-state label", () => {
-    expect(getPublicLeadFormEnabledLabel(true)).toBe("Publicado");
+  it("maps enabled=true to Habilitado -- never Publicado, which requires the readiness snapshot", () => {
+    expect(getPublicLeadFormEnabledLabel(true)).toBe("Habilitado");
+    expect(getPublicLeadFormEnabledLabel(true)).not.toBe("Publicado");
+  });
+
+  it("maps enabled=false to Pausado", () => {
     expect(getPublicLeadFormEnabledLabel(false)).toBe("Pausado");
+  });
+
+  it("enabled=true alone never produces the effective 'Publicado' label -- that requires readiness.published", () => {
+    // The list endpoint only ever has `enabled`; the master flag or a prerequisite gate can
+    // still leave an "enabled" form unreachable publicly (see getPublicLeadFormReadinessStatus).
+    expect(getPublicLeadFormEnabledLabel(true)).not.toBe("Publicado");
+    const readinessStatus = getPublicLeadFormReadinessStatus(
+      baseReadiness({ form_enabled: true, master_enabled: false, activatable: false, published: false }),
+    );
+    expect(readinessStatus.label).not.toBe("Publicado");
   });
 });
 

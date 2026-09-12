@@ -296,7 +296,7 @@ describe("PublicLeadForms — permissions", () => {
 });
 
 describe("PublicLeadForms — publish", () => {
-  it("disables Publicar while activatable is false, and never calls the endpoint", async () => {
+  it("disables Publicar while activatable is false, and never opens the confirmation or calls the endpoint", async () => {
     vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(
       READINESS({ activatable: false, prerequisites_ready: false, blocking_condition: { code: "ALLOWED_ORIGINS", message: "x" } }),
     );
@@ -307,30 +307,93 @@ describe("PublicLeadForms — publish", () => {
     const publishButton = await screen.findByRole("button", { name: /Publicar/i });
     expect(publishButton).toBeDisabled();
     await user.click(publishButton);
+    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
     expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
   });
 
-  it("enables Publicar when activatable and re-fetches confirmed state afterward", async () => {
+  it("clicking Publicar opens a confirmation dialog and does NOT call the endpoint yet", async () => {
+    const user = userEvent.setup();
+    render(<PublicLeadForms user={ADMIN_USER} />);
+    await openDetail(user);
+
+    const publishButton = await screen.findByRole("button", { name: /^Publicar$/i });
+    expect(publishButton).not.toBeDisabled();
+    await user.click(publishButton);
+
+    expect(await screen.findByText(/Confirmas la publicación/i)).toBeTruthy();
+    // Names the specific form, not a generic message.
+    expect(screen.getByText(/"Contact Form"/)).toBeTruthy();
+    expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
+  });
+
+  it("Cancelar closes the confirmation without calling the endpoint", async () => {
+    const user = userEvent.setup();
+    render(<PublicLeadForms user={ADMIN_USER} />);
+    await openDetail(user);
+
+    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
+    await screen.findByText(/Confirmas la publicación/i);
+    await user.click(screen.getByRole("button", { name: /^Cancelar$/i }));
+
+    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
+    expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
+  });
+
+  it("confirming calls the endpoint exactly once and re-fetches list, detail and readiness afterward", async () => {
     vi.mocked(api.publishPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
     const user = userEvent.setup();
     render(<PublicLeadForms user={ADMIN_USER} />);
     await openDetail(user);
 
-    const publishButton = await screen.findByRole("button", { name: /Publicar/i });
-    expect(publishButton).not.toBeDisabled();
+    const listCallsBefore = vi.mocked(api.listPublicLeadForms).mock.calls.length;
+    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
+    await screen.findByText(/Confirmas la publicación/i);
 
     vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
     vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    await user.click(publishButton);
+    await user.click(screen.getByRole("button", { name: /Confirmar publicación/i }));
 
-    await waitFor(() => expect(api.publishPublicLeadForm).toHaveBeenCalledWith(1));
-    // Never optimistic -- the confirmed state comes from a fresh GET, not from the publish response alone.
+    await waitFor(() => expect(api.publishPublicLeadForm).toHaveBeenCalledTimes(1));
+    expect(api.publishPublicLeadForm).toHaveBeenCalledWith(1);
+    // Never optimistic -- the confirmed state comes from fresh GETs, not from the publish response alone.
     await waitFor(() => expect(api.getPublicLeadForm).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(api.getPublicLeadFormReadiness).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(vi.mocked(api.listPublicLeadForms).mock.calls.length).toBeGreaterThan(listCallsBefore),
+    );
     expect(await screen.findByText("Publicado")).toBeTruthy();
+    // The dialog itself is gone once the request settles.
+    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
   });
 
-  it("shows a clear message for a 409 conflict on publish", async () => {
+  it("disables the dialog's controls while publishing, preventing a double submission", async () => {
+    let resolvePublish!: (value: PublicLeadForm) => void;
+    vi.mocked(api.publishPublicLeadForm).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePublish = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<PublicLeadForms user={ADMIN_USER} />);
+    await openDetail(user);
+
+    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
+    const confirmButton = await screen.findByRole("button", { name: /Confirmar publicación|Publicando/i });
+    await user.click(confirmButton);
+
+    const busyButton = await screen.findByRole("button", { name: /Publicando/i });
+    expect(busyButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Cancelar$/i })).toBeDisabled();
+
+    // A second click while in flight must not fire another request.
+    await user.click(busyButton);
+    expect(api.publishPublicLeadForm).toHaveBeenCalledTimes(1);
+
+    resolvePublish(FORM_ROW({ enabled: true }));
+    await waitFor(() => expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull());
+  });
+
+  it("shows a clear message for a 409 conflict after confirming, and closes the dialog so it's visible", async () => {
     vi.mocked(api.publishPublicLeadForm).mockRejectedValue(
       new ApiError("conflict", { status: 409, code: "READINESS_CHECK_FAILED" }),
     );
@@ -338,8 +401,12 @@ describe("PublicLeadForms — publish", () => {
     render(<PublicLeadForms user={ADMIN_USER} />);
     await openDetail(user);
 
-    await user.click(await screen.findByRole("button", { name: /Publicar/i }));
+    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
+    await user.click(await screen.findByRole("button", { name: /Confirmar publicación/i }));
+
     expect(await screen.findByRole("alert")).toHaveTextContent(/verificación de disponibilidad falló/i);
+    // The confirmation overlay closed -- the error above is actually visible, not hidden behind it.
+    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
   });
 });
 
