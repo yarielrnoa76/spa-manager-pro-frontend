@@ -29,6 +29,11 @@ import {
   AiAgentVersionSummary,
   UpdateAiAgentPayload,
   RestoreAiAgentVersionPayload,
+  PublicLeadForm,
+  PublicLeadFormListResponse,
+  PublicLeadFormReadiness,
+  CreatePublicLeadFormPayload,
+  UpdatePublicLeadFormPayload,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -1257,6 +1262,73 @@ export const api = {
 
   async deleteAllNotifications() {
     return request(`/api/notifications/delete-all`, { method: "DELETE", auth: true });
+  },
+
+  // --- Public Lead Forms (Form Builder B2 — administrative lifecycle only) ---
+  // The list endpoint's own envelope (`data`/`links`/`meta`) is returned as-is -- the page needs
+  // `meta.current_page`/`last_page`/`total` for server-side pagination. Every single-resource
+  // endpoint (show/create/update/publish/pause/readiness) wraps its payload in `{ data }`
+  // (Laravel's default JsonResource wrapping, confirmed against the real backend contract); this
+  // layer unwraps it so callers work with the plain shape directly.
+  async listPublicLeadForms(params: { page?: number; per_page?: number } = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.per_page) searchParams.set("per_page", String(params.per_page));
+    const qs = searchParams.toString();
+    return request<PublicLeadFormListResponse>(`/api/public-lead-forms${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
+  async getPublicLeadForm(id: number) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}`, {
+      method: "GET",
+      auth: true,
+    });
+    return res.data;
+  },
+
+  async createPublicLeadForm(payload: CreatePublicLeadFormPayload) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms`, {
+      method: "POST",
+      body: payload,
+      auth: true,
+    });
+    return res.data;
+  },
+
+  async updatePublicLeadForm(id: number, payload: UpdatePublicLeadFormPayload) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    });
+    return res.data;
+  },
+
+  async getPublicLeadFormReadiness(id: number) {
+    const res = await request<{ data: PublicLeadFormReadiness }>(
+      `/api/public-lead-forms/${id}/readiness`,
+      { method: "GET", auth: true },
+    );
+    return res.data;
+  },
+
+  async publishPublicLeadForm(id: number) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}/publish`, {
+      method: "POST",
+      auth: true,
+    });
+    return res.data;
+  },
+
+  async pausePublicLeadForm(id: number) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}/pause`, {
+      method: "POST",
+      auth: true,
+    });
+    return res.data;
   },
 
   // --- Admin Notifications ---

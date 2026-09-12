@@ -25,12 +25,14 @@ import {
   HelpCircle,
   MessageSquare,
   X,
+  FileText,
 } from "lucide-react";
 
 import NotificationBell from "./components/NotificationBell";
 import Tickets from "./pages/Tickets";
 import Help from "./pages/Help";
 import Notifications from "./pages/Notifications";
+import PublicLeadForms from "./pages/PublicLeadForms";
 import SupportTickets from "./pages/Support/SupportTickets";
 import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
 import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
@@ -225,6 +227,7 @@ const App: React.FC = () => {
   const canSeeExpenses = hasPerm("view_expenses") || hasPerm("delete_expense");
   const canSeeRefunds = hasPerm("view_refunds") || hasPerm("delete_refund");
   const canSeeLogs = hasPerm("view_logs") || hasPerm("manage_logs");
+  const canSeePublicLeadForms = hasPerm("view_public_lead_forms");
 
   const navItems = [
     ...(canSeeDashboard
@@ -238,6 +241,9 @@ const App: React.FC = () => {
       : []),
     ...(hasPerm("view_leads")
       ? [{ to: "/leads", icon: UserPlus, label: "Leads / Contacts" }]
+      : []),
+    ...(canSeePublicLeadForms
+      ? [{ to: "/lead-forms", icon: FileText, label: "Formularios Web" }]
       : []),
     ...(hasPerm("view_appointments")
       ? [{ to: "/appointments", icon: Calendar, label: "Citas" }]
@@ -593,6 +599,10 @@ const App: React.FC = () => {
               <Route path="/sales" element={<Sales user={user} />} />
               <Route path="/stocks" element={<Stocks />} />
               <Route path="/leads" element={<Leads user={user} />} />
+              <Route
+                path="/lead-forms"
+                element={canSeePublicLeadForms ? <PublicLeadForms user={user} /> : <Navigate to="/" replace />}
+              />
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/communications" element={<CommunicationCenter user={user} />} />
               <Route path="/chat-admin" element={(isSuperAdmin || hasPerm("ConversationAdmin")) ? <ChatAdmin user={user} /> : <Navigate to="/" replace />} />

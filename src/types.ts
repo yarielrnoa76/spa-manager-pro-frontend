@@ -832,3 +832,85 @@ export interface TenantApiTokenIssued {
     created_at: string | null;
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Form Builder B2 — Public Lead Forms administrative control plane. Lifecycle only
+// (list/create/edit/publish/pause) — no branding, visual field builder, public page, or
+// integration snippet. `key` and `branch_id` are immutable after creation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PublicLeadFormActorRef {
+  id: number;
+  name: string;
+}
+
+export interface PublicLeadForm {
+  id: number;
+  uuid: string;
+  name: string;
+  key: string;
+  branch_id: number;
+  branch: { id: number; name: string } | null;
+  lead_source_key: string;
+  enabled: boolean;
+  allowed_origins: string[];
+  created_by_user_id: number | null;
+  created_by: PublicLeadFormActorRef | null;
+  updated_by_user_id: number | null;
+  updated_by: PublicLeadFormActorRef | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** Laravel's standard resource-collection pagination envelope. */
+export interface PublicLeadFormListResponse {
+  data: PublicLeadForm[];
+  links: {
+    first: string | null;
+    last: string | null;
+    prev: string | null;
+    next: string | null;
+  };
+  meta: {
+    current_page: number;
+    from: number | null;
+    last_page: number;
+    path: string;
+    per_page: number;
+    to: number | null;
+    total: number;
+  };
+}
+
+export interface PublicLeadFormBlockingCondition {
+  code: string;
+  message: string;
+}
+
+/** GET /api/public-lead-forms/{form}/readiness — never mutates anything server-side. */
+export interface PublicLeadFormReadiness {
+  form_id: number;
+  form_uuid: string;
+  environment: string;
+  form_enabled: boolean;
+  master_enabled: boolean;
+  prerequisites_ready: boolean;
+  activatable: boolean;
+  published: boolean;
+  blocking_condition: PublicLeadFormBlockingCondition | null;
+}
+
+/** POST /api/public-lead-forms — exactly these fields; nothing server-controlled. */
+export interface CreatePublicLeadFormPayload {
+  name: string;
+  key: string;
+  branch_id: number;
+  allowed_origins: string[];
+}
+
+/** PATCH /api/public-lead-forms/{form} — at least one of these two; `key`/`branch_id` are
+ * immutable and never sent here. */
+export interface UpdatePublicLeadFormPayload {
+  name?: string;
+  allowed_origins?: string[];
+}
