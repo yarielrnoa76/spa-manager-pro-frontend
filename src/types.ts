@@ -454,6 +454,37 @@ export interface AuthenticatedUser {
   permissions: string[];
 }
 
+/** A minimal `{id, name}` party as returned inside `SaleCreateContext` -- a branch or a seller. */
+export interface SaleCreateContextParty {
+  id: number;
+  name: string;
+}
+
+/**
+ * The backend's own, sole computation of what the current actor may do to create a sale
+ * (`GET /api/sales/create-context`, optionally `?branch_id=<id>` to re-validate a chosen
+ * branch). Every field here is backend-decided -- `useEffectiveSaleContext` renders and
+ * re-requests this, but never infers any of these values itself from role names, permission
+ * lists, or the shape/size of some other list response.
+ *
+ * `sales_scope` and `blocking_code` are backend-owned labels: the frontend never interprets
+ * their exact string value as authorization by itself, only as a hint for which user-facing
+ * message to show, with a safe generic fallback for any value it doesn't specifically know.
+ */
+export interface SaleCreateContext {
+  can_create_sale: boolean;
+  sales_scope: string | null;
+  context_ready: boolean;
+  blocking_code: string | null;
+  effective_branch: SaleCreateContextParty | null;
+  can_select_branch: boolean;
+  available_branches: SaleCreateContextParty[];
+  default_seller: SaleCreateContextParty | null;
+  can_assign_other_seller: boolean;
+  seller_candidates: SaleCreateContextParty[];
+  can_view_products: boolean;
+}
+
 export interface User {
   id: string;
   name: string;

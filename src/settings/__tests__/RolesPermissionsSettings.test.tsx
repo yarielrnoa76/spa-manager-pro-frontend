@@ -110,6 +110,34 @@ describe("RolesPermissionsSettings — resource scopes (catalog-driven)", () => 
       }),
     );
   });
+
+  /**
+   * Sales-context capability-driven hotfix, objective 6: two roles that happen to share the
+   * exact same NAME but carry different `resource_scopes` data must render differently -- the
+   * scope UI is driven entirely by each role's own persisted data (keyed by id), never by its
+   * name being a familiar string like "cajero_dia".
+   */
+  it("two roles with the identical name but different resource_scopes render according to their own data, not their shared name", async () => {
+    const roleA = { ...CUSTOM_ROLE, id: 5, name: "cajero_dia", resource_scopes: { leads: "own", inventory: "branch" } };
+    const roleB = { ...CUSTOM_ROLE, id: 7, name: "cajero_dia", resource_scopes: { leads: "own", inventory: "all" } };
+    mockLoad([roleA, roleB]);
+
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    const roleSelect = await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i });
+
+    await user.selectOptions(roleSelect, "5");
+    let inventoryRow = (await screen.findByText("inventory")).closest("div");
+    let select = inventoryRow?.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("branch");
+    expect(select.selectedOptions[0].textContent).toBe("Sucursal");
+
+    await user.selectOptions(roleSelect, "7");
+    inventoryRow = (await screen.findByText("inventory")).closest("div");
+    select = inventoryRow?.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("all");
+    expect(select.selectedOptions[0].textContent).toBe("Todo");
+  });
 });
 
 describe("RolesPermissionsSettings — role deletion", () => {

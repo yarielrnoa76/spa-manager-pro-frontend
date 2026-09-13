@@ -35,6 +35,7 @@ import {
   CreatePublicLeadFormPayload,
   AuthenticatedUser,
   UpdatePublicLeadFormPayload,
+  SaleCreateContext,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -622,6 +623,25 @@ export const api = {
   },
 
   // --- Sales ---
+  /**
+   * The single backend authority for "what may THIS actor do to create a sale, right now" --
+   * `useEffectiveSaleContext` consumes this exclusively and never derives capabilities from
+   * role names, permission lists, or branch/user list results on its own. Pass `branchId` only
+   * when re-validating a branch the actor has actively chosen (never adopted client-side before
+   * the backend confirms it in the response).
+   */
+  async getSaleCreateContext(branchId?: number | string) {
+    const searchParams = new URLSearchParams();
+    if (branchId !== undefined && branchId !== null && branchId !== "") {
+      searchParams.set("branch_id", String(branchId));
+    }
+    const qs = searchParams.toString();
+    return request<SaleCreateContext>(`/api/sales/create-context${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
   async listSales(
     branch_id: string | number = "all",
     opts?: {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LeadModal from "../LeadModal";
-import { api } from "../../services/api";
+import { api, ApiError } from "../../services/api";
 import type { AuthenticatedUser } from "../../types";
 
 /**
@@ -22,6 +22,7 @@ vi.mock("../../services/api", async (importOriginal) => {
       listBranches: vi.fn(),
       listUsers: vi.fn(),
       listUserCandidates: vi.fn(),
+      getSaleCreateContext: vi.fn(),
       listProducts: vi.fn(),
       listLeads: vi.fn(),
       listPaymentMethods: vi.fn(),
@@ -71,6 +72,19 @@ beforeEach(() => {
   vi.mocked(api.listBranches).mockResolvedValue([{ id: 3, name: "DGS_Sucursal1" }]);
   vi.mocked(api.listUsers).mockResolvedValue([]);
   vi.mocked(api.listUserCandidates).mockResolvedValue([]);
+  vi.mocked(api.getSaleCreateContext).mockResolvedValue({
+    can_create_sale: true,
+    sales_scope: "branch",
+    context_ready: true,
+    blocking_code: null,
+    effective_branch: { id: 3, name: "DGS_Sucursal1" },
+    can_select_branch: false,
+    available_branches: [],
+    default_seller: { id: 10, name: "Salesman1DGS" },
+    can_assign_other_seller: false,
+    seller_candidates: [],
+    can_view_products: true,
+  });
   vi.mocked(api.listProducts).mockResolvedValue([]);
   vi.mocked(api.listLeads).mockResolvedValue([]);
   vi.mocked(api.listPaymentMethods).mockResolvedValue([]);
@@ -107,22 +121,25 @@ describe("LeadModal — real authenticated user, never fabricated", () => {
     await user.click(await screen.findByRole("button", { name: /Ventas/i }));
     await user.click(await screen.findByRole("button", { name: /Crear Venta/i }));
 
-    // CreateSaleModal renders the actor's own name as the (locked) seller once it has a real,
-    // non-fabricated user with an id -- a hand-built object missing `id` could never reach this.
-    await waitFor(() => expect(screen.getAllByText("Salesman1DGS").length).toBeGreaterThan(0));
-    // A branch-restricted Sales actor's own authoritative branch, never api.listBranches() again
-    // just to satisfy CreateSaleModal's own resolver (Rule A: locked, no lookup).
-    expect(api.listBranches).toHaveBeenCalledTimes(1);
+    // CreateSaleModal's own resolver (useEffectiveSaleContext) only ever calls
+    // GET /api/sales/create-context once it has a real user with a real `id` -- a hand-built
+    // substitute missing `id` would leave it permanently gated (never fetching at all).
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalled());
+    // The seller shown comes from the backend's own `default_seller` -- rendering it at all
+    // (rather than staying stuck on "Cargando...") proves the real user's identity reached
+    // CreateSaleModal, never a fabricated stand-in.
+    expect(await screen.findAllByText("Salesman1DGS")).not.toHaveLength(0);
   });
 });
 
 describe("LeadModal — 'Asignar A' and responsable loading follow the real permission, never the role's name", () => {
-  it("a Sales actor without assign_lead never triggers GET /api/users and never sees 'Asignar A'", async () => {
+  it("a Sales actor without assign_lead never triggers any candidates lookup and never sees 'Asignar A'", async () => {
     render(
       <LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={baseUser()} leadToEdit={leadToEdit() as never} />,
     );
     await waitFor(() => expect(api.listBranches).toHaveBeenCalled());
     expect(api.listUsers).not.toHaveBeenCalled();
+    expect(api.listUserCandidates).not.toHaveBeenCalled();
     expect(screen.queryByText("Asignar A")).toBeNull();
   });
 
@@ -131,22 +148,45 @@ describe("LeadModal — 'Asignar A' and responsable loading follow the real perm
     render(<LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={user} leadToEdit={leadToEdit() as never} />);
     await waitFor(() => expect(api.listBranches).toHaveBeenCalled());
     expect(api.listUsers).not.toHaveBeenCalled();
+    expect(api.listUserCandidates).not.toHaveBeenCalled();
     expect(screen.queryByText("Asignar A")).toBeNull();
   });
 
-  it("a custom-named role that DOES hold assign_lead sees 'Asignar A' and loads real responsables", async () => {
-    vi.mocked(api.listUsers).mockResolvedValue([{ id: 20, name: "Responsable Uno" }]);
+  it("a custom-named role that DOES hold assign_lead sees 'Asignar A' and loads responsables via GET /api/users/candidates, never GET /api/users", async () => {
+    vi.mocked(api.listUserCandidates).mockResolvedValue([{ id: 20, name: "Responsable Uno" }]);
     const user = baseUser({ role: { id: 5, name: "coordinador_regional" }, permissions: ["assign_lead"] });
     render(<LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={user} leadToEdit={leadToEdit() as never} />);
 
-    await waitFor(() => expect(api.listUsers).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listUserCandidates).toHaveBeenCalledTimes(1));
+    expect(api.listUsers).not.toHaveBeenCalled();
     expect(await screen.findByText("Asignar A")).toBeTruthy();
+    expect(await screen.findByText("Responsable Uno")).toBeTruthy();
+  });
+
+  it("requests candidates scoped to the lead's own branch (?branch_id=)", async () => {
+    vi.mocked(api.listUserCandidates).mockResolvedValue([{ id: 20, name: "Responsable Uno" }]);
+    const user = baseUser({ permissions: ["assign_lead"] });
+    render(<LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={user} leadToEdit={leadToEdit() as never} />);
+    await waitFor(() => expect(api.listUserCandidates).toHaveBeenCalledWith({ branch_id: "3" }));
   });
 
   it("a genuine SuperAdmin (is_super_admin, not a role-name guess) always sees 'Asignar A'", async () => {
+    vi.mocked(api.listUserCandidates).mockResolvedValue([{ id: 20, name: "Responsable Uno" }]);
     const user = baseUser({ is_super_admin: true, role: { id: 1, name: "owner" }, permissions: [] });
     render(<LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={user} leadToEdit={leadToEdit() as never} />);
     expect(await screen.findByText("Asignar A")).toBeTruthy();
-    await waitFor(() => expect(api.listUsers).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listUserCandidates).toHaveBeenCalledTimes(1));
+    expect(api.listUsers).not.toHaveBeenCalled();
+  });
+
+  it("a 403 loading candidates is shown as an explicit error, never presented as a legitimately empty list", async () => {
+    vi.mocked(api.listUserCandidates).mockRejectedValue(new ApiError("forbidden", { status: 403 }));
+    const user = baseUser({ permissions: ["assign_lead"] });
+    render(<LeadModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={user} leadToEdit={leadToEdit() as never} />);
+
+    expect(await screen.findByText(/no se pudo cargar la lista de responsables/i)).toBeTruthy();
+    // The select itself isn't rendered at all while forbidden/error -- never a legitimately
+    // empty-looking dropdown.
+    expect(screen.queryByText("-- Sin Asignar --")).toBeNull();
   });
 });

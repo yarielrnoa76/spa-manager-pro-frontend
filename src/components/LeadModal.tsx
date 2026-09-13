@@ -116,7 +116,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
     const [isEditingSelectedTicket, setIsEditingSelectedTicket] = useState(false);
     const [categories, setCategories] = useState<any[]>([]);
     const [priorities, setPriorities] = useState<any[]>([]);
-    const [responsibles, setResponsibles] = useState<any[]>([]);
+    const [responsibles, setResponsibles] = useState<Array<{ id: number; name: string }>>([]);
+    // A 403 (or other failure) is shown as an explicit error -- never conflated with "this actor
+    // has zero legitimate candidates", which would be indistinguishable from a real empty list.
+    const [responsiblesState, setResponsiblesState] = useState<'idle' | 'loading' | 'success' | 'forbidden' | 'error'>('idle');
     // Second corrective pass, §7: `responsable_id` removed from this CREATE-only state.
     // Removing the visual selector alone was not enough -- this object was still spread
     // wholesale into the create payload (`...ticketData`), so an empty `responsable_id: ""` kept
@@ -246,14 +249,20 @@ const LeadModal: React.FC<LeadModalProps> = ({
 
     // Responsables (the lead-assignment candidate list) are only ever requested when the actor
     // can actually assign a lead -- never unconditionally on every open, which is exactly what
-    // produced a predictable 403 for a Sales actor who can only ever work their own leads.
+    // produced a predictable 403 for a Sales actor who can only ever work their own leads. Never
+    // `GET /api/users` (the gated, administrative listing) -- always the minimally-scoped
+    // `GET /api/users/candidates`, the SAME endpoint (but an entirely independent call/list from)
+    // the sale-creation `seller_candidates` a CreateSaleModal gets from `create-context`. Backend
+    // does the branch filtering (`?branch_id=`); this component never re-filters by branch
+    // itself, and re-requests whenever the lead's own branch selection changes.
     useEffect(() => {
         if (isOpen && canAssignLead) {
-            loadResponsibles();
+            loadResponsibles(formData.branch_id || undefined);
         } else {
             setResponsibles([]);
+            setResponsiblesState('idle');
         }
-    }, [isOpen, canAssignLead]);
+    }, [isOpen, canAssignLead, formData.branch_id]);
 
     const loadBranches = async () => {
         try {
@@ -264,11 +273,16 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
-    const loadResponsibles = async () => {
+    const loadResponsibles = async (branchId?: string) => {
+        setResponsiblesState('loading');
         try {
-            const users = await api.listUsers();
-            setResponsibles(users);
-        } catch (err) {
+            const candidates = await api.listUserCandidates(branchId ? { branch_id: branchId } : undefined);
+            setResponsibles(candidates);
+            setResponsiblesState('success');
+        } catch (err: unknown) {
+            setResponsibles([]);
+            const status = err instanceof ApiError ? err.status : undefined;
+            setResponsiblesState(status === 403 ? 'forbidden' : 'error');
             console.error("Error loading responsibles", err);
         }
     };
@@ -463,23 +477,21 @@ const LeadModal: React.FC<LeadModalProps> = ({
         }
     };
 
-    const filteredResponsibles = React.useMemo(() => {
-        if (!formData.branch_id) {
-            return responsibles;
-        }
-        return responsibles.filter((u) => {
-            return !u.branch_id || String(u.branch_id) === String(formData.branch_id);
-        });
-    }, [responsibles, formData.branch_id]);
+    // `responsibles` is already branch-scoped by the backend (`?branch_id=`) -- this component
+    // never re-filters it locally, since candidates only ever carry `{id, name}`.
+    const filteredResponsibles = responsibles;
 
+    // If the branch changes and the backend's newly-scoped candidate list no longer contains the
+    // previously assigned responsable, the stale selection is cleared -- membership-based, never
+    // re-derived from a branch_id field the candidates endpoint doesn't return. Only acts once an
+    // authoritative (successful) list is in hand, never while loading/errored.
     useEffect(() => {
-        if (formData.branch_id && formData.assigned_to) {
-            const assignedUser = responsibles.find(r => String(r.id) === String(formData.assigned_to));
-            if (assignedUser && assignedUser.branch_id && String(assignedUser.branch_id) !== String(formData.branch_id)) {
-                setFormData(prev => ({ ...prev, assigned_to: "" }));
-            }
+        if (responsiblesState !== 'success' || !formData.assigned_to) return;
+        const stillValid = responsibles.some(r => String(r.id) === String(formData.assigned_to));
+        if (!stillValid) {
+            setFormData(prev => ({ ...prev, assigned_to: "" }));
         }
-    }, [formData.branch_id, responsibles, formData.assigned_to]);
+    }, [responsiblesState, responsibles, formData.assigned_to]);
 
     const isFormValid = React.useMemo(() => {
         const hasName = Boolean(formData.name.trim());
@@ -607,7 +619,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
     }
 
     const hasPerm = (perm: string) => {
-        if (userRole === 'superadmin') return true;
+        // Canonical flag only -- never a role NAME comparison (a custom role literally called
+        // "superadmin" must not get a blanket bypass, and the real platform SuperAdmin must not
+        // depend on their role happening to be named that).
+        if (isSuperAdmin) return true;
         return userPermissions.includes(perm);
     };
 
@@ -837,18 +852,25 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         Asignar A
                                     </label>
-                                    <select
-                                        value={formData.assigned_to}
-                                        onChange={(e) => handleChange("assigned_to", e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                    >
-                                        <option value="">-- Sin Asignar --</option>
-                                        {filteredResponsibles.map((r) => (
-                                            <option key={r.id} value={r.id}>
-                                                {r.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    {responsiblesState === 'forbidden' || responsiblesState === 'error' ? (
+                                        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
+                                            No se pudo cargar la lista de responsables. Inténtalo de nuevo.
+                                        </p>
+                                    ) : (
+                                        <select
+                                            value={formData.assigned_to}
+                                            onChange={(e) => handleChange("assigned_to", e.target.value)}
+                                            disabled={responsiblesState === 'loading'}
+                                            className="w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                        >
+                                            <option value="">-- Sin Asignar --</option>
+                                            {filteredResponsibles.map((r) => (
+                                                <option key={r.id} value={r.id}>
+                                                    {r.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
                             )}
 

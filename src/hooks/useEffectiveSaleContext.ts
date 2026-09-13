@@ -1,229 +1,194 @@
 import { useEffect, useState } from "react";
-import { api } from "../services/api";
-import type { AuthenticatedUser } from "../types";
+import { api, ApiError } from "../services/api";
+import type { AuthenticatedUser, SaleCreateContext, SaleCreateContextParty } from "../types";
 
 /**
- * The ONE resolver for "which branch does this sale belong to, and who is the default seller" --
- * shared by every sale-creation entry point (Ventas Diarias, venta desde Lead, Live Chat).
- * Nothing here ever infers authority from a role's NAME, from whichever list happened to load,
- * or from a UI control being merely `disabled` -- every decision is derived from the real
- * `AuthenticatedUser` contract and, when needed, a real `GET /api/branches` response.
+ * The ONE resolver for "may this actor create a sale, in which branch, as which seller" --
+ * shared by every sale-creation entry point (Ventas Diarias, venta desde Lead). This hook is a
+ * thin client over `GET /api/sales/create-context`: EVERY capability it exposes comes from that
+ * backend response. It never infers authorization from `role.name`, from `is_super_admin` alone,
+ * from permission lists, from how many branches a lookup happened to return, or from a UI
+ * control being merely `disabled`. Its own job is limited to: fetching, re-fetching when the
+ * actor actively chooses a branch, and translating a `blocking_code`/network failure into a
+ * safe, generic, user-facing message -- never fabricating a capability the backend didn't grant.
  *
- * Rules (see the sales-context audit this hotfix closes):
- *   A. A branch-restricted user with an authoritative branch (`branch_id`/`branch`) always uses
- *      it; the field is shown, locked, never re-selectable.
- *   B. An actor authorized to work across branches (`is_super_admin` with an effective tenant,
- *      or `view_all_sales`/`view_branch`) must actively choose among the branches the backend
- *      actually returns -- never auto-selected, never assumed.
- *   C. An actor with NO authoritative branch and NOT free to choose still gets a real
- *      `GET /api/branches` lookup (the backend already scopes it) as a controlled compatibility
- *      fallback: exactly one result may be adopted and locked; zero or more than one is an
- *      explicit context error, never a silent choice.
- *   D. A SuperAdmin with no effective tenant (`active_tenant_id` null) never autoselects a
- *      branch and never resolves a usable context at all.
- *   E. The authenticated actor is always the default seller; assigning someone else requires
- *      `assign_sale` (or SuperAdmin) -- this hook only exposes the capability flag, never fetches
- *      or holds the candidate list itself.
+ * Branch selection flow: choosing a branch from `availableBranches` calls `selectBranch(id)`,
+ * which re-requests `create-context?branch_id=<id>` and replaces the ENTIRE context with the
+ * backend's recomputed answer -- the chosen branch is never adopted locally before that response
+ * comes back. `sellerCandidates`/`defaultSellerId` are replaced wholesale on every response, so a
+ * caller that keeps a locally-selected seller must re-validate it against the new list itself
+ * (see `CreateSaleModal`).
  */
 
-export type SaleContextErrorCode = "NO_TENANT_CONTEXT" | "NO_BRANCH_RESOLVED" | "AMBIGUOUS_BRANCHES";
-
-export interface EffectiveSaleContextBranch {
-  id: number;
-  name: string;
-}
+export type SaleContextFailure = "FORBIDDEN" | "NETWORK_ERROR";
 
 export interface EffectiveSaleContext {
-  /** True while a required `GET /api/branches` lookup is in flight. */
-  isLoadingBranches: boolean;
-  /** The non-negotiable, already-resolved branch (Rule A or the Rule C single-branch fallback).
-   * `null` when the actor must actively choose (Rule B) or when no usable context exists. */
-  effectiveBranchId: number | null;
-  effectiveBranch: EffectiveSaleContextBranch | null;
-  /** True only when the actor is authorized to freely choose among `availableBranches` (Rule B
-   * or Rule D with an effective tenant). Never true at the same time as a locked
-   * `effectiveBranchId`. */
+  /** True while the initial or a branch-triggered `create-context` request is in flight. */
+  isLoading: boolean;
+  /** Backend-decided: the actor holds `create_sale` for some scope. */
+  canCreateSale: boolean;
+  /** Backend-owned scope label (e.g. "own"/"branch"/"all") -- display/diagnostic only, never
+   * interpreted by the frontend as authorization on its own. */
+  salesScope: string | null;
+  /** Backend-decided: true only when every piece needed to submit a sale (branch, seller) is
+   * resolved. A caller must gate submission on this, never on local field completeness alone. */
+  contextReady: boolean;
+  /** Raw backend code for why the context isn't usable (`null` when it is, or while loading). */
+  blockingCode: string | null;
+  /** Safe, generic, already-translated message for `blockingCode` -- never the raw backend
+   * payload or an internal trace. `null` when there is nothing to show. */
+  blockingMessage: string | null;
+  effectiveBranch: SaleCreateContextParty | null;
   canSelectBranch: boolean;
-  /** Populated whenever a branches lookup actually ran (Rule B or Rule C) -- the ONLY valid
-   * source of selectable options; a caller must never accept a branch id that isn't in here. */
-  availableBranches: EffectiveSaleContextBranch[];
-  /** The authenticated actor's own id, as a string ready for a form field -- `null` only when
-   * `user` itself is `null` (identity not resolved yet). */
-  defaultSellerId: string | null;
+  availableBranches: SaleCreateContextParty[];
+  /** Selects a branch from `availableBranches` and re-requests the backend's recomputed context
+   * for it. A no-op when `canSelectBranch` is false. */
+  selectBranch: (branchId: number) => void;
+  defaultSeller: SaleCreateContextParty | null;
   canAssignOtherSeller: boolean;
-  errorCode: SaleContextErrorCode | null;
-  errorMessage: string | null;
+  /** Exclusively from `create-context` -- a caller must never call `/api/users` or
+   * `/api/users/candidates` itself to populate a seller picker. */
+  sellerCandidates: SaleCreateContextParty[];
+  canViewProducts: boolean;
+  /** Set only for a genuine transport/authorization failure of `create-context` itself (never a
+   * backend-declared block, which is `blockingCode`) -- the caller must fail closed on this. */
+  fetchFailure: SaleContextFailure | null;
 }
 
-const ERROR_MESSAGES: Record<SaleContextErrorCode, string> = {
-  NO_TENANT_CONTEXT:
-    "Selecciona un tenant antes de registrar una venta. Un SuperAdmin sin tenant activo no puede operar.",
-  NO_BRANCH_RESOLVED:
-    "No se pudo determinar una sucursal para esta venta. Contacta a un administrador para que te asigne una sucursal.",
-  AMBIGUOUS_BRANCHES:
-    "Tu cuenta tiene acceso a varias sucursales, pero no puedes elegir una libremente aquí. Contacta a un administrador.",
-};
-
 const IDLE_CONTEXT: EffectiveSaleContext = {
-  isLoadingBranches: false,
-  effectiveBranchId: null,
+  isLoading: false,
+  canCreateSale: false,
+  salesScope: null,
+  contextReady: false,
+  blockingCode: null,
+  blockingMessage: null,
   effectiveBranch: null,
   canSelectBranch: false,
   availableBranches: [],
-  defaultSellerId: null,
+  selectBranch: () => {},
+  defaultSeller: null,
   canAssignOtherSeller: false,
-  errorCode: null,
-  errorMessage: null,
+  sellerCandidates: [],
+  canViewProducts: false,
+  fetchFailure: null,
 };
 
-function toBranchList(raw: unknown): EffectiveSaleContextBranch[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((b) => {
-      const id = Number((b as { id?: unknown })?.id);
-      const name = String((b as { name?: unknown })?.name ?? "");
-      return Number.isFinite(id) ? { id, name } : null;
-    })
-    .filter((b): b is EffectiveSaleContextBranch => b !== null);
+/** Known codes get a specific, safe message; anything else the backend ever sends still fails
+ * closed with a generic message -- never the raw code, never invented specifics. */
+const BLOCKING_MESSAGES: Record<string, string> = {
+  CREATE_SALE_DENIED: "No tienes permiso para crear ventas.",
+  SCOPE_MISSING: "Tu rol no tiene un alcance de ventas configurado. Contacta a un administrador.",
+  SCOPE_INVALID: "El alcance de ventas configurado para tu rol no es válido. Contacta a un administrador.",
+  TENANT_REQUIRED: "Selecciona un tenant antes de registrar una venta.",
+  BRANCH_REQUIRED: "Debes seleccionar una sucursal antes de continuar.",
+  BRANCH_INVALID: "La sucursal seleccionada no es válida para tu cuenta.",
+};
+const GENERIC_BLOCKING_MESSAGE = "No se pudo habilitar la creación de ventas para tu cuenta. Contacta a un administrador.";
+
+function blockingMessageFor(code: string | null): string | null {
+  if (!code) return null;
+  return BLOCKING_MESSAGES[code] ?? GENERIC_BLOCKING_MESSAGE;
 }
 
+const FETCH_FAILURE_MESSAGES: Record<SaleContextFailure, string> = {
+  FORBIDDEN: "No tienes autorización para crear ventas.",
+  NETWORK_ERROR: "No se pudo verificar tu contexto de venta. Verifica tu conexión e inténtalo de nuevo.",
+};
+
+type FetchState =
+  | { phase: "loading" }
+  | { phase: "success"; data: SaleCreateContext }
+  | { phase: "failure"; failure: SaleContextFailure };
+
 /**
- * @param user The real authenticated user (App.tsx's own `UserData`/`api.me()` result) -- never
- *   a hand-built substitute. `null` while identity hasn't resolved yet.
- * @param enabled Set to `false` to skip any network lookup (e.g. while the consuming modal is
+ * @param user The real authenticated user -- used only to key the fetch to the current identity
+ *   (re-fetch on user change) and to gate the call on `enabled`. Never read for capabilities.
+ * @param enabled Set to `false` to skip any network request (e.g. while the consuming modal is
  *   closed) -- mirrors every other modal's own `isOpen` gate in this codebase.
+ * @param initialBranchId An optional caller-supplied hint (e.g. `initialData.branch_id` from a
+ *   lead's own branch) sent as `branch_id` on the FIRST request only -- a hint for the backend to
+ *   validate, never a value this hook adopts on its own. The backend either honors it (a
+ *   free-choosing actor whose branch it matches), ignores it (a branch-restricted actor's own
+ *   authoritative branch always wins server-side), or rejects it (`blockingCode`); whatever comes
+ *   back in `effectiveBranch` is the only thing ever treated as resolved.
  */
 export function useEffectiveSaleContext(
   user: AuthenticatedUser | null,
   enabled: boolean = true,
+  initialBranchId?: number | null,
 ): EffectiveSaleContext {
-  const isSuperAdmin = user?.is_super_admin === true;
-  const perms = Array.isArray(user?.permissions) ? user!.permissions : [];
-  const hasViewAllSales = perms.includes("view_all_sales");
-  const hasViewBranch = perms.includes("view_branch");
-  const canAssignOtherSeller = isSuperAdmin || perms.includes("assign_sale");
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(initialBranchId ?? null);
+  const [state, setState] = useState<FetchState>({ phase: "loading" });
 
-  // Gate 1A: a SuperAdmin's effective tenant is `active_tenant_id`; a tenant-bound user's is
-  // `tenant_id` (their own `active_tenant_id` is always null per the backend contract).
-  const hasEffectiveTenant = isSuperAdmin ? user?.active_tenant_id != null : user?.tenant_id != null;
+  // A fresh open never carries over a branch chosen (or hinted) in a previous session with this
+  // same mounted hook instance -- re-seeded from the caller's hint again. Adjusting state during
+  // render (React's own documented pattern for "reset on prop change") rather than in an effect,
+  // so the very first request after reopening already carries the right hint.
+  const [wasEnabled, setWasEnabled] = useState(enabled);
+  if (enabled !== wasEnabled) {
+    setWasEnabled(enabled);
+    if (enabled) setSelectedBranchId(initialBranchId ?? null);
+  }
 
-  const authoritativeBranchId = user?.branch_id ?? user?.branch?.id ?? null;
-  const authoritativeBranch = user?.branch ?? null;
-
-  const isBranchRestricted = authoritativeBranchId !== null && !isSuperAdmin && !hasViewAllSales;
-  const canFreelySelectBranch =
-    !isBranchRestricted && hasEffectiveTenant && (isSuperAdmin || hasViewBranch);
-
-  const blockedNoTenant = isSuperAdmin && !hasEffectiveTenant;
-
-  // A branches lookup is needed exactly when: the actor may freely choose (Rule B/D), OR there
-  // is no authoritative branch and the actor can't freely choose either (Rule C fallback) --
-  // never when Rule A already resolved a branch, and never when blocked for lack of tenant.
-  const needsBranchLookup =
-    !blockedNoTenant && authoritativeBranchId === null && (canFreelySelectBranch || hasEffectiveTenant);
-
-  const [lookup, setLookup] = useState<{
-    status: "idle" | "loading" | "success" | "error";
-    branches: EffectiveSaleContextBranch[];
-  }>({ status: "idle", branches: [] });
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (!enabled || !needsBranchLookup) {
+    if (!enabled || userId == null) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLookup({ status: "idle", branches: [] });
+      setState({ phase: "loading" });
       return;
     }
     let cancelled = false;
-    setLookup((prev) => ({ ...prev, status: "loading" }));
+    setState({ phase: "loading" });
     api
-      .listBranches()
-      .then((res) => {
+      .getSaleCreateContext(selectedBranchId ?? undefined)
+      .then((data) => {
         if (cancelled) return;
-        setLookup({ status: "success", branches: toBranchList(res) });
+        setState({ phase: "success", data });
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
-        setLookup({ status: "error", branches: [] });
+        const status = err instanceof ApiError ? err.status : undefined;
+        setState({ phase: "failure", failure: status === 403 ? "FORBIDDEN" : "NETWORK_ERROR" });
       });
     return () => {
       cancelled = true;
     };
-    // Re-resolve whenever the actor's own identity/branch changes, not on every render.
-  }, [enabled, needsBranchLookup, user?.id, isBranchRestricted, canFreelySelectBranch, hasEffectiveTenant]);
+  }, [enabled, userId, selectedBranchId]);
 
-  if (!user) return IDLE_CONTEXT;
+  const selectBranch = (branchId: number) => {
+    setSelectedBranchId(branchId);
+  };
 
-  const defaultSellerId = user.id != null ? String(user.id) : null;
+  if (state.phase === "loading") {
+    return { ...IDLE_CONTEXT, isLoading: true, selectBranch };
+  }
 
-  if (blockedNoTenant) {
+  if (state.phase === "failure") {
     return {
       ...IDLE_CONTEXT,
-      defaultSellerId,
-      canAssignOtherSeller,
-      errorCode: "NO_TENANT_CONTEXT",
-      errorMessage: ERROR_MESSAGES.NO_TENANT_CONTEXT,
+      selectBranch,
+      fetchFailure: state.failure,
+      blockingMessage: FETCH_FAILURE_MESSAGES[state.failure],
     };
   }
 
-  // Rule A: authoritative branch already known -- locked, no lookup needed.
-  if (authoritativeBranchId !== null) {
-    return {
-      ...IDLE_CONTEXT,
-      effectiveBranchId: authoritativeBranchId,
-      effectiveBranch: authoritativeBranch,
-      canSelectBranch: false,
-      defaultSellerId,
-      canAssignOtherSeller,
-    };
-  }
-
-  // Rule B (or D with a tenant): free choice among whatever the backend actually returns.
-  if (canFreelySelectBranch) {
-    return {
-      ...IDLE_CONTEXT,
-      isLoadingBranches: lookup.status === "loading" || lookup.status === "idle",
-      availableBranches: lookup.branches,
-      canSelectBranch: true,
-      defaultSellerId,
-      canAssignOtherSeller,
-      errorMessage: lookup.status === "error" ? "No se pudieron cargar las sucursales disponibles." : null,
-    };
-  }
-
-  // Rule C: controlled compatibility fallback -- adopt exactly one, never choose among several,
-  // never silently proceed with zero.
-  if (lookup.status === "loading" || lookup.status === "idle") {
-    return { ...IDLE_CONTEXT, isLoadingBranches: true, defaultSellerId, canAssignOtherSeller };
-  }
-  if (lookup.status === "error") {
-    return {
-      ...IDLE_CONTEXT,
-      defaultSellerId,
-      canAssignOtherSeller,
-      errorCode: "NO_BRANCH_RESOLVED",
-      errorMessage: "No se pudo consultar tu sucursal autorizada. Inténtalo de nuevo.",
-    };
-  }
-  if (lookup.branches.length === 1) {
-    const only = lookup.branches[0];
-    return {
-      ...IDLE_CONTEXT,
-      effectiveBranchId: only.id,
-      effectiveBranch: only,
-      canSelectBranch: false,
-      availableBranches: lookup.branches,
-      defaultSellerId,
-      canAssignOtherSeller,
-    };
-  }
-
+  const data = state.data;
   return {
-    ...IDLE_CONTEXT,
-    availableBranches: lookup.branches,
-    defaultSellerId,
-    canAssignOtherSeller,
-    errorCode: lookup.branches.length === 0 ? "NO_BRANCH_RESOLVED" : "AMBIGUOUS_BRANCHES",
-    errorMessage:
-      lookup.branches.length === 0 ? ERROR_MESSAGES.NO_BRANCH_RESOLVED : ERROR_MESSAGES.AMBIGUOUS_BRANCHES,
+    isLoading: false,
+    canCreateSale: data.can_create_sale === true,
+    salesScope: data.sales_scope ?? null,
+    contextReady: data.context_ready === true,
+    blockingCode: data.blocking_code ?? null,
+    blockingMessage: blockingMessageFor(data.blocking_code ?? null),
+    effectiveBranch: data.effective_branch ?? null,
+    canSelectBranch: data.can_select_branch === true,
+    availableBranches: Array.isArray(data.available_branches) ? data.available_branches : [],
+    selectBranch,
+    defaultSeller: data.default_seller ?? null,
+    canAssignOtherSeller: data.can_assign_other_seller === true,
+    sellerCandidates: Array.isArray(data.seller_candidates) ? data.seller_candidates : [],
+    canViewProducts: data.can_view_products === true,
+    fetchFailure: null,
   };
 }
