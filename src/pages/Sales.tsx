@@ -243,6 +243,13 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
   const canViewBranch = isSuperAdmin || perms.includes("view_branch") || canViewAllSales;
   const canImport = isSuperAdmin || perms.includes("import_sales");
   const canExport = isSuperAdmin || perms.includes("export_sales");
+  // Gates Cancelar for BOTH independent and grouped sales (handleCancelSale branches on the
+  // item's own type, but it's the exact same control) -- never by role.name, never by
+  // sales_scope, never by whether the sale happens to be grouped or independent, never by which
+  // entrypoint rendered the row. `is_super_admin` is included only because it already mirrors
+  // the backend's own bypass for every other action gated in this file (canViewAllSales,
+  // canImport, canExport, ...), not as a frontend-invented shortcut.
+  const canDeleteSale = isSuperAdmin || perms.includes("delete_sale");
   const canViewMySalesOnly = perms.includes("view_my_sales_only") && !canViewAllSales;
   const [sales, setSales] = useState<SalesListItem[]>([]);
   // Which grouped-sale rows currently show their nested line-items table below the main row.
@@ -1406,10 +1413,16 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                // `disabled` already stops a real click/keyboard activation, but
+                                // this is the real boundary -- never trust a control's own
+                                // `disabled` attribute as the sole guard against a tampered DOM.
+                                if (!canDeleteSale) return;
                                 handleCancelSale(item);
                               }}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50"
-                              title="Cancelar (soft delete) y restaurar inventario"
+                              disabled={!canDeleteSale}
+                              aria-disabled={!canDeleteSale}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white"
+                              title={canDeleteSale ? "Cancelar (soft delete) y restaurar inventario" : "No tienes permiso para cancelar ventas"}
                             >
                               Cancelar
                             </button>

@@ -300,3 +300,225 @@ describe('Sales — a one-line group flattens to a simple row, never the multi-l
         expect(screen.getAllByText('$65.00').length).toBeGreaterThan(0);
     });
 });
+
+/**
+ * fix: gate sale cancellation by permission -- QA finding: a `sales` actor without `delete_sale`
+ * saw Cancelar fully enabled (backend correctly rejected the request; the defect was purely
+ * frontend gating). `handleCancelSale` is the ONE code path for both independent and grouped
+ * cancellation (it branches internally on the item's own type), and it is rendered from a single
+ * button, so exercising independent / one-line-group / multi-line-group here covers every real
+ * entrypoint -- there is no other button or component in the app that calls cancelSale or
+ * cancelSaleGroup (confirmed by a full-repo search).
+ */
+describe('Sales — Cancelar is gated by delete_sale, never by role.name/sales_scope/grouping/entrypoint', () => {
+    const SALES_USER_NO_DELETE = { id: 10, is_super_admin: false, permissions: ['view_sales'] };
+    const SALES_USER_WITH_DELETE = { id: 11, is_super_admin: false, permissions: ['view_sales', 'delete_sale'] };
+    // A role literally NAMED "superadmin" -- Sales.tsx never reads `user.role` at all, so this
+    // field is inert; included only to prove no accidental role-name-based bypass exists.
+    const FAKE_SUPERADMIN_BY_NAME = { id: 12, is_super_admin: false, role: { id: 1, name: 'superadmin' }, permissions: [] };
+    const WIDE_SCOPE_NO_DELETE = { id: 13, is_super_admin: false, permissions: ['view_all_sales', 'view_branch', 'view_my_sales_only'] };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(api.listBranches).mockResolvedValue([{ id: '1', name: 'Branch A', code: 'BRA', address: 'Test Address' }]);
+        vi.mocked(api.listProducts).mockResolvedValue([]);
+        vi.mocked(api.listLeads).mockResolvedValue([]);
+        vi.mocked(api.listPaymentMethods).mockResolvedValue([{ id: 1, name: 'Efectivo' }]);
+        vi.mocked(api.listUsers).mockResolvedValue([]);
+        vi.mocked(api.getSalesStats).mockResolvedValue(EMPTY_STATS);
+    });
+
+    function cancelButton(): HTMLButtonElement {
+        return screen.getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement;
+    }
+
+    it('1. without delete_sale, an independent sale shows Cancelar disabled', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(true);
+    });
+
+    it('2. without delete_sale, a one-line group shows Cancelar disabled', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE]);
+        render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(true);
+    });
+
+    it('3. without delete_sale, a multi-line group shows Cancelar disabled', async () => {
+        mockListSalesResponse([GROUP_ITEM]);
+        render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(true);
+    });
+
+    it('4. without delete_sale, clicking (or attempting keyboard activation) never opens the confirm dialog', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        const confirmSpy = vi.spyOn(window, 'confirm');
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        const button = cancelButton();
+        await user.click(button);
+        // A disabled element is unreachable by keyboard: it never receives focus, so it can never
+        // be activated with Enter/Space either.
+        button.focus();
+        expect(document.activeElement).not.toBe(button);
+
+        expect(confirmSpy).not.toHaveBeenCalled();
+        confirmSpy.mockRestore();
+    });
+
+    it('5. without delete_sale, neither cancelSale nor cancelSaleGroup is ever called', async () => {
+        mockListSalesResponse([GROUP_ITEM]);
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado')).toBeInTheDocument());
+
+        await user.click(cancelButton());
+
+        expect(api.cancelSale).not.toHaveBeenCalled();
+        expect(api.cancelSaleGroup).not.toHaveBeenCalled();
+    });
+
+    it('6. with delete_sale, an independent sale calls cancelSale with the correct id', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        vi.mocked(api.cancelSale).mockResolvedValue({});
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(false);
+        await user.click(cancelButton());
+
+        expect(api.cancelSale).toHaveBeenCalledWith('601');
+        expect(api.cancelSaleGroup).not.toHaveBeenCalled();
+    });
+
+    it('7. with delete_sale, a one-line group (flattened) calls cancelSaleGroup(item.id)', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE]);
+        vi.mocked(api.cancelSaleGroup).mockResolvedValue({});
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(false);
+        await user.click(cancelButton());
+
+        expect(api.cancelSaleGroup).toHaveBeenCalledWith(502);
+        expect(api.cancelSale).not.toHaveBeenCalled();
+    });
+
+    it('8. with delete_sale, a multi-line group calls cancelSaleGroup(item.id)', async () => {
+        mockListSalesResponse([GROUP_ITEM]);
+        vi.mocked(api.cancelSaleGroup).mockResolvedValue({});
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(false);
+        await user.click(cancelButton());
+
+        expect(api.cancelSaleGroup).toHaveBeenCalledWith(501);
+        expect(api.cancelSale).not.toHaveBeenCalled();
+    });
+
+    it('9. the canonical is_super_admin flag alone reproduces the backend capability, without delete_sale in the permissions list', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        const superAdminNoExplicitPerm = { id: 20, is_super_admin: true, permissions: [] };
+        render(<Sales user={superAdminNoExplicitPerm} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(false);
+    });
+
+    it('10. a role literally named "superadmin" without the canonical flag and without delete_sale stays blocked', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        render(<Sales user={FAKE_SUPERADMIN_BY_NAME} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(true);
+    });
+
+    it('11. broad sales-scope-like permissions (view_all_sales/view_branch/view_my_sales_only) never substitute for delete_sale', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        render(<Sales user={WIDE_SCOPE_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        expect(cancelButton().disabled).toBe(true);
+    });
+
+    it('12. one-line and multi-line group rendering remain correct for a non-SuperAdmin actor with delete_sale', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE]);
+        const { unmount } = render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+        expect(screen.getByText('Producto Único')).toBeInTheDocument();
+        expect(screen.queryByText('Varios')).not.toBeInTheDocument();
+        unmount();
+
+        vi.clearAllMocks();
+        vi.mocked(api.listBranches).mockResolvedValue([{ id: '1', name: 'Branch A', code: 'BRA', address: 'Test Address' }]);
+        vi.mocked(api.listProducts).mockResolvedValue([]);
+        vi.mocked(api.listLeads).mockResolvedValue([]);
+        vi.mocked(api.listPaymentMethods).mockResolvedValue([{ id: 1, name: 'Efectivo' }]);
+        vi.mocked(api.listUsers).mockResolvedValue([]);
+        vi.mocked(api.getSalesStats).mockResolvedValue(EMPTY_STATS);
+        mockListSalesResponse([GROUP_ITEM]);
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado')).toBeInTheDocument());
+        expect(screen.getByText('2 productos')).toBeInTheDocument();
+        expect(screen.getByText('Varios')).toBeInTheDocument();
+    });
+
+    it('13. metrics and the list refresh after an authorized cancellation', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        vi.mocked(api.cancelSale).mockResolvedValue({});
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+
+        const listSalesCallsBefore = vi.mocked(api.listSales).mock.calls.length;
+        const statsCallsBefore = vi.mocked(api.getSalesStats).mock.calls.length;
+
+        await user.click(cancelButton());
+
+        await waitFor(() => expect(vi.mocked(api.listSales).mock.calls.length).toBeGreaterThan(listSalesCallsBefore));
+        expect(vi.mocked(api.getSalesStats).mock.calls.length).toBeGreaterThan(statsCallsBefore);
+    });
+
+    it('14. the control exposes accessible disabled state and an explanatory message in both states', async () => {
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        const { unmount } = render(<Sales user={SALES_USER_NO_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+        const disabledButton = cancelButton();
+        expect(disabledButton.disabled).toBe(true);
+        expect(disabledButton.getAttribute('aria-disabled')).toBe('true');
+        expect(disabledButton.getAttribute('title')).toMatch(/no tienes permiso para cancelar ventas/i);
+        unmount();
+
+        vi.clearAllMocks();
+        vi.mocked(api.listBranches).mockResolvedValue([{ id: '1', name: 'Branch A', code: 'BRA', address: 'Test Address' }]);
+        vi.mocked(api.listProducts).mockResolvedValue([]);
+        vi.mocked(api.listLeads).mockResolvedValue([]);
+        vi.mocked(api.listPaymentMethods).mockResolvedValue([{ id: 1, name: 'Efectivo' }]);
+        vi.mocked(api.listUsers).mockResolvedValue([]);
+        vi.mocked(api.getSalesStats).mockResolvedValue(EMPTY_STATS);
+        mockListSalesResponse([INDEPENDENT_ITEM]);
+        render(<Sales user={SALES_USER_WITH_DELETE} />);
+        await waitFor(() => expect(screen.getByText('Cliente Independiente')).toBeInTheDocument());
+        const enabledButton = cancelButton();
+        expect(enabledButton.disabled).toBe(false);
+        expect(enabledButton.getAttribute('aria-disabled')).toBe('false');
+        expect(enabledButton.getAttribute('title')).not.toMatch(/no tienes permiso/i);
+    });
+});
