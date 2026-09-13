@@ -5,7 +5,7 @@ import CreateSaleModal from "../components/CreateSaleModal";
 import SaleModal from "../components/SaleModal";
 import ImportSalesModal from "../components/ImportSalesModal";
 import { Branch, Product } from "../types";
-import { SalesListItem } from "../types/payments";
+import { SalesListItem, SaleGroupLine } from "../types/payments";
 import {
   Plus,
   Download,
@@ -211,6 +211,24 @@ function isSaleCancelled(sale: any) {
  *  call site that needs to branch on whether a row is a consolidated grouped sale. */
 function isGroupItem(item: SalesListItem): item is Extract<SalesListItem, { type: "group" }> {
   return item.type === "group";
+}
+
+/**
+ * A grouped sale with exactly one REAL, coherent line flattens to the exact same simple-row
+ * presentation as an independent sale (real product/service, real professional, real unit price,
+ * real quantity) -- never the multi-line accordion summary ("N productos", "Varios", "—"). It
+ * still IS a SaleGroup underneath: `item.id` (never the line's own id) remains what
+ * cancellation/identity operations use.
+ *
+ * Returns the single line only when `lines_count` and the actual `lines` array agree on exactly
+ * one row -- any other combination (0, 2+, or a `lines_count`/`lines.length` mismatch) falls back
+ * to the existing, safe multi-line summary presentation. Never guesses or fabricates a product,
+ * price, or professional from a `lines_count` alone.
+ */
+function resolveSingleLine(item: Extract<SalesListItem, { type: "group" }>): SaleGroupLine | null {
+  if (item.lines_count !== 1) return null;
+  if (!Array.isArray(item.lines) || item.lines.length !== 1) return null;
+  return item.lines[0] ?? null;
 }
 
 type SalesProps = { user?: any };
@@ -1258,7 +1276,11 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                 visibleSales.map((item) => {
                   const cancelled = isSaleCancelled(item);
                   const rowKey = item.type === "group" ? `group-${item.id}` : `sale-${item.id}`;
-                  const isExpanded = item.type === "group" && expandedGroupIds.has(item.id);
+                  // A group with exactly one real, coherent line renders as a simple row (see
+                  // `resolveSingleLine`) -- it is still, underneath, the exact same SaleGroup:
+                  // `item.id` keeps being what Cancelar and the accordion toggle would use.
+                  const singleLine = item.type === "group" ? resolveSingleLine(item) : null;
+                  const isExpanded = item.type === "group" && !singleLine && expandedGroupIds.has(item.id);
 
                   return (
                     <React.Fragment key={rowKey}>
@@ -1299,7 +1321,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                           {item.client_name}
                         </td>
 
-                        {item.type === "group" ? (
+                        {item.type === "group" && !singleLine ? (
                           <td className="px-6 py-4">
                             <button
                               type="button"
@@ -1319,29 +1341,41 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
                           </td>
                         ) : (
                           <td className="px-6 py-4 flex items-center gap-2">
-                            {item.product_id && (
+                            {(singleLine ? singleLine.product_id : item.type === "independent" && item.product_id) && (
                               <Package size={14} className="text-gray-400" />
                             )}
-                            {item.service_rendered}
+                            {singleLine ? singleLine.service_rendered : item.type === "independent" && item.service_rendered}
                           </td>
                         )}
 
                         <td className="px-6 py-4">
-                          {item.type === "group"
-                            ? <span className="text-gray-400 font-normal italic">Varios</span>
-                            : (item.professional_name || item.professional?.full_name || <span className="text-gray-400 font-normal italic">—</span>)}
+                          {singleLine
+                            ? (singleLine.professional
+                              ? `${singleLine.professional.fname} ${singleLine.professional.lname}`
+                              : <span className="text-gray-400 font-normal italic">—</span>)
+                            : item.type === "group"
+                              ? <span className="text-gray-400 font-normal italic">Varios</span>
+                              : (item.professional_name || item.professional?.full_name || <span className="text-gray-400 font-normal italic">—</span>)}
                         </td>
 
                         <td className="px-6 py-4 text-right text-gray-700">
-                          {item.type === "group"
-                            ? "—"
-                            : (toNumber(String(item?.unit_price ?? 0)) > 0
-                              ? `$${money(toNumber(String(item?.unit_price ?? 0)))}`
-                              : "—")}
+                          {singleLine
+                            ? (toNumber(String(singleLine.unit_price ?? 0)) > 0
+                              ? `$${money(toNumber(String(singleLine.unit_price ?? 0)))}`
+                              : "—")
+                            : item.type === "group"
+                              ? "—"
+                              : (toNumber(String(item?.unit_price ?? 0)) > 0
+                                ? `$${money(toNumber(String(item?.unit_price ?? 0)))}`
+                                : "—")}
                         </td>
 
                         <td className="px-6 py-4 text-right font-bold text-gray-700">
-                          {item.type === "group" ? item.lines_count : (Number(item?.quantity ?? 0) || 0)}
+                          {singleLine
+                            ? (Number(singleLine.quantity ?? 0) || 0)
+                            : item.type === "group"
+                              ? item.lines_count
+                              : (Number(item?.quantity ?? 0) || 0)}
                         </td>
 
                         <td className="px-6 py-4 text-right font-bold text-gray-900">

@@ -84,6 +84,7 @@ beforeEach(() => {
     can_assign_other_seller: false,
     seller_candidates: [],
     can_view_products: true,
+    sales_mode: "grouped_sale",
   });
   vi.mocked(api.listProducts).mockResolvedValue([]);
   vi.mocked(api.listLeads).mockResolvedValue([]);

@@ -47,6 +47,7 @@ function ctx(overrides: Partial<SaleCreateContext> = {}): SaleCreateContext {
     can_assign_other_seller: false,
     seller_candidates: [],
     can_view_products: true,
+    sales_mode: "grouped_sale",
     ...overrides,
   };
 }
@@ -605,5 +606,56 @@ describe("useEffectiveSaleContext — SuperAdmin is read only via is_super_admin
     const { result } = renderHook(() => useEffectiveSaleContext(user, true));
     await waitFor(() => expect(result.current.blockingCode).toBe("TENANT_REQUIRED"));
     expect(result.current.contextReady).toBe(false);
+  });
+});
+
+/**
+ * fix: honor tenant sale mode consistently -- `sales_mode` now travels on `create-context` like
+ * every other capability: relayed verbatim, never inferred, never defaulted, never dependent on
+ * `getTenantProfile()`/`view_tenant_profile` (this hook never even imports/calls those), and
+ * never derived from `role.name` or any permission list.
+ */
+describe("useEffectiveSaleContext — sales_mode is relayed verbatim, never inferred", () => {
+  it("1. relays grouped_sale verbatim", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx({ sales_mode: "grouped_sale" }));
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.salesMode).toBe("grouped_sale");
+  });
+
+  it("2. relays independent_sales verbatim", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx({ sales_mode: "independent_sales" }));
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.salesMode).toBe("independent_sales");
+  });
+
+  it("3. a null sales_mode is relayed as null -- never silently coerced to independent_sales", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx({ sales_mode: null }));
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.salesMode).toBeNull();
+  });
+
+  it("3b. an unrecognized/unknown sales_mode value also relays as null, never adopted as-is", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ sales_mode: "some_future_mode_not_yet_known" as unknown as "grouped_sale" }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.salesMode).toBeNull();
+  });
+
+  it("6. two roles with different names but the identical backend context (including sales_mode) behave identically", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx({ sales_mode: "grouped_sale" }));
+    const userA = baseUser({ role: { id: 1, name: "coordinador_regional" } });
+    const userB = baseUser({ id: "11", role: { id: 2, name: "otro_rol_cualquiera" } });
+
+    const { result: rA } = renderHook(() => useEffectiveSaleContext(userA, true));
+    const { result: rB } = renderHook(() => useEffectiveSaleContext(userB, true));
+    await waitFor(() => expect(rA.current.isLoading).toBe(false));
+    await waitFor(() => expect(rB.current.isLoading).toBe(false));
+
+    expect(rA.current.salesMode).toBe(rB.current.salesMode);
   });
 });

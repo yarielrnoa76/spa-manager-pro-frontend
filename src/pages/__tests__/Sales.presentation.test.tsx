@@ -57,6 +57,59 @@ const GROUP_ITEM: SalesListGroupItem = {
     ],
 };
 
+/** A grouped sale with exactly one REAL, coherent line -- must flatten to a simple row (real
+ *  product, real professional, real unit price, real quantity), never the multi-line summary. */
+const GROUP_ITEM_SINGLE_LINE: SalesListGroupItem = {
+    ...GROUP_ITEM,
+    id: 502,
+    sale_group_id: 502,
+    client_name: 'Cliente Agrupado Uno',
+    total_amount: 20,
+    lines_count: 1,
+    lines: [
+        {
+            id: 9101, sale_group_id: 502, product_id: 77, service_rendered: 'Producto Único',
+            quantity: 1, unit_price: 20, discount_amount: 0, tax_amount: 0, amount: 20,
+            professional_id: 55, professional: { id: 55, fname: 'Ana', lname: 'Profesional' },
+        },
+    ],
+};
+
+/** Same one-line group, but with no professional attached at all. */
+const GROUP_ITEM_SINGLE_LINE_NO_PROFESSIONAL: SalesListGroupItem = {
+    ...GROUP_ITEM_SINGLE_LINE,
+    id: 503,
+    sale_group_id: 503,
+    client_name: 'Cliente Sin Profesional',
+    lines: [
+        { ...GROUP_ITEM_SINGLE_LINE.lines[0], id: 9102, sale_group_id: 503, professional_id: null, professional: null },
+    ],
+};
+
+/** Same one-line group, but that one line has quantity > 1 -- still ONE line, still simple. */
+const GROUP_ITEM_SINGLE_LINE_QTY3: SalesListGroupItem = {
+    ...GROUP_ITEM_SINGLE_LINE,
+    id: 504,
+    sale_group_id: 504,
+    client_name: 'Cliente Cantidad Tres',
+    total_amount: 60,
+    lines: [
+        { ...GROUP_ITEM_SINGLE_LINE.lines[0], id: 9103, sale_group_id: 504, quantity: 3, amount: 60 },
+    ],
+};
+
+/** `lines_count` says 1 but the real `lines` array disagrees (empty here) -- an inconsistent,
+ *  incoherent group must NEVER be flattened or have data fabricated; it falls back to the
+ *  existing, safe multi-line summary presentation exactly as before this fix. */
+const GROUP_ITEM_INCONSISTENT: SalesListGroupItem = {
+    ...GROUP_ITEM_SINGLE_LINE,
+    id: 505,
+    sale_group_id: 505,
+    client_name: 'Cliente Inconsistente',
+    lines_count: 1,
+    lines: [],
+};
+
 const INDEPENDENT_ITEM: SalesListIndependentItem = {
     type: 'independent',
     id: '601',
@@ -145,5 +198,105 @@ describe('Sales — grouped sale presentation (one row per operation)', () => {
         expect(api.cancelSale).not.toHaveBeenCalled();
 
         confirmSpy.mockRestore();
+    });
+});
+
+/**
+ * fix: honor tenant sale mode consistently -- a grouped sale with exactly one REAL, coherent
+ * line renders as a simple row (real product/professional/price/quantity), never the "N
+ * productos" accordion summary with "Varios"/"—". It is still, underneath, the exact same
+ * SaleGroup: cancellation and detail-view identity are entirely unaffected by how it is drawn.
+ */
+describe('Sales — a one-line group flattens to a simple row, never the multi-line accordion', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(api.listBranches).mockResolvedValue([{ id: '1', name: 'Branch A', code: 'BRA', address: 'Test Address' }]);
+        vi.mocked(api.listProducts).mockResolvedValue([]);
+        vi.mocked(api.listLeads).mockResolvedValue([]);
+        vi.mocked(api.listPaymentMethods).mockResolvedValue([{ id: 1, name: 'Efectivo' }]);
+        vi.mocked(api.listUsers).mockResolvedValue([]);
+        vi.mocked(api.getSalesStats).mockResolvedValue(EMPTY_STATS);
+    });
+
+    it('16 & 18. shows the real product, professional, unit price, quantity and total -- never an accordion/chevron/"1 producto"/"Varios"', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+
+        expect(screen.getByText('Producto Único')).toBeInTheDocument();
+        expect(screen.getByText('Ana Profesional')).toBeInTheDocument();
+        // "$20.00" legitimately appears more than once (unit price cell, total cell, KPI card).
+        expect(screen.getAllByText('$20.00').length).toBeGreaterThanOrEqual(2);
+        // No accordion affordance at all for this row.
+        expect(screen.queryByText(/^1 producto$/)).not.toBeInTheDocument();
+        expect(screen.queryByText('Varios')).not.toBeInTheDocument();
+    });
+
+    it('19. a one-line group with no professional shows "—", never fabricating one', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE_NO_PROFESSIONAL]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Sin Profesional')).toBeInTheDocument());
+        expect(screen.getByText('—')).toBeInTheDocument();
+        expect(screen.queryByText('Varios')).not.toBeInTheDocument();
+    });
+
+    it('17. a one-line group whose line has quantity > 1 is still a simple row, never the accordion', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE_QTY3]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Cantidad Tres')).toBeInTheDocument());
+        expect(screen.getByText('Producto Único')).toBeInTheDocument();
+        // Quantity shown is the line's own real quantity (3), never treated as "3 lines".
+        expect(screen.getByText('3')).toBeInTheDocument();
+        expect(screen.queryByText(/producto$/)).not.toBeInTheDocument();
+    });
+
+    it('20. a group with two or more lines keeps the accordion summary (regression guard)', async () => {
+        mockListSalesResponse([GROUP_ITEM]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado')).toBeInTheDocument());
+        expect(screen.getByText('2 productos')).toBeInTheDocument();
+        expect(screen.getByText('Varios')).toBeInTheDocument();
+    });
+
+    it('21. lines_count/lines inconsistency falls back to the safe multi-line presentation -- never fabricated product/price/professional', async () => {
+        mockListSalesResponse([GROUP_ITEM_INCONSISTENT]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Inconsistente')).toBeInTheDocument());
+        // Never invents "Producto Único" from the mismatched lines_count -- falls back to the
+        // honest, existing group summary instead of pretending it flattened cleanly.
+        expect(screen.queryByText('Producto Único')).not.toBeInTheDocument();
+        expect(screen.getByText('Varios')).toBeInTheDocument();
+        expect(screen.getByText('1 producto')).toBeInTheDocument();
+    });
+
+    it('22. cancelling a one-line group still calls cancelSaleGroup(item.id), never cancelSale', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE]);
+        vi.mocked(api.cancelSaleGroup).mockResolvedValue({});
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const user = userEvent.setup();
+
+        render(<Sales user={ADMIN_USER} />);
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+
+        await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+        expect(api.cancelSaleGroup).toHaveBeenCalledWith(502);
+        expect(api.cancelSale).not.toHaveBeenCalled();
+        confirmSpy.mockRestore();
+    });
+
+    it('23. totals and counters are unaffected by the simple-row presentation (backend-computed, never recomputed client-side)', async () => {
+        mockListSalesResponse([GROUP_ITEM_SINGLE_LINE, GROUP_ITEM]);
+        render(<Sales user={ADMIN_USER} />);
+
+        await waitFor(() => expect(screen.getByText('Cliente Agrupado Uno')).toBeInTheDocument());
+        // total_amount for both rows (20 + 45 = 65) comes straight from the mocked listSales
+        // response's own total_amount field -- never recomputed from what got flattened.
+        expect(screen.getAllByText('$65.00').length).toBeGreaterThan(0);
     });
 });

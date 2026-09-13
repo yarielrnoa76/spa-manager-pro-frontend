@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { X, UserPlus } from "lucide-react";
 import { api, ApiError } from "../services/api";
 import LeadModal from "./LeadModal";
-import { AuthenticatedUser, TenantSalesMode } from "../types";
+import { AuthenticatedUser } from "../types";
 import { useEffectiveSaleContext } from "../hooks/useEffectiveSaleContext";
 
 type CreateSaleModalProps = {
@@ -59,7 +59,6 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const canDecreasePrice = isAdmin || perms.includes("sale_decrease_price");
     const canEditPrice = canIncreasePrice || canDecreasePrice;
     const canViewProfessionals = isAdmin || perms.includes("view_professionals");
-    const canViewTenantProfile = isAdmin || perms.includes("view_tenant_profile");
 
     // The ONE authority for "may this actor create a sale, in which branch, as which seller" --
     // entirely backend-computed (GET /api/sales/create-context). Nothing in this component ever
@@ -100,12 +99,6 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    // Purely informational for this component: only decides which payload shape to send
-    // (single grouped request vs. today's per-item loop). The backend independently reads the
-    // tenant's own persisted sales_mode and is the real authority regardless of this value.
-    // Deliberately stays `null` (never a 403) when the actor lacks view_tenant_profile -- the
-    // existing independent_sales fallback below already covers that case correctly.
-    const [salesMode, setSalesMode] = useState<TenantSalesMode | null>(null);
 
     // --- Seller: always the backend's own default; whenever the candidate list or default
     // changes (e.g. after a branch re-validation), a no-longer-authorized selection is reset back
@@ -146,13 +139,14 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         // Independently controlled loads (Promise.allSettled, explicit per-result handling) --
         // a single failing/unauthorized endpoint must never blank out payment methods or leads.
         // Products are handled in their OWN effect below, gated on the backend's own
-        // `can_view_products` flag rather than bundled in here.
+        // `can_view_products` flag rather than bundled in here. The tenant's sale-persistence
+        // mode is NEVER read here -- it comes exclusively from `saleContext.salesMode`
+        // (GET /api/sales/create-context), never from `getTenantProfile()`/`view_tenant_profile`.
         Promise.allSettled([
             canViewLeads ? api.listLeads() : Promise.resolve([]),
             api.listPaymentMethods(),
             canViewProfessionals ? api.listProfessionals().catch(() => []) : Promise.resolve([]),
-            canViewTenantProfile ? api.getTenantProfile().catch(() => null) : Promise.resolve(null),
-        ]).then(([leadsRes, pmRes, profRes, tenantRes]) => {
+        ]).then(([leadsRes, pmRes, profRes]) => {
             setLeads(leadsRes.status === "fulfilled" && Array.isArray(leadsRes.value) ? leadsRes.value : []);
 
             const pms = pmRes.status === "fulfilled" && Array.isArray(pmRes.value) ? pmRes.value : [];
@@ -160,12 +154,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             setForm((prev) => (prev.payment_method ? prev : { ...prev, payment_method: pms[0]?.name || prev.payment_method }));
 
             setProfessionals(profRes.status === "fulfilled" && Array.isArray(profRes.value) ? profRes.value : []);
-
-            const tenant = tenantRes.status === "fulfilled" ? tenantRes.value : null;
-            setSalesMode((tenant as { settings?: { sales_mode?: TenantSalesMode } } | null)?.settings?.sales_mode ?? null);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, initialData, canViewLeads, canViewProfessionals, canViewTenantProfile]);
+    }, [isOpen, initialData, canViewLeads, canViewProfessionals]);
 
     // --- Products: only ever requested when the backend's own create-context says so. While the
     // context itself is still loading (or failed), the catalog is neither requested nor
@@ -313,6 +304,17 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         return cart.reduce((acc, item) => acc + item.amount, 0);
     }, [cart]);
 
+    // The tenant's own persistence mode is as authoritative as the branch/seller resolution --
+    // a ready context with a null/unknown mode is still a blocked context, never a silent
+    // invitation to guess "independent_sales" locally. Surfaced proactively (like any other
+    // backend blocking message) rather than only discovered on a submit attempt, since Confirm
+    // is disabled in that state and would otherwise never let the user see why.
+    const salesModeUnresolvedMessage =
+        saleContext.contextReady && saleContext.salesMode !== "grouped_sale" && saleContext.salesMode !== "independent_sales"
+            ? "No se pudo determinar la modalidad de venta de tu tenant. Contacta a un administrador."
+            : null;
+    const contextBlockingMessage = saleContext.blockingMessage ?? salesModeUnresolvedMessage;
+
     /**
      * The real security boundary for this form: re-derives "is this actually submittable" from
      * the backend's own `create-context` and candidate lists, independent of whatever any
@@ -321,10 +323,13 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
      */
     const validateBeforeSubmit = useCallback((): string | null => {
         if (saleContext.fetchFailure) {
-            return saleContext.blockingMessage ?? "No se pudo verificar tu contexto de venta.";
+            return contextBlockingMessage ?? "No se pudo verificar tu contexto de venta.";
         }
         if (!saleContext.contextReady) {
-            return saleContext.blockingMessage ?? "No se pudo determinar tu contexto de venta. Inténtalo de nuevo.";
+            return contextBlockingMessage ?? "No se pudo determinar tu contexto de venta. Inténtalo de nuevo.";
+        }
+        if (salesModeUnresolvedMessage) {
+            return salesModeUnresolvedMessage;
         }
 
         const sellerId = form.seller_id;
@@ -339,7 +344,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         if (cart.length === 0) return "Debes añadir al menos un producto a la venta.";
 
         return null;
-    }, [saleContext, form.seller_id, form.lead_id, cart.length]);
+    }, [saleContext, contextBlockingMessage, salesModeUnresolvedMessage, form.seller_id, form.lead_id, cart.length]);
 
     const handleCreateSale = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -363,35 +368,22 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                 notes: form.notes,
             };
 
-            if (salesMode === "grouped_sale") {
-                // Single request with every cart item — the backend still independently
-                // verifies the tenant is actually grouped_sale before treating this as a group.
-                await api.createSale({
-                    ...sharedFields,
-                    items: cart.map(item => ({
-                        product_id: item.product_id || null,
-                        quantity: item.quantity,
-                        unit_price: item.unit_price,
-                        amount: item.amount,
-                        service_rendered: item.service_rendered,
-                        professional_id: item.professional_id || null,
-                    })),
-                });
-            } else {
-                // independent_sales (or sales_mode not yet known) — today's unchanged flow:
-                // one independent request per cart item.
-                for (const item of cart) {
-                    await api.createSale({
-                        ...sharedFields,
-                        quantity: item.quantity,
-                        unit_price: item.unit_price,
-                        amount: item.amount,
-                        product_id: item.product_id || null,
-                        service_rendered: item.service_rendered,
-                        professional_id: item.professional_id || null,
-                    });
-                }
-            }
+            // Always ONE request with every cart item, for every sales_mode and every actor --
+            // this component never decides how the sale gets persisted. The backend reads its
+            // own persisted sales_mode and responds accordingly (`type: 'group'` for
+            // grouped_sale, `type: 'batch'` for independent_sales); either shape here is an
+            // equally successful creation.
+            await api.createSale({
+                ...sharedFields,
+                items: cart.map(item => ({
+                    product_id: item.product_id || null,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    amount: item.amount,
+                    service_rendered: item.service_rendered,
+                    professional_id: item.professional_id || null,
+                })),
+            });
 
             onSuccess();
             onClose();
@@ -436,9 +428,9 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     {error}
                                 </div>
                             )}
-                            {!error && saleContext.blockingMessage && (
+                            {!error && contextBlockingMessage && (
                                 <div className="bg-amber-50 text-amber-700 p-3 rounded text-sm mb-4">
-                                    {saleContext.blockingMessage}
+                                    {contextBlockingMessage}
                                 </div>
                             )}
 

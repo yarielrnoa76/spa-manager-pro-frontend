@@ -483,6 +483,11 @@ export interface SaleCreateContext {
   can_assign_other_seller: boolean;
   seller_candidates: SaleCreateContextParty[];
   can_view_products: boolean;
+  /** The tenant's own persisted sale-persistence mode -- authoritative for how the backend will
+   * actually save a submitted sale. `null` only when the backend genuinely cannot determine it
+   * (never a signal to guess or fall back to a mode locally). Never gated by `view_tenant_profile`
+   * or any other permission: every actor who can even reach this endpoint receives it. */
+  sales_mode: TenantSalesMode | null;
 }
 
 export interface User {

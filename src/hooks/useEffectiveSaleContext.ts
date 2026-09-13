@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../services/api";
-import type { AuthenticatedUser, SaleCreateContext, SaleCreateContextParty } from "../types";
+import type { AuthenticatedUser, SaleCreateContext, SaleCreateContextParty, TenantSalesMode } from "../types";
 
 /**
  * The ONE resolver for "may this actor create a sale, in which branch, as which seller" --
@@ -59,6 +59,11 @@ export interface EffectiveSaleContext {
    * `/api/users/candidates` itself to populate a seller picker. */
   sellerCandidates: SaleCreateContextParty[];
   canViewProducts: boolean;
+  /** The tenant's own persisted sale-persistence mode, relayed verbatim -- never inferred,
+   * never defaulted, never read from `getTenantProfile()`, never gated by `view_tenant_profile`
+   * or any other permission. `null` when the backend itself couldn't determine it; a caller must
+   * treat that as a blocked state, never as a silent signal to assume `independent_sales`. */
+  salesMode: TenantSalesMode | null;
   /** Set only for a genuine transport/authorization failure of `create-context` itself (never a
    * backend-declared block, which is `blockingCode`) -- the caller must fail closed on this. */
   fetchFailure: SaleContextFailure | null;
@@ -79,6 +84,7 @@ const IDLE_CONTEXT: EffectiveSaleContext = {
   canAssignOtherSeller: false,
   sellerCandidates: [],
   canViewProducts: false,
+  salesMode: null,
   fetchFailure: null,
 };
 
@@ -224,6 +230,7 @@ export function useEffectiveSaleContext(
     canAssignOtherSeller: data.can_assign_other_seller === true,
     sellerCandidates: Array.isArray(data.seller_candidates) ? data.seller_candidates : [],
     canViewProducts: data.can_view_products === true,
+    salesMode: data.sales_mode === "grouped_sale" || data.sales_mode === "independent_sales" ? data.sales_mode : null,
     fetchFailure: null,
   };
 }
