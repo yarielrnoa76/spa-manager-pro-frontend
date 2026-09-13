@@ -61,13 +61,41 @@ const SYSTEM_ROLE = {
   permissions: [{ id: 1, name: "view_leads" }],
 };
 
-function mockLoad(roles: unknown[]) {
+type Perm = { id: number; name: string };
+
+/**
+ * A representative slice of the REAL backend catalog (109 names as of this fix), covering every
+ * category the grouping dictionary explicitly recognizes (including ones that used to rely on a
+ * fragile raw-suffix coincidence: `view_leads`, `view_sales`) plus the five Professionals
+ * permissions this fix specifically restores, plus one deliberately unrecognized name to exercise
+ * the fallback bucket.
+ */
+const PERMISSIONS_CATALOG: Perm[] = [
+  { id: 1, name: "view_leads" },
+  { id: 2, name: "create_lead" },
+  { id: 3, name: "view_sales" },
+  { id: 4, name: "create_sale" },
+  { id: 50, name: "manage_professionals" },
+  { id: 51, name: "view_professionals" },
+  { id: 52, name: "create_professional" },
+  { id: 53, name: "edit_professional" },
+  { id: 54, name: "delete_professional" },
+  { id: 90, name: "some_future_unknown_permission" },
+];
+
+function mockLoad(roles: unknown[], permissions: Perm[] = PERMISSIONS_CATALOG) {
   vi.mocked(api.get).mockImplementation((path: string) => {
     if (path.includes("resource-scope-catalog")) return Promise.resolve(CATALOG);
-    if (path.startsWith("/permissions")) return Promise.resolve([{ id: 1, name: "view_leads" }]);
+    if (path.startsWith("/permissions")) return Promise.resolve(permissions);
     if (path.startsWith("/roles")) return Promise.resolve(roles);
     return Promise.resolve([]);
   });
+}
+
+/** Finds a permission checkbox by its rendered (lowercase, underscore-replaced) label text. */
+function permissionCheckbox(labelText: string): HTMLInputElement {
+  const label = screen.getByText(labelText).closest("label");
+  return label!.querySelector('input[type="checkbox"]') as HTMLInputElement;
 }
 
 beforeEach(() => {
@@ -292,5 +320,153 @@ describe("RolesPermissionsSettings — resource scope: absent/invalid never read
         resource_scopes: { leads: "own", inventory: "branch", products: "all" },
       }),
     );
+  });
+});
+
+/**
+ * QA finding: GET /api/permissions correctly returns manage_professionals/view_professionals/
+ * create_professional/edit_professional/delete_professional (confirmed real, id 51 for
+ * view_professionals), but none of the five ever appeared in this screen. Root cause: the
+ * grouping dictionary only had a SINGULAR key for several categories (lead/product/appointment/
+ * refund/conversation/sale); the corresponding PLURAL-suffixed permissions (view_leads,
+ * view_products, view_appointments, view_refunds, view_conversations, view_sales, import_sales,
+ * export_sales) only ever rendered correctly by a coincidence where the unmatched raw suffix
+ * happened to spell the same as the intended group. `professional`/`professionals` were folded
+ * into the generic "configuración" bucket with no identity, and had no such lucky coincidence,
+ * so an administrator scanning for a Professionals section found nothing. Fixed by making every
+ * real category (including the missing plurals) an explicit key, giving Professionals its own
+ * "profesionales" group, and routing anything still unmatched into ONE clearly labeled fallback
+ * group ("otros permisos") instead of an unlabeled one-off bucket named after its own raw suffix.
+ */
+describe("RolesPermissionsSettings — complete permission catalog, exactly once, Professionals restored", () => {
+  const ROLE_WITH_VIEW_PROFESSIONALS = {
+    ...CUSTOM_ROLE,
+    permissions: [
+      { id: 1, name: "view_leads" },
+      { id: 51, name: "view_professionals" },
+    ],
+  };
+
+  async function openProfessionalsGroup(user: ReturnType<typeof userEvent.setup>) {
+    render(<RolesPermissionsSettings canManage={true} />);
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+    // Any non-empty search term auto-opens every group with at least one match -- the simplest,
+    // already-supported way to reveal a group's checkboxes without hardcoding an accordion click.
+    await user.type(await screen.findByPlaceholderText(/Buscar permiso o modelo/i), "professional");
+  }
+
+  it("1. all five Professionals permissions appear", async () => {
+    mockLoad([CUSTOM_ROLE]);
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    expect(await screen.findByText("profesionales")).toBeTruthy();
+    for (const label of ["manage professionals", "view professionals", "create professional", "edit professional", "delete professional"]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+
+  it("2. view_professionals appears checked when the role already has it", async () => {
+    mockLoad([ROLE_WITH_VIEW_PROFESSIONALS]);
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    expect(permissionCheckbox("view professionals").checked).toBe(true);
+    expect(permissionCheckbox("manage professionals").checked).toBe(false);
+  });
+
+  it("3. can be toggled on and off through the UI", async () => {
+    mockLoad([CUSTOM_ROLE]);
+    vi.mocked(api.put).mockResolvedValue({ ...CUSTOM_ROLE, permissions: [{ id: 1, name: "view_leads" }, { id: 51, name: "view_professionals" }] });
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    expect(permissionCheckbox("view professionals").checked).toBe(false);
+    await user.click(permissionCheckbox("view professionals"));
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/roles/5/permissions", { permission_ids: [1, 51] }),
+    );
+  });
+
+  it("4. saving it never alters unrelated permissions", async () => {
+    const role = { ...CUSTOM_ROLE, permissions: [{ id: 1, name: "view_leads" }, { id: 2, name: "create_lead" }, { id: 4, name: "create_sale" }] };
+    mockLoad([role]);
+    vi.mocked(api.put).mockResolvedValue(role);
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    await user.click(permissionCheckbox("view professionals"));
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/roles/5/permissions", {
+        // The three ALREADY-assigned, unrelated permissions are preserved verbatim; only the
+        // toggled id (51) is added.
+        permission_ids: expect.arrayContaining([1, 2, 4, 51]),
+      }),
+    );
+    const call = vi.mocked(api.put).mock.calls.find(([path]) => path === "/roles/5/permissions");
+    expect((call?.[1] as { permission_ids: number[] }).permission_ids).toHaveLength(4);
+  });
+
+  it("5. saving a permission toggle never touches resource_scopes", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own", inventory: "branch" }, permissions: [{ id: 1, name: "view_leads" }] };
+    mockLoad([role]);
+    vi.mocked(api.put).mockResolvedValue(role);
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    await user.click(permissionCheckbox("view professionals"));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/roles/5/permissions", expect.anything()));
+    // The permissions toggle hits a DIFFERENT endpoint than resource_scopes updates -- it must
+    // never be the /roles/:id (name + resource_scopes) endpoint at all.
+    expect(api.put).not.toHaveBeenCalledWith("/roles/5", expect.anything());
+  });
+
+  it("6. a future/unknown permission the backend sends appears in the fallback group, never silently dropped", async () => {
+    mockLoad([CUSTOM_ROLE]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+    await user.type(await screen.findByPlaceholderText(/Buscar permiso o modelo/i), "some_future_unknown_permission");
+
+    expect(await screen.findByText("otros permisos")).toBeTruthy();
+    expect(screen.getByText("some future unknown permission")).toBeTruthy();
+  });
+
+  it("7 & 8. every permission in the simulated catalog renders exactly once, with no duplicates", async () => {
+    mockLoad([CUSTOM_ROLE]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+
+    // Open every group (accordion headers render regardless of open state; only their body is
+    // conditional) so every checkbox this catalog produces is actually in the DOM. `leads` also
+    // appears as a resource-scope row label, so the accordion header (inside a <button>) is
+    // singled out explicitly.
+    for (const groupName of ["leads", "sales", "profesionales", "otros permisos"]) {
+      const headerSpan = screen.getAllByText(groupName).find((el) => el.closest("button"));
+      await user.click(headerSpan!.closest("button")!);
+    }
+
+    const allCheckboxes = document.querySelectorAll('input[type="checkbox"]');
+    expect(allCheckboxes.length).toBe(PERMISSIONS_CATALOG.length);
+
+    const labels = PERMISSIONS_CATALOG.map((p) => p.name.replaceAll("_", " "));
+    for (const label of labels) {
+      expect(screen.getAllByText(label)).toHaveLength(1);
+    }
+  });
+
+  it("9. a permission the backend sends but the role does NOT have stays unchecked -- never auto-granted by merely rendering it", async () => {
+    mockLoad([CUSTOM_ROLE]); // CUSTOM_ROLE.permissions only has view_leads
+    const user = userEvent.setup();
+    await openProfessionalsGroup(user);
+
+    for (const label of ["manage professionals", "view professionals", "create professional", "edit professional", "delete professional"]) {
+      expect(permissionCheckbox(label).checked).toBe(false);
+    }
+    expect(api.put).not.toHaveBeenCalled();
   });
 });

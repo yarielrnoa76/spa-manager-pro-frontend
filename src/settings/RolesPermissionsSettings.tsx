@@ -19,6 +19,30 @@ function getResourceScopeLabel(scope: string): string {
   return RESOURCE_SCOPE_LABELS[scope] ?? scope;
 }
 
+/**
+ * Root-cause fix (QA finding: view_professionals/manage_professionals/create_professional/
+ * edit_professional/delete_professional never showing up for administration): the grouping
+ * dictionary below is keyed by whatever comes after the FIRST underscore of a permission's name
+ * (e.g. "view_professionals" -> "professionals"), but it only ever listed the SINGULAR form for
+ * several real categories (`lead`, `product`, `appointment`, `refund`, `conversation`, `sale`) --
+ * never their own plural. A permission like `view_leads`, `view_products`, `view_appointments`,
+ * `view_refunds`, `view_conversations`, `view_sales`, `import_sales`, or `export_sales` produces
+ * a PLURAL raw suffix that used to match no key at all, and fell back to using that raw suffix
+ * AS the group name. That fallback happened to render those particular six categories correctly
+ * only by coincidence -- the fallback's own raw string is spelled identically to the intended
+ * group. `professional`/`professionals` never had that lucky coincidence: the code below lumped
+ * them into `configuración` instead of ever giving Professionals its own identity, which is why
+ * an administrator scanning for them found nothing resembling "profesionales" anywhere.
+ *
+ * The real, general defect is that ANY permission whose raw suffix matches no explicit key here
+ * relies on that same fragile coincidence -- there is no guarantee a NEW or renamed permission's
+ * raw suffix will happen to equal a sensible group name. Every category a permission's name is
+ * actually expected to fall into is now an EXPLICIT key (including the previously-missing
+ * plurals), and anything that still matches nothing lands in one clearly-labeled fallback group
+ * instead of an unlabeled one-off bucket named after its own raw suffix.
+ */
+const FALLBACK_PERMISSION_GROUP = "otros permisos";
+
 type Permission = { id: number; name: string };
 type Role = {
   id: number;
@@ -86,14 +110,18 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
         branches: "configuración",
         role: "configuración",
         roles: "configuración",
-        professional: "configuración",
-        professionals: "configuración",
         settings: "configuración",
         tenant: "configuración",
         tenants: "configuración",
 
+        // Profesionales -- previously folded into "configuración" with no identity of its own,
+        // which is exactly why an administrator could never find them there.
+        professional: "profesionales",
+        professionals: "profesionales",
+
         // Ventas
         sale: "sales",
+        sales: "sales",
         sale_increase_price: "sales",
         sale_decrease_price: "sales",
         import_sales: "sales",
@@ -104,8 +132,11 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
 
         // Otros
         lead: "leads",
+        leads: "leads",
         product: "products",
+        products: "products",
         appointment: "appointments",
+        appointments: "appointments",
         ticket: "tickets",
         support_ticket: "support_tickets",
         support_tickets: "support_tickets",
@@ -115,13 +146,19 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
         ticket_priorities: "configuración",
         ticket_types: "configuración",
         refund: "refunds",
+        refunds: "refunds",
         conversation: "conversations",
+        conversations: "conversations",
+        all_conversations: "conversations",
         expense: "expenses",
         expenses: "expenses",
-        all_conversations: "conversations",
       };
 
-      const groupName = groupMap[rawGroup] || rawGroup;
+      // A permission whose raw suffix matches no explicit key above is NEVER given its own
+      // unlabeled, one-off group named after that raw suffix (the previous behavior) -- it
+      // always lands in ONE clearly-identified fallback group instead, so nothing the backend
+      // adds or renames can ever become invisible or unadministrable again.
+      const groupName = groupMap[rawGroup] || FALLBACK_PERMISSION_GROUP;
 
       if (!groups[groupName]) groups[groupName] = [];
       groups[groupName].push(p);
