@@ -372,20 +372,56 @@ describe('CreateSaleModal — context_ready gates Confirm; disabled attributes a
     });
 });
 
-describe('CreateSaleModal — initialData.branch_id is only ever a hint the backend must validate', () => {
-    it('passes initialData.branch_id as the branch_id on the FIRST create-context request', async () => {
+describe('CreateSaleModal — initialData.branch_id (a lead\'s own branch) is only ever a hint the backend must validate', () => {
+    it('the FIRST create-context request never includes initialData.branch_id, even when supplied', async () => {
         render(
             <CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={ADMIN_USER} initialData={{ branch_id: 7 }} />,
         );
-        await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledWith(7));
+        await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(1, undefined));
     });
 
-    it('a branch-restricted actor still only ever shows their own backend-resolved branch, regardless of initialData', async () => {
+    it('a branch-restricted actor opening a lead from a DIFFERENT branch still uses their own authoritative branch -- never blocked, never a second request', async () => {
+        // The exact bug this microcorrection closes: a seller fixed to branch 3 opening a lead
+        // visible in branch 4 must never see EFFECTIVE_BRANCH_INVALID or any block.
         render(
-            <CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={baseUser({ id: '10' })} initialData={{ branch_id: 999 }} />,
+            <CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={baseUser({ id: '10' })} initialData={{ branch_id: 4 }} />,
         );
         const branchSelect = await screen.findByText('Sucursal').then(() => selectByLabel('Sucursal'));
         await waitFor(() => expect(branchSelect.value).toBe('3'));
+        expect(branchSelect.disabled).toBe(true);
+        expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText(/no válida|inválida|no se pudo/i)).toBeNull();
+    });
+
+    it('a free-choosing actor with an AUTHORIZED initialData.branch_id: two requests, only the validated response is shown', async () => {
+        vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+            ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: 'Main' }, { id: 4, name: 'Sucursal Norte' }] }),
+        );
+        vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+            ctx({ can_select_branch: true, effective_branch: { id: 4, name: 'Sucursal Norte' }, context_ready: true, available_branches: [{ id: 1, name: 'Main' }, { id: 4, name: 'Sucursal Norte' }] }),
+        );
+        render(
+            <CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={ADMIN_USER} initialData={{ branch_id: 4 }} />,
+        );
+
+        await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(1, undefined));
+        await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(2, 4));
+        const branchSelect = await screen.findByText('Sucursal').then(() => selectByLabel('Sucursal'));
+        await waitFor(() => expect(branchSelect.value).toBe('4'));
+    });
+
+    it('a free-choosing actor with an UNAUTHORIZED initialData.branch_id: no second request, selection still required', async () => {
+        vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+            ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: 'Main' }, { id: 2, name: 'North' }] }),
+        );
+        render(
+            <CreateSaleModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} user={ADMIN_USER} initialData={{ branch_id: 999 }} />,
+        );
+        const branchSelect = await screen.findByText('Sucursal').then(() => selectByLabel('Sucursal'));
+        await waitFor(() => expect(branchSelect.disabled).toBe(false));
+        expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+        expect(branchSelect.value).toBe('');
+        expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
     });
 });
 

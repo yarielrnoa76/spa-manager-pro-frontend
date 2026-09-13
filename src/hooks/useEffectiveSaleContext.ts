@@ -18,6 +18,15 @@ import type { AuthenticatedUser, SaleCreateContext, SaleCreateContextParty } fro
  * comes back. `sellerCandidates`/`defaultSellerId` are replaced wholesale on every response, so a
  * caller that keeps a locally-selected seller must re-validate it against the new list itself
  * (see `CreateSaleModal`).
+ *
+ * Initial resolution: the VERY FIRST request for a given open/actor is always
+ * `create-context` with NO `branch_id` -- the frontend doesn't yet know whether this actor's
+ * branch is fixed or selectable, so `initialBranchId` (e.g. a lead's own branch) is never sent
+ * up front. Only once that first response says `can_select_branch=true` AND `initialBranchId` is
+ * one of the backend's own `available_branches` does a SECOND, authoritative request
+ * (`?branch_id=<initialBranchId>`) go out; a branch-restricted or blocked actor's first response
+ * is final -- `initialBranchId` is never retried against it. This is why a lead visible in a
+ * DIFFERENT branch than a branch-restricted seller's own never blocks or overrides their branch.
  */
 
 export type SaleContextFailure = "FORBIDDEN" | "NETWORK_ERROR";
@@ -106,31 +115,38 @@ type FetchState =
  * @param enabled Set to `false` to skip any network request (e.g. while the consuming modal is
  *   closed) -- mirrors every other modal's own `isOpen` gate in this codebase.
  * @param initialBranchId An optional caller-supplied hint (e.g. `initialData.branch_id` from a
- *   lead's own branch) sent as `branch_id` on the FIRST request only -- a hint for the backend to
- *   validate, never a value this hook adopts on its own. The backend either honors it (a
- *   free-choosing actor whose branch it matches), ignores it (a branch-restricted actor's own
- *   authoritative branch always wins server-side), or rejects it (`blockingCode`); whatever comes
- *   back in `effectiveBranch` is the only thing ever treated as resolved.
+ *   lead's own branch) -- NEVER sent on the first request. Only after the first response comes
+ *   back `can_select_branch=true` with this id among its own `available_branches` does the hook
+ *   issue a second, authoritative request for it; a branch-restricted or blocked actor's first
+ *   response is always final, and an unauthorized hint is silently ignored (never sent, never
+ *   adopted) rather than blocking anything.
  */
 export function useEffectiveSaleContext(
   user: AuthenticatedUser | null,
   enabled: boolean = true,
   initialBranchId?: number | null,
 ): EffectiveSaleContext {
-  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(initialBranchId ?? null);
+  // ALWAYS starts (and resets to) `null` -- the very first request of any session never carries
+  // a branch_id. It only ever moves away from `null` via: (a) the backend confirming, from its
+  // OWN first response, that `initialBranchId` is one of this actor's real `available_branches`,
+  // or (b) the actor manually picking one through `selectBranch`. Once away from `null` it never
+  // returns to it within the same session, which is also what makes checking
+  // `selectedBranchId === null` inside the effect below a reliable "is this the very first
+  // response" signal without needing a separate tracking flag.
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [state, setState] = useState<FetchState>({ phase: "loading" });
 
-  // A fresh open never carries over a branch chosen (or hinted) in a previous session with this
-  // same mounted hook instance -- re-seeded from the caller's hint again. Adjusting state during
-  // render (React's own documented pattern for "reset on prop change") rather than in an effect,
-  // so the very first request after reopening already carries the right hint.
-  const [wasEnabled, setWasEnabled] = useState(enabled);
-  if (enabled !== wasEnabled) {
-    setWasEnabled(enabled);
-    if (enabled) setSelectedBranchId(initialBranchId ?? null);
-  }
-
   const userId = user?.id ?? null;
+
+  // A fresh open, or the authenticated actor itself changing, never carries over a branch chosen
+  // (or hinted) in a previous session with this same mounted hook instance. Adjusting state
+  // during render (React's own documented pattern for "reset on prop change") rather than in an
+  // effect, so the very first request after reopening is already the correct branch_id-less one.
+  const [session, setSession] = useState({ enabled, userId });
+  if (enabled !== session.enabled || userId !== session.userId) {
+    setSession({ enabled, userId });
+    if (enabled) setSelectedBranchId(null);
+  }
 
   useEffect(() => {
     if (!enabled || userId == null) {
@@ -144,6 +160,25 @@ export function useEffectiveSaleContext(
       .getSaleCreateContext(selectedBranchId ?? undefined)
       .then((data) => {
         if (cancelled) return;
+
+        if (selectedBranchId === null) {
+          // This IS the mandatory first, branch_id-less resolution. A caller-supplied hint is
+          // ever chased with a second request ONLY when the backend's own first response already
+          // says this actor may freely choose AND lists the hinted branch among its real
+          // options -- never for a fixed or blocked actor, and never an unlisted branch.
+          const hintIsAuthorized =
+            data.can_select_branch === true &&
+            initialBranchId != null &&
+            Array.isArray(data.available_branches) &&
+            data.available_branches.some((b) => b.id === initialBranchId);
+          if (hintIsAuthorized) {
+            // Never display this unvalidated-for-the-hint response -- go straight to the
+            // backend's own authoritative answer for it instead.
+            setSelectedBranchId(initialBranchId as number);
+            return;
+          }
+        }
+
         setState({ phase: "success", data });
       })
       .catch((err: unknown) => {
@@ -154,7 +189,7 @@ export function useEffectiveSaleContext(
     return () => {
       cancelled = true;
     };
-  }, [enabled, userId, selectedBranchId]);
+  }, [enabled, userId, selectedBranchId, initialBranchId]);
 
   const selectBranch = (branchId: number) => {
     setSelectedBranchId(branchId);

@@ -311,10 +311,221 @@ describe("useEffectiveSaleContext — branch selection re-requests and recompute
     expect(result.current.blockingMessage).toBeTruthy();
   });
 
-  it("passes an initialBranchId hint only on the first request, as a hint the backend may accept or reject", async () => {
-    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx());
+  it("respuestas fuera de orden: a stale response for an earlier manual selection never overwrites a later one", async () => {
+    let resolveFirstPick: (v: SaleCreateContext) => void = () => {};
+    let resolveSecondPick: (v: SaleCreateContext) => void = () => {};
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, available_branches: [{ id: 1, name: "Main" }, { id: 2, name: "North" }, { id: 3, name: "South" }], effective_branch: null, context_ready: false }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser({ is_super_admin: true, active_tenant_id: 9 }), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    vi.mocked(api.getSaleCreateContext).mockImplementationOnce(() => new Promise((resolve) => { resolveFirstPick = resolve; }));
+    result.current.selectBranch(2); // user picks North first...
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledTimes(2));
+
+    vi.mocked(api.getSaleCreateContext).mockImplementationOnce(() => new Promise((resolve) => { resolveSecondPick = resolve; }));
+    result.current.selectBranch(3); // ...then quickly changes their mind to South, before North's response arrives
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledTimes(3));
+
+    // The STALE North response resolves AFTER the South request was already issued.
+    resolveFirstPick(ctx({ can_select_branch: true, effective_branch: { id: 2, name: "North" }, context_ready: true }));
+    // It must never become visible.
+    expect(result.current.effectiveBranch).not.toEqual({ id: 2, name: "North" });
+
+    resolveSecondPick(ctx({ can_select_branch: true, effective_branch: { id: 3, name: "South" }, context_ready: true }));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 3, name: "South" }));
+  });
+});
+
+describe("useEffectiveSaleContext — initial resolution never lets initialBranchId block or override the actor's own authoritative context", () => {
+  it("1. the first request is ALWAYS made with no branch_id, even when an initialBranchId hint is supplied", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(ctx({ can_select_branch: false }));
     renderHook(() => useEffectiveSaleContext(baseUser(), true, 7));
-    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledWith(undefined));
+  });
+
+  it("2. a branch-restricted actor (fixed branch 3) with an unrelated initialBranchId=4 uses branch 3, makes no second request, and is never blocked", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ can_select_branch: false, effective_branch: { id: 3, name: "DGS_Sucursal1" }, context_ready: true }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true, 4));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.effectiveBranch).toEqual({ id: 3, name: "DGS_Sucursal1" });
+    expect(result.current.contextReady).toBe(true);
+    expect(result.current.blockingCode).toBeNull();
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+    expect(api.getSaleCreateContext).toHaveBeenCalledWith(undefined);
+  });
+
+  it("3. a branch-restricted actor (fixed branch 3) whose initialBranchId happens to also be 3 still makes exactly ONE request, never a redundant duplicate", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ can_select_branch: false, effective_branch: { id: 3, name: "DGS_Sucursal1" }, context_ready: true }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true, 3));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.effectiveBranch).toEqual({ id: 3, name: "DGS_Sucursal1" });
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("4. a free-choosing actor with an AUTHORIZED initialBranchId: first request with no branch_id, second with the id, only the validated response is ever adopted", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }, { id: 4, name: "Sucursal Norte" }] }),
+    );
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: { id: 4, name: "Sucursal Norte" }, context_ready: true, available_branches: [{ id: 1, name: "Main" }, { id: 4, name: "Sucursal Norte" }] }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser({ is_super_admin: true, active_tenant_id: 9 }), true, 4));
+
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(1, undefined));
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(2, 4));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 4, name: "Sucursal Norte" }));
+    expect(result.current.contextReady).toBe(true);
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("4b. never displays the first (unvalidated) response while the authoritative second request for the hint is in flight", async () => {
+    let resolveSecond: (v: SaleCreateContext) => void = () => {};
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 4, name: "Sucursal Norte" }] }),
+    );
+    vi.mocked(api.getSaleCreateContext).mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser({ is_super_admin: true, active_tenant_id: 9 }), true, 4));
+
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledTimes(2));
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.effectiveBranch).toBeNull();
+
+    resolveSecond(ctx({ can_select_branch: true, effective_branch: { id: 4, name: "Sucursal Norte" }, context_ready: true }));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 4, name: "Sucursal Norte" }));
+  });
+
+  it("5. a free-choosing actor with an UNAUTHORIZED initialBranchId: no second request, never adopted, selection still required", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }, { id: 2, name: "North" }] }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser({ is_super_admin: true, active_tenant_id: 9 }), true, 999));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+    expect(result.current.effectiveBranch).toBeNull();
+    expect(result.current.canSelectBranch).toBe(true);
+    expect(result.current.availableBranches).toHaveLength(2);
+  });
+
+  it("6. a blocked initial context never attempts recovery via initialBranchId -- no second request", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ can_create_sale: false, can_select_branch: false, effective_branch: null, context_ready: false, blocking_code: "SCOPE_MISSING" }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser(), true, 4));
+    await waitFor(() => expect(result.current.blockingCode).toBe("SCOPE_MISSING"));
+
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+    expect(result.current.contextReady).toBe(false);
+    expect(result.current.effectiveBranch).toBeNull();
+  });
+
+  it("7. a SuperAdmin with an effective tenant follows the exact same capability-driven sequence", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ sales_scope: "all", can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }, { id: 4, name: "Sucursal Norte" }] }),
+    );
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ sales_scope: "all", can_select_branch: true, effective_branch: { id: 4, name: "Sucursal Norte" }, context_ready: true }),
+    );
+    const user = baseUser({ is_super_admin: true, active_tenant_id: 9 });
+    const { result } = renderHook(() => useEffectiveSaleContext(user, true, 4));
+
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(1, undefined));
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(2, 4));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 4, name: "Sucursal Norte" }));
+  });
+
+  it("8. a custom role with the SAME backend response sequence as any other actor behaves identically -- role name is irrelevant", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 4, name: "Sucursal Norte" }] }),
+    );
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: { id: 4, name: "Sucursal Norte" }, context_ready: true }),
+    );
+    const user = baseUser({ role: { id: 40, name: "coordinador_regional_xyz" }, permissions: [] });
+    const { result } = renderHook(() => useEffectiveSaleContext(user, true, 4));
+
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 4, name: "Sucursal Norte" }));
+  });
+
+  it("9. closing and reopening never reuses a stale context -- the very next open re-starts with no branch_id, re-evaluating a NEW hint fresh", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }] }),
+    );
+    const { result, rerender } = renderHook(
+      ({ enabled, hint }: { enabled: boolean; hint: number | null }) => useEffectiveSaleContext(baseUser(), enabled, hint),
+      { initialProps: { enabled: true, hint: 5 } },
+    );
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1));
+    expect(result.current.effectiveBranch).toBeNull(); // 5 wasn't authorized, never adopted
+
+    rerender({ enabled: false, hint: 5 });
+
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }, { id: 6, name: "Sucursal Este" }] }),
+    );
+    vi.mocked(api.getSaleCreateContext).mockResolvedValueOnce(
+      ctx({ can_select_branch: true, effective_branch: { id: 6, name: "Sucursal Este" }, context_ready: true }),
+    );
+    rerender({ enabled: true, hint: 6 }); // reopened with a NEW lead/hint
+
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(2, undefined));
+    await waitFor(() => expect(api.getSaleCreateContext).toHaveBeenNthCalledWith(3, 6));
+    await waitFor(() => expect(result.current.effectiveBranch).toEqual({ id: 6, name: "Sucursal Este" }));
+  });
+
+  it("10. a superseded first-resolution response arriving late never re-triggers the hint chase against stale data", async () => {
+    let resolveFirst: (v: SaleCreateContext) => void = () => {};
+    vi.mocked(api.getSaleCreateContext).mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    const { result, rerender } = renderHook(
+      ({ enabled, hint }: { enabled: boolean; hint: number | null }) => useEffectiveSaleContext(baseUser(), enabled, hint),
+      { initialProps: { enabled: true, hint: 4 } },
+    );
+
+    // The actor closes the modal before the first (still branch_id-less) request even resolves.
+    rerender({ enabled: false, hint: 4 });
+    resolveFirst(ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 4, name: "Sucursal Norte" }] }));
+
+    // That stale response must never surface, and must never trigger a hint-driven second call.
+    expect(result.current.isLoading).toBe(true);
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("11. venta desde Lead: a branch-restricted seller opening a lead from a DIFFERENT branch still uses their own authoritative branch", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ sales_scope: "branch", can_select_branch: false, effective_branch: { id: 3, name: "DGS_Sucursal1" }, context_ready: true }),
+    );
+    const seller = baseUser({ id: "10", role: { id: 3, name: "sales" } });
+    // The lead being viewed lives in branch 4 -- passed through as the hint, exactly as
+    // CreateSaleModal does from `initialData.branch_id`.
+    const { result } = renderHook(() => useEffectiveSaleContext(seller, true, 4));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.effectiveBranch).toEqual({ id: 3, name: "DGS_Sucursal1" });
+    expect(result.current.contextReady).toBe(true);
+    expect(result.current.blockingCode).toBeNull();
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("12. Ventas Diarias (no initialBranchId at all): behaves exactly as before -- a single branch_id-less request", async () => {
+    vi.mocked(api.getSaleCreateContext).mockResolvedValue(
+      ctx({ can_select_branch: true, effective_branch: null, context_ready: false, available_branches: [{ id: 1, name: "Main" }, { id: 2, name: "North" }] }),
+    );
+    const { result } = renderHook(() => useEffectiveSaleContext(baseUser({ is_super_admin: true, active_tenant_id: 9 }), true));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(api.getSaleCreateContext).toHaveBeenCalledTimes(1);
+    expect(api.getSaleCreateContext).toHaveBeenCalledWith(undefined);
+    expect(result.current.canSelectBranch).toBe(true);
+    expect(result.current.availableBranches).toHaveLength(2);
   });
 });
 
