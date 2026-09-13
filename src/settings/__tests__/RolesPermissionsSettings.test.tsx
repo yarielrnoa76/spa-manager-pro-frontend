@@ -177,3 +177,92 @@ describe("RolesPermissionsSettings — role deletion", () => {
     expect(screen.queryByRole("button", { name: /Eliminar rol/i })).toBeNull();
   });
 });
+
+/**
+ * Sales-context hotfix, objective 7: an absent/invalid `resource_scopes` entry must never render
+ * as "Todo" -- the previous defect defaulted a missing scope to the catalog's LAST option
+ * (typically "all"), which silently implied a permissive default that fail-closed custom roles
+ * never actually have.
+ */
+describe("RolesPermissionsSettings — resource scope: absent/invalid never reads as Todo", () => {
+  function scopeSelectFor(resource: string): HTMLSelectElement {
+    const label = screen.getByText(resource);
+    return label.closest("div")!.querySelector("select") as HTMLSelectElement;
+  }
+
+  it("a resource entirely absent from resource_scopes shows 'Sin configurar', never 'Todo'", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own" } }; // products/inventory/users/roles absent
+    mockLoad([role]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+
+    await screen.findByText("Alcances por Recurso");
+    const select = scopeSelectFor("products");
+    expect(select.value).toBe("__unconfigured__");
+    expect(select.selectedOptions[0].textContent).toBe("Sin configurar");
+    expect(select.selectedOptions[0].textContent).not.toBe("Todo");
+  });
+
+  it("a resource explicitly persisted as null shows 'Sin configurar', never 'Todo'", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own", products: null } };
+    mockLoad([role]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+
+    await screen.findByText("Alcances por Recurso");
+    const select = scopeSelectFor("products");
+    expect(select.value).toBe("__unconfigured__");
+    expect(select.selectedOptions[0].textContent).toBe("Sin configurar");
+  });
+
+  it("a resource genuinely materialized as 'all' shows 'Todo'", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own", products: "all" } };
+    mockLoad([role]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+
+    await screen.findByText("Alcances por Recurso");
+    const select = scopeSelectFor("products");
+    expect(select.value).toBe("all");
+    expect(select.selectedOptions[0].textContent).toBe("Todo");
+  });
+
+  it("an invalid/unrecognized persisted scope value is never silently normalized to 'Todo'", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own", inventory: "some_future_invalid_value" } };
+    mockLoad([role]);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+
+    await screen.findByText("Alcances por Recurso");
+    const select = scopeSelectFor("inventory");
+    // Not one of the resource's own valid options -- treated as unconfigured, never coerced to "all".
+    expect(select.value).toBe("__unconfigured__");
+    expect(select.selectedOptions[0].textContent).toBe("Sin configurar");
+    expect(select.selectedOptions[0].textContent).not.toBe("Todo");
+  });
+
+  it("saving one resource's scope never introduces or replaces scopes the user did not touch", async () => {
+    const role = { ...CUSTOM_ROLE, resource_scopes: { leads: "own", inventory: "branch" } };
+    mockLoad([role]);
+    vi.mocked(api.put).mockResolvedValue({ ...role, resource_scopes: { leads: "own", inventory: "branch", products: "all" } });
+
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), "5");
+    await screen.findByText("Alcances por Recurso");
+
+    await user.selectOptions(scopeSelectFor("products"), "all");
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/roles/5", {
+        name: "cajero_noche",
+        // leads and inventory -- untouched by this save -- are preserved exactly as they were.
+        resource_scopes: { leads: "own", inventory: "branch", products: "all" },
+      }),
+    );
+  });
+});

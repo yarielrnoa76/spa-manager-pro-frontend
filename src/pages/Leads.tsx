@@ -420,6 +420,7 @@ const Leads: React.FC<LeadsProps> = ({ user }) => {
           fetchData();
           setEditingLead(null);
         }} // Recargamos lista al crear/editar
+        user={user}
         leadToEdit={editingLead}
       />
 

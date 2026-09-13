@@ -33,6 +33,7 @@ import {
   PublicLeadFormListResponse,
   PublicLeadFormReadiness,
   CreatePublicLeadFormPayload,
+  AuthenticatedUser,
   UpdatePublicLeadFormPayload,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
@@ -304,23 +305,13 @@ export const api = {
     return data;
   },
 
+  // Gate 1A contract: `active_tenant_id` is the SuperAdmin's server-side effective tenant
+  // selection (null for every tenant-scoped user, and null for a SuperAdmin who hasn't selected
+  // one yet) -- the ONLY source of truth for "which tenant is currently selected", never
+  // localStorage, never a request header. `branch_id`/`branch` are the single authoritative
+  // contract for the actor's own branch -- see `AuthenticatedUser` in types.ts.
   async me() {
-    return request<{
-      id: string;
-      name: string;
-      email: string;
-      tenant_id?: number | null;
-      tenant?: { id: number; name: string; slug?: string } | null;
-      is_super_admin?: boolean;
-      // Gate 1A contract: the SuperAdmin's server-side effective tenant selection (null for
-      // every tenant-scoped user, and null for a SuperAdmin who hasn't selected one yet).
-      // This is the ONLY source of truth for "which tenant is currently selected" -- never
-      // localStorage, never a request header.
-      active_tenant_id?: number | null;
-      branch?: { id: number; name: string } | null;
-      role: { id: number; name: string };
-      permissions: string[];
-    }>(`/api/user`, { method: "GET", auth: true }).catch(
+    return request<AuthenticatedUser>(`/api/user`, { method: "GET", auth: true }).catch(
       () => null,
     );
   },
@@ -517,6 +508,27 @@ export const api = {
   async listUsers(opts?: { include_global?: boolean }) {
     const q = opts?.include_global ? `?include_global=1` : "";
     return request<any[]>(`/api/users${q}`, { method: "GET", auth: true });
+  },
+
+  /**
+   * The minimally-scoped id/name picker for assignment dropdowns (GET /api/users/candidates) --
+   * never `listUsers()`, which is the gated, administrative listing (UserPolicy +
+   * resource_scopes.users) and is neither intended nor authorized for this purpose. Callers
+   * must still gate calling this on their OWN "may I assign someone else" permission (e.g.
+   * `assign_sale`, `assign_ticket`) -- the backend accepts any tenant member here by design, so
+   * the frontend is the one responsible for never asking when it already knows the answer is no.
+   */
+  async listUserCandidates(params?: { branch_id?: number | string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.branch_id !== undefined && params.branch_id !== null && params.branch_id !== "") {
+      searchParams.set("branch_id", String(params.branch_id));
+    }
+    const qs = searchParams.toString();
+    const res = await request<Array<{ id: number; name: string }>>(
+      `/api/users/candidates${qs ? `?${qs}` : ""}`,
+      { method: "GET", auth: true },
+    );
+    return Array.isArray(res) ? res : [];
   },
 
   // --- Dashboard ---

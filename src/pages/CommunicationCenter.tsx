@@ -359,6 +359,7 @@ export default function CommunicationCenter({ user }: { user: any }) {
                 isOpen={isLeadModalOpen}
                 onClose={() => setIsLeadModalOpen(false)}
                 onSuccess={() => {}}
+                user={user}
                 leadToEdit={leadToView}
                 zIndexClass="z-[150]"
             />

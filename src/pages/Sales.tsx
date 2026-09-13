@@ -810,6 +810,7 @@ const Sales: React.FC<SalesProps> = ({ user }) => {
         isOpen={isLeadModalOpen}
         onClose={() => setIsLeadModalOpen(false)}
         onSuccess={handleLeadCreatedFromModal}
+        user={user}
         initialBranchId={newSale.branch_id}
         initialName={newSale.client_name}
       />

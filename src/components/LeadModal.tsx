@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, MessageSquare } from "lucide-react";
 import { api, ApiError } from "../services/api";
-import { Branch, Lead } from "../types";
+import { AuthenticatedUser, Branch, Lead } from "../types";
 import CreateAppointmentModal from "./CreateAppointmentModal";
 import CreateSaleModal from "./CreateSaleModal";
 import { ConversationChat } from "./ConversationChat";
@@ -38,6 +38,15 @@ type LeadModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (newLead: any) => void;
+    /**
+     * The real authenticated user, exactly as App.tsx/Sales.tsx/CommunicationCenter.tsx already
+     * hold it -- when a caller has it, it MUST be passed here. Never fabricated by this
+     * component: a hand-built partial substitute (missing `id`, deriving `is_super_admin` from
+     * the role's NAME, or reusing this lead's own branch as if it were the actor's) is exactly
+     * the defect this prop closes. Optional only for backward compatibility with callers that
+     * don't have it in scope yet -- LeadModal falls back to its own `api.me()` call in that case.
+     */
+    user?: AuthenticatedUser | null;
     initialBranchId?: string;
     initialName?: string;
     leadToEdit?: Lead | null;
@@ -48,6 +57,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
     isOpen,
     onClose,
     onSuccess,
+    user,
     initialBranchId,
     initialName,
     leadToEdit,
@@ -83,6 +93,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
     // a browser profile never collide on the same pending identity. Never sent to the backend as
     // an authority of any kind.
     const [userId, setUserId] = useState<string | null>(null);
+    // Only ever populated by the legacy fallback path below (no `user` prop given) -- holds the
+    // real, complete `api.me()` response so it can be forwarded whole to CreateSaleModal,
+    // exactly like the `user` prop would be. Never a hand-built partial object.
+    const [fetchedSelf, setFetchedSelf] = useState<AuthenticatedUser | null>(null);
 
     // Estado local para el formulario
     const [formData, setFormData] = useState({
@@ -128,7 +142,6 @@ const LeadModal: React.FC<LeadModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             loadBranches();
-            loadResponsibles();
             loadUserData();
             loadTicketConfigs();
             setTicketData({
@@ -179,18 +192,40 @@ const LeadModal: React.FC<LeadModalProps> = ({
                 }));
             }
         }
-    }, [isOpen, initialBranchId, initialName, leadToEdit]);
+    }, [isOpen, initialBranchId, initialName, leadToEdit, user]);
 
+    /**
+     * Resolves the acting user's identity/permissions/branch. When the caller already holds the
+     * real authenticated user (`user` prop), this NEVER calls `api.me()` a second time -- it
+     * derives everything from the prop directly. Only a caller that hasn't been updated to pass
+     * `user` yet falls back to fetching it here, exactly as before.
+     */
     const loadUserData = async () => {
+        if (user) {
+            setUserId(user.id != null ? String(user.id) : null);
+            setUserPermissions(Array.isArray(user.permissions) ? user.permissions : []);
+            setUserRole(user.role?.name || '');
+            const fetchedBranchId = user.branch_id ?? user.branch?.id ?? null;
+            setUserBranchId(fetchedBranchId);
+            setIsSuperAdmin(user.is_super_admin === true);
+            setFetchedSelf(null);
+
+            if (fetchedBranchId && !user.is_super_admin && !user.permissions?.includes("view_all_sales") && !leadToEdit && !initialBranchId) {
+                setFormData(prev => ({ ...prev, branch_id: String(fetchedBranchId) }));
+            }
+            return;
+        }
+
         try {
             const u = await api.me();
             if (u) {
                 setUserId(u.id != null ? String(u.id) : null);
                 setUserPermissions(u.permissions || []);
                 setUserRole(u.role?.name || '');
-                const fetchedBranchId = u.branch_id || u.branch?.id || null;
+                const fetchedBranchId = u.branch_id ?? u.branch?.id ?? null;
                 setUserBranchId(fetchedBranchId);
                 setIsSuperAdmin(u.is_super_admin === true);
+                setFetchedSelf(u);
 
                 if (fetchedBranchId && !u.is_super_admin && !u.permissions?.includes("view_all_sales") && !leadToEdit && !initialBranchId) {
                     setFormData(prev => ({ ...prev, branch_id: String(fetchedBranchId) }));
@@ -200,6 +235,25 @@ const LeadModal: React.FC<LeadModalProps> = ({
             console.error(err);
         }
     }
+
+    // The real authenticated user forwarded to CreateSaleModal -- the prop when the caller has
+    // it, otherwise the one this component fetched itself. Never a hand-built substitute.
+    const effectiveAuthUser: AuthenticatedUser | null = user ?? fetchedSelf;
+
+    // Reused for both the "Asignar A" control's visibility and gating the responsables load
+    // below -- a real permission, never a role-name comparison.
+    const canAssignLead = isSuperAdmin || userPermissions.includes('assign_lead');
+
+    // Responsables (the lead-assignment candidate list) are only ever requested when the actor
+    // can actually assign a lead -- never unconditionally on every open, which is exactly what
+    // produced a predictable 403 for a Sales actor who can only ever work their own leads.
+    useEffect(() => {
+        if (isOpen && canAssignLead) {
+            loadResponsibles();
+        } else {
+            setResponsibles([]);
+        }
+    }, [isOpen, canAssignLead]);
 
     const loadBranches = async () => {
         try {
@@ -775,8 +829,10 @@ const LeadModal: React.FC<LeadModalProps> = ({
                                 ></textarea>
                             </div>
 
-                            {/* Asignación */}
-                            {['admin', 'superadmin', 'manager'].includes(userRole) && (
+                            {/* Asignación -- gated on the real assign_lead permission, never the
+                                role's own name (a custom role granted assign_lead must see this
+                                too; a role literally named "admin"/"manager" without it must not). */}
+                            {canAssignLead && (
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         Asignar A
@@ -1424,12 +1480,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                             loadLeadDataExtras(leadToEdit.id);
                         }
                     }}
-                    user={{
-                        is_super_admin: userRole === 'superadmin',
-                        role: { name: userRole },
-                        permissions: userPermissions,
-                        branch: { id: formData.branch_id }
-                    }}
+                    user={effectiveAuthUser}
                     initialData={{
                         lead_id: leadToEdit?.id,
                         client_name: formData.name,

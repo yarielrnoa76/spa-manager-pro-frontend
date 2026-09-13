@@ -1,20 +1,23 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { X, UserPlus } from "lucide-react";
-import { api } from "../services/api";
+import { api, ApiError } from "../services/api";
 import LeadModal from "./LeadModal";
-import { TenantSalesMode } from "../types";
+import { AuthenticatedUser, TenantSalesMode } from "../types";
+import { useEffectiveSaleContext } from "../hooks/useEffectiveSaleContext";
 
 type CreateSaleModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
-    user: any;
+    user: AuthenticatedUser | null;
     initialData?: {
         lead_id?: string | number | null;
         client_name?: string;
         branch_id?: string | number | null;
     };
 };
+
+type LoadState = "idle" | "loading" | "success" | "empty" | "forbidden" | "error";
 
 function toNumber(v: string): number {
     const n = Number(String(v).replace(",", "."));
@@ -50,16 +53,17 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
 }) => {
     const isSuperAdmin = user?.is_super_admin === true;
     const isAdmin = isSuperAdmin;
-    const perms: string[] = Array.isArray(user?.permissions) ? user.permissions : [];
+    const perms: string[] = Array.isArray(user?.permissions) ? user!.permissions : [];
     const canViewLeads = isAdmin || perms.includes("view_leads");
     const canIncreasePrice = isAdmin || perms.includes("sale_increase_price");
     const canDecreasePrice = isAdmin || perms.includes("sale_decrease_price");
     const canEditPrice = canIncreasePrice || canDecreasePrice;
-    
-    // Un usuario está restringido a su sucursal si no es admin ni superadmin y tiene una sucursal asignada
-    const userBranchId = user?.branch_id || user?.branch?.id;
-    const isBranchRestricted = userBranchId && !user?.is_super_admin && !user?.permissions?.includes("view_all_sales");
-    const canSelectBranch = !isBranchRestricted && (isAdmin || perms.includes("view_branch"));
+    const canViewProfessionals = isAdmin || perms.includes("view_professionals");
+    const canViewTenantProfile = isAdmin || perms.includes("view_tenant_profile");
+
+    // The ONE resolver for effective branch + default seller -- never a second, independent
+    // reconstruction of this same logic. See src/hooks/useEffectiveSaleContext.ts.
+    const saleContext = useEffectiveSaleContext(user, isOpen);
 
     const now = localISODateTime();
 
@@ -80,10 +84,10 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     });
 
     const [cart, setCart] = useState<any[]>([]);
-    const [branches, setBranches] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
+    const [productsState, setProductsState] = useState<LoadState>("idle");
     const [leads, setLeads] = useState<any[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
+    const [sellerCandidates, setSellerCandidates] = useState<Array<{ id: number; name: string }>>([]);
     const [professionals, setProfessionals] = useState<any[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
@@ -93,14 +97,52 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     // Purely informational for this component: only decides which payload shape to send
     // (single grouped request vs. today's per-item loop). The backend independently reads the
     // tenant's own persisted sales_mode and is the real authority regardless of this value.
+    // Deliberately stays `null` (never a 403) when the actor lacks view_tenant_profile -- the
+    // existing independent_sales fallback below already covers that case correctly.
     const [salesMode, setSalesMode] = useState<TenantSalesMode | null>(null);
+
+    // --- Branch: reset the locally-chosen value whenever the resolver's own authoritative
+    // answer changes -- a restricted user's branch is never left showing a stale/foreign value,
+    // and initialData.branch_id is only ever adopted when it is one of the actor's own
+    // authorized options (see below), never for a branch-restricted actor's fixed branch.
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (!saleContext.canSelectBranch) {
+            // Rule A / Rule C: locked to the resolver's own answer (or empty while it resolves) --
+            // initialData can never override a restricted actor's authoritative branch.
+            setForm((prev) => ({
+                ...prev,
+                branch_id: saleContext.effectiveBranchId != null ? String(saleContext.effectiveBranchId) : "",
+            }));
+            return;
+        }
+
+        // Rule B: free choice. initialData.branch_id is only ever adopted as the initial
+        // selection when it is genuinely one of the actor's own authorized branches -- never a
+        // silent, unverified pass-through of whatever the caller supplied.
+        const requested = initialData?.branch_id != null ? Number(initialData.branch_id) : null;
+        const isRequestedAuthorized =
+            requested != null && saleContext.availableBranches.some((b) => b.id === requested);
+        setForm((prev) => ({
+            ...prev,
+            branch_id: isRequestedAuthorized ? String(requested) : prev.branch_id,
+        }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, saleContext.canSelectBranch, saleContext.effectiveBranchId, saleContext.availableBranches]);
+
+    // --- Seller: the authenticated actor is always the default; never depends on any list load.
+    useEffect(() => {
+        if (!isOpen) return;
+        setForm((prev) => ({ ...prev, seller_id: saleContext.defaultSellerId ?? "" }));
+    }, [isOpen, saleContext.defaultSellerId]);
 
     useEffect(() => {
         if (!isOpen) return;
 
-        setForm({
+        setForm((prev) => ({
+            ...prev,
             date: now,
-            branch_id: initialData?.branch_id ? String(initialData.branch_id) : (userBranchId ? String(userBranchId) : ""),
             product_id: "",
             lead_id: initialData?.lead_id ? String(initialData.lead_id) : "",
             client_name: initialData?.client_name || "",
@@ -109,38 +151,68 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
             unit_price: "",
             amount: "",
             payment_method: "Zelle",
-            seller_id: user?.id ? String(user.id) : "",
             professional_id: "",
             notes: "",
-        });
+        }));
         setCart([]);
         setError(null);
+        setProductsState("loading");
 
-        Promise.all([
-            canSelectBranch ? api.listBranches() : (user?.branch ? Promise.resolve([user.branch]) : Promise.resolve([])),
+        // Independently controlled loads (Promise.allSettled, explicit per-result handling) --
+        // a single failing/unauthorized endpoint (typically products) must never blank out
+        // branches, payment methods, leads or the seller. Never sends branch_id to
+        // /api/products: that catalog is tenant-wide by contract, not branch-scoped.
+        Promise.allSettled([
             api.listProducts(),
             canViewLeads ? api.listLeads() : Promise.resolve([]),
             api.listPaymentMethods(),
-            canSelectBranch ? api.listUsers().catch(() => []) : Promise.resolve([]),
-            api.listProfessionals().catch(() => []),
-            api.getTenantProfile().catch(() => null),
-        ]).then(([b, p, l, pm, u, prof, tenant]) => {
-            setBranches(Array.isArray(b) ? b : []);
-            setProducts(Array.isArray(p) ? p : []);
-            setLeads(Array.isArray(l) ? l : []);
-            setUsers(Array.isArray(u) ? u : []);
-            setProfessionals(Array.isArray(prof) ? prof : []);
-            setSalesMode(tenant?.settings?.sales_mode ?? null);
-
-            const pms = Array.isArray(pm) ? pm : [];
-            setPaymentMethods(pms);
-            if (pms.length > 0 && !form.payment_method) {
-                setForm(prev => ({ ...prev, payment_method: pms[0].name }));
+            canViewProfessionals ? api.listProfessionals().catch(() => []) : Promise.resolve([]),
+            canViewTenantProfile ? api.getTenantProfile().catch(() => null) : Promise.resolve(null),
+        ]).then(([productsRes, leadsRes, pmRes, profRes, tenantRes]) => {
+            if (productsRes.status === "fulfilled") {
+                const list = Array.isArray(productsRes.value) ? productsRes.value : [];
+                setProducts(list);
+                setProductsState(list.length === 0 ? "empty" : "success");
+            } else {
+                setProducts([]);
+                const status = productsRes.reason instanceof ApiError ? productsRes.reason.status : undefined;
+                setProductsState(status === 403 ? "forbidden" : "error");
             }
-        }).catch(err => {
-            console.error(err);
+
+            setLeads(leadsRes.status === "fulfilled" && Array.isArray(leadsRes.value) ? leadsRes.value : []);
+
+            const pms = pmRes.status === "fulfilled" && Array.isArray(pmRes.value) ? pmRes.value : [];
+            setPaymentMethods(pms);
+            setForm((prev) => (prev.payment_method ? prev : { ...prev, payment_method: pms[0]?.name || prev.payment_method }));
+
+            setProfessionals(profRes.status === "fulfilled" && Array.isArray(profRes.value) ? profRes.value : []);
+
+            const tenant = tenantRes.status === "fulfilled" ? tenantRes.value : null;
+            setSalesMode((tenant as { settings?: { sales_mode?: TenantSalesMode } } | null)?.settings?.sales_mode ?? null);
         });
-    }, [isOpen, initialData, user]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, initialData, canViewLeads, canViewProfessionals, canViewTenantProfile]);
+
+    // --- Seller candidates: only ever fetched when the actor is actually authorized to assign
+    // someone else -- never api.listUsers(), never fetched just because a list "might be handy".
+    useEffect(() => {
+        if (!isOpen || !saleContext.canAssignOtherSeller) {
+            setSellerCandidates([]);
+            return;
+        }
+        let cancelled = false;
+        api
+            .listUserCandidates(saleContext.effectiveBranchId != null ? { branch_id: saleContext.effectiveBranchId } : undefined)
+            .then((res) => {
+                if (!cancelled) setSellerCandidates(res);
+            })
+            .catch(() => {
+                if (!cancelled) setSellerCandidates([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, saleContext.canAssignOtherSeller, saleContext.effectiveBranchId]);
 
     const clientNameInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -154,22 +226,6 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     }, [isLeadModalOpen, isOpen]);
 
     const availableProducts = products; // Allow all products, services might have 0 stock
-
-    const filteredUsers = useMemo(() => {
-        if (!form.branch_id) {
-            return users;
-        }
-        return users.filter(u => !u.branch_id || String(u.branch_id) === String(form.branch_id));
-    }, [users, form.branch_id]);
-
-    useEffect(() => {
-        if (form.branch_id && form.seller_id) {
-            const selectedSeller = users.find(u => String(u.id) === String(form.seller_id));
-            if (selectedSeller && selectedSeller.branch_id && String(selectedSeller.branch_id) !== String(form.branch_id)) {
-                setForm(prev => ({ ...prev, seller_id: "" }));
-            }
-        }
-    }, [form.branch_id, users, form.seller_id]);
 
     const leadSuggestions = useMemo(() => {
         if (!form.branch_id || initialData?.lead_id) return []; // Si ya está forzado el lead, no sugerimos
@@ -190,7 +246,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     const recalcTotals = (next: any) => {
         const qRaw = String(next.quantity ?? form.quantity ?? "").trim();
         const qty = Math.max(1, parseInt(qRaw, 10) || 1);
-        
+
         let unitPriceStr = String(next.unit_price ?? form.unit_price).trim();
         // Allow typing dots
         if (unitPriceStr === "" || isNaN(Number(unitPriceStr))) {
@@ -264,16 +320,43 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
         return cart.reduce((acc, item) => acc + item.amount, 0);
     }, [cart]);
 
+    /**
+     * The real security boundary for this form: re-derives "is this actually submittable" from
+     * the authoritative resolver and candidate lists, independent of whatever any control's own
+     * `disabled` attribute currently shows. A `disabled` select never stood between a tampered
+     * DOM and the request in the first place -- this does.
+     */
+    const validateBeforeSubmit = useCallback((): string | null => {
+        if (saleContext.errorMessage) return saleContext.errorMessage;
+
+        const branchId = saleContext.canSelectBranch ? Number(form.branch_id || NaN) : saleContext.effectiveBranchId;
+        if (branchId == null || Number.isNaN(branchId)) {
+            return "Selecciona una sucursal válida antes de continuar.";
+        }
+        if (saleContext.canSelectBranch && !saleContext.availableBranches.some((b) => b.id === branchId)) {
+            return "La sucursal seleccionada no está entre tus sucursales autorizadas.";
+        }
+
+        const sellerId = form.seller_id;
+        const isDefaultSeller = sellerId && sellerId === saleContext.defaultSellerId;
+        const isAuthorizedCandidate =
+            saleContext.canAssignOtherSeller && sellerCandidates.some((c) => String(c.id) === String(sellerId));
+        if (!sellerId || (!isDefaultSeller && !isAuthorizedCandidate)) {
+            return "Selecciona un vendedor autorizado antes de continuar.";
+        }
+
+        if (!form.lead_id) return "Debes seleccionar o crear un cliente válido (Lead).";
+        if (cart.length === 0) return "Debes añadir al menos un producto a la venta.";
+
+        return null;
+    }, [saleContext, form.branch_id, form.seller_id, form.lead_id, cart.length, sellerCandidates]);
+
     const handleCreateSale = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validación custom
-        if (!form.lead_id) {
-            setError("Debes seleccionar o crear un cliente válido (Lead).");
-            return;
-        }
-        if (cart.length === 0) {
-            setError("Debes añadir al menos un producto a la venta.");
+        const validationError = validateBeforeSubmit();
+        if (validationError) {
+            setError(validationError);
             return;
         }
 
@@ -337,9 +420,15 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
     };
 
     const canAdd = form.product_id && form.quantity && toNumber(form.quantity) > 0;
-    const canSubmit = form.branch_id && form.date && form.client_name && form.lead_id && cart.length > 0;
+    const canSubmit = !validateBeforeSubmit();
 
     if (!isOpen && !isLeadModalOpen) return null;
+
+    const sellerOptions: Array<{ id: string; name: string }> = saleContext.canAssignOtherSeller
+        ? sellerCandidates.map((c) => ({ id: String(c.id), name: c.name }))
+        : [];
+    const showsSelfAsOnlySellerOption =
+        !!user?.id && !sellerOptions.some((o) => o.id === String(user.id));
 
     return (
         <>
@@ -357,21 +446,34 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                     {error}
                                 </div>
                             )}
+                            {!error && saleContext.errorMessage && (
+                                <div className="bg-amber-50 text-amber-700 p-3 rounded text-sm mb-4">
+                                    {saleContext.errorMessage}
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sucursal</label>
                                     <select
                                         required
-                                        disabled={!canSelectBranch || !!initialData?.branch_id}
-                                        className={`w-full border rounded-lg p-2 text-sm ${(!canSelectBranch || !!initialData?.branch_id) ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
+                                        disabled={!saleContext.canSelectBranch}
+                                        className={`w-full border rounded-lg p-2 text-sm ${!saleContext.canSelectBranch ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
                                         value={form.branch_id}
                                         onChange={(e) => setForm(prev => ({ ...prev, branch_id: e.target.value, client_name: "", lead_id: "" }))}
                                     >
-                                        <option value="">Seleccionar...</option>
-                                        {branches.map(b => (
-                                            <option key={b.id} value={String(b.id)}>{b.name}</option>
-                                        ))}
+                                        {saleContext.canSelectBranch ? (
+                                            <>
+                                                <option value="">Seleccionar...</option>
+                                                {saleContext.availableBranches.map(b => (
+                                                    <option key={b.id} value={String(b.id)}>{b.name}</option>
+                                                ))}
+                                            </>
+                                        ) : saleContext.effectiveBranch ? (
+                                            <option value={String(saleContext.effectiveBranch.id)}>{saleContext.effectiveBranch.name}</option>
+                                        ) : (
+                                            <option value="">{saleContext.isLoadingBranches ? "Cargando..." : "Sin sucursal disponible"}</option>
+                                        )}
                                     </select>
                                 </div>
 
@@ -474,18 +576,35 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Producto / Servicio</label>
-                                    <select
-                                        className="w-full border rounded-lg p-2 text-sm"
-                                        value={form.product_id}
-                                        onChange={(e) => handleProductSelect(e.target.value)}
-                                    >
-                                        <option value="">-- Seleccionar de Inventario --</option>
-                                        {availableProducts.map((p: any) => (
-                                            <option key={p.id} value={String(p.id)}>
-                                                {p.name} {p.type !== 'service' ? `(Stock: ${p.stock})` : ''} (Price: {p.sales_price})
+                                    {productsState === "forbidden" ? (
+                                        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
+                                            No tienes autorización para ver el catálogo de productos.
+                                        </p>
+                                    ) : productsState === "error" ? (
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                            No se pudo cargar el catálogo. Verifica tu conexión e inténtalo de nuevo.
+                                        </p>
+                                    ) : (
+                                        <select
+                                            className="w-full border rounded-lg p-2 text-sm"
+                                            value={form.product_id}
+                                            disabled={productsState === "loading" || productsState === "empty"}
+                                            onChange={(e) => handleProductSelect(e.target.value)}
+                                        >
+                                            <option value="">
+                                                {productsState === "loading"
+                                                    ? "Cargando..."
+                                                    : productsState === "empty"
+                                                        ? "-- Sin productos disponibles --"
+                                                        : "-- Seleccionar de Inventario --"}
                                             </option>
-                                        ))}
-                                    </select>
+                                            {availableProducts.map((p: any) => (
+                                                <option key={p.id} value={String(p.id)}>
+                                                    {p.name} {p.type !== 'service' ? `(Stock: ${p.stock})` : ''} (Price: {p.sales_price})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Vendedor</label>
@@ -493,14 +612,15 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                                         className="w-full border rounded-lg p-2 text-sm"
                                         value={form.seller_id}
                                         onChange={(e) => setForm(prev => ({ ...prev, seller_id: e.target.value }))}
-                                        disabled={!canSelectBranch}
+                                        disabled={!saleContext.canAssignOtherSeller}
                                     >
-                                        {filteredUsers.map(u => (
-                                            <option key={u.id} value={String(u.id)}>{u.name}</option>
+                                        {sellerOptions.map(o => (
+                                            <option key={o.id} value={o.id}>{o.name}</option>
                                         ))}
-                                        {/* Garantizar que el usuario logueado esté disponible si no está en la lista filtrada */}
-                                        {user?.id && !filteredUsers.some(u => String(u.id) === String(user.id)) && (
-                                            <option value={String(user.id)}>{user.name}</option>
+                                        {/* The authenticated actor is always available, whether or not they can assign
+                                            someone else -- never dependent on any list having loaded successfully. */}
+                                        {showsSelfAsOnlySellerOption && (
+                                            <option value={String(user!.id)}>{user!.name}</option>
                                         )}
                                     </select>
                                 </div>
@@ -583,7 +703,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                             {cart.length > 0 && (
                                 <div className="border border-emerald-100 bg-emerald-50/30 rounded-lg p-3 space-y-2">
                                     <p className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Productos en Venta</p>
-                                    {cart.map((item, idx) => (
+                                    {cart.map((item) => (
                                         <div key={item.id} className="flex items-center justify-between bg-white px-3 py-2 rounded shadow-sm text-sm border border-emerald-50">
                                             <div className="flex flex-col">
                                                 <span className="font-bold text-gray-800">{item.service_rendered}</span>
@@ -644,6 +764,7 @@ const CreateSaleModal: React.FC<CreateSaleModalProps> = ({
                 isOpen={isLeadModalOpen}
                 onClose={() => setIsLeadModalOpen(false)}
                 onSuccess={handleLeadCreatedFromModal}
+                user={user}
                 initialBranchId={form.branch_id}
                 initialName={form.client_name}
                 zIndexClass="z-[150]"

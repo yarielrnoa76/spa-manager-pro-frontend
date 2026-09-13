@@ -2,6 +2,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../services/api";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+// A sentinel value distinct from every real scope string ("own"/"branch"/"all", or whatever
+// else a future catalog entry adds) -- rendered as a disabled placeholder option, never
+// persisted, never confused with a real, backend-materialized scope.
+const UNCONFIGURED_SCOPE = "__unconfigured__";
+
+/** A scope not in this map (including an unrecognized/invalid persisted value) falls back to
+ * its own raw name -- never silently normalized to "Todo". */
+const RESOURCE_SCOPE_LABELS: Record<string, string> = {
+  own: "Solo lo Propio",
+  branch: "Sucursal",
+  all: "Todo",
+};
+
+function getResourceScopeLabel(scope: string): string {
+  return RESOURCE_SCOPE_LABELS[scope] ?? scope;
+}
+
 type Permission = { id: number; name: string };
 type Role = {
   id: number;
@@ -374,25 +391,40 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
             <div className="border rounded-xl bg-white p-4 shadow-sm">
               <h5 className="text-sm font-bold text-gray-800 mb-3">Alcances por Recurso</h5>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.entries(scopeCatalog).map(([resource, validScopes]) => (
-                  <div key={resource} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2">
-                    <span className="text-sm font-semibold text-gray-700 capitalize">
-                      {resource.replaceAll("_", " ")}
-                    </span>
-                    <select
-                      className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none disabled:opacity-60"
-                      disabled={!canManage}
-                      value={selectedRole.resource_scopes?.[resource] ?? validScopes[validScopes.length - 1]}
-                      onChange={(e) => updateResourceScope(resource, e.target.value)}
-                    >
-                      {validScopes.map((scope) => (
-                        <option key={scope} value={scope}>
-                          {scope === "own" ? "Solo lo Propio" : scope === "branch" ? "Sucursal" : "Todo"}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                {Object.entries(scopeCatalog).map(([resource, validScopes]) => {
+                  const persisted = selectedRole.resource_scopes?.[resource];
+                  // A scope absent from the persisted JSON, or present but not one of THIS
+                  // resource's own valid options, is never presented as "Todo" (or any other
+                  // real value) -- the backend treats that same absence as fail-closed, and this
+                  // screen must never contradict that by implying a permissive default exists.
+                  const isConfigured = typeof persisted === "string" && validScopes.includes(persisted);
+                  const selectValue = isConfigured ? persisted : UNCONFIGURED_SCOPE;
+
+                  return (
+                    <div key={resource} className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2">
+                      <span className="text-sm font-semibold text-gray-700 capitalize">
+                        {resource.replaceAll("_", " ")}
+                      </span>
+                      <select
+                        className="text-xs font-semibold bg-white border rounded px-1.5 py-1 focus:ring-1 focus:ring-indigo-500 outline-none disabled:opacity-60"
+                        disabled={!canManage}
+                        value={selectValue}
+                        onChange={(e) => updateResourceScope(resource, e.target.value)}
+                      >
+                        {!isConfigured && (
+                          <option value={UNCONFIGURED_SCOPE} disabled>
+                            Sin configurar
+                          </option>
+                        )}
+                        {validScopes.map((scope) => (
+                          <option key={scope} value={scope}>
+                            {getResourceScopeLabel(scope)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

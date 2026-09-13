@@ -38,7 +38,7 @@ import SupportTicketDetail from "./pages/Support/SupportTicketDetail";
 import SupportTicketConfig from "./pages/Support/SupportTicketConfig";
 
 import { api, ApiError, TENANT_CONTEXT_STALE_EVENT } from "./services/api";
-import { Tenant } from "./types";
+import { Tenant, AuthenticatedUser } from "./types";
 
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
@@ -174,18 +174,12 @@ const TenantSelector: React.FC<{
 };
 
 /* ───────── MAIN APP ───────── */
-export interface UserData {
-  id: string;
-  name: string;
-  email: string;
-  tenant_id?: number | null;
-  tenant?: { id: number; name: string; slug?: string } | null;
-  is_super_admin?: boolean;
-  active_tenant_id?: number | null;
-  branch?: { id: number; name: string } | null;
-  role: { id: number; name: string };
-  permissions: string[];
-}
+// `UserData` is kept as a type ALIAS of the single canonical `AuthenticatedUser` contract
+// (src/types.ts) -- not a second, independently-drifting shape. The name is preserved because
+// many existing files already import `UserData` from here; the underlying contract is now
+// unified, including `branch_id: number | null` (previously absent, which is what let
+// `user.branch_id` silently read as `undefined` for every consumer that relied on it).
+export type UserData = AuthenticatedUser;
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserData | null>(null);

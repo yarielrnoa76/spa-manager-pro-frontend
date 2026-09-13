@@ -428,6 +428,32 @@ export interface Branch {
   tenant_id?: number;
 }
 
+/**
+ * The single, authoritative shape of the currently-authenticated user, exactly as
+ * `GET /api/user` (api.me()) returns it. Every consumer that needs the logged-in actor's
+ * identity, tenant, branch, or permissions must use this type -- never a hand-built partial
+ * substitute, and never a second, independently-fetched copy with a different shape.
+ * `App.tsx`'s `UserData` is a type alias of this, not a separate contract.
+ *
+ * `active_tenant_id` is the SuperAdmin's own effective-tenant selection (always `null` for a
+ * tenant-bound user, per Gate 1A) -- a tenant-bound user's effective tenant is `tenant_id`.
+ * `branch_id`/`branch` are always both null or both populated together; `branch_id` is the
+ * authoritative numeric id, `branch` carries the display name.
+ */
+export interface AuthenticatedUser {
+  id: string;
+  name: string;
+  email: string;
+  tenant_id?: number | null;
+  tenant?: { id: number; name: string; slug?: string } | null;
+  is_super_admin?: boolean;
+  active_tenant_id?: number | null;
+  branch_id: number | null;
+  branch: { id: number; name: string } | null;
+  role: { id: number; name: string };
+  permissions: string[];
+}
+
 export interface User {
   id: string;
   name: string;

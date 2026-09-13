@@ -861,6 +861,7 @@ const Tickets: React.FC<TicketsProps> = ({ user }) => {
                     isOpen={leadModalOpen}
                     onClose={() => { setLeadModalOpen(false); setLeadToOpen(null); }}
                     onSuccess={() => { setLeadModalOpen(false); setLeadToOpen(null); refreshAfterChange(); }}
+                    user={user}
                     leadToEdit={leadToOpen}
                     zIndexClass="z-[80]"
                 />
