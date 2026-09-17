@@ -38,6 +38,7 @@ const EXISTING_FORM: PublicLeadForm = {
   lead_source_key: "public_web_form",
   enabled: false,
   allowed_origins: ["https://example.com"],
+  embed_origins: [],
   created_by_user_id: 7,
   created_by: { id: 7, name: "Admin" },
   updated_by_user_id: 7,

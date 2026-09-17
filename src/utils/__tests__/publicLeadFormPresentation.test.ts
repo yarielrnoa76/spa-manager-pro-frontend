@@ -8,6 +8,7 @@ import {
   getCodeMessage,
   isValidPublicLeadFormKey,
   isValidAllowedOrigin,
+  isValidEmbedOrigin,
   findDuplicateAllowedOriginIndex,
   PUBLIC_LEAD_FORM_CODE_MESSAGES,
 } from "../publicLeadFormPresentation";
@@ -28,6 +29,14 @@ const baseReadiness = (overrides: Partial<PublicLeadFormReadiness> = {}): Public
   activatable: true,
   published: false,
   blocking_condition: null,
+  // Form Builder B3 — aditive fields (§12 of the technical contract); every pre-existing B2
+  // test below only ever asserts on the legacy fields above, so these defaults are inert unless
+  // a test overrides them explicitly.
+  context_ready: true,
+  draft_publishable: false,
+  draft_blocking_condition: null,
+  has_published_version: false,
+  activation_blocking_condition: null,
   ...overrides,
 });
 
@@ -244,5 +253,36 @@ describe("findDuplicateAllowedOriginIndex", () => {
 
   it("ignores invalid entries rather than crashing", () => {
     expect(findDuplicateAllowedOriginIndex(["not-a-url", "https://example.com"])).toBeNull();
+  });
+});
+
+describe("isValidEmbedOrigin — Form Builder B3", () => {
+  it("accepts the same canonical scheme://host[:port] format as allowed origins", () => {
+    expect(isValidEmbedOrigin("https://embed.example.com")).toBe(true);
+  });
+
+  it("rejects a wildcard, unlike isValidAllowedOrigin's format-only check", () => {
+    expect(isValidEmbedOrigin("https://*.example.com")).toBe(false);
+  });
+
+  it("rejects the same malformed inputs isValidAllowedOrigin rejects", () => {
+    expect(isValidEmbedOrigin("not-a-url")).toBe(false);
+    expect(isValidEmbedOrigin("https://user:pass@example.com")).toBe(false);
+  });
+});
+
+describe("Form Builder B3 — new code messages are present and distinct", () => {
+  it.each([
+    "NO_DRAFT",
+    "NO_DRAFT_TO_PUBLISH",
+    "CONTACT_METHOD_REQUIRED",
+    "SYSTEM_FIELD_LOCKED",
+    "FIELD_REQUIRED_BUT_HIDDEN",
+    "NO_PUBLISHED_VERSION",
+    "BASE_URL_NOT_CONFIGURED",
+    "TURNSTILE_SITE_KEY_NOT_CONFIGURED",
+  ])("%s has a Spanish message, never a raw code fallback", (code) => {
+    expect(getCodeMessage(code, "raw fallback")).not.toBe("raw fallback");
+    expect(PUBLIC_LEAD_FORM_CODE_MESSAGES[code]).toBeTruthy();
   });
 });

@@ -470,3 +470,153 @@ describe("RolesPermissionsSettings — complete permission catalog, exactly once
     expect(api.put).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Form Builder B3 — the permissions catalog gains `view_public_lead_forms`/
+ * `manage_public_lead_forms`/`publish_public_lead_forms`, each exactly once, in their own
+ * "formularios web" group (never `otros permisos`), with the protected permission
+ * (`publish_public_lead_forms`) represented as delegable ONLY for the tenant's canonical Admin
+ * role (`system_role_key === 'admin'`) -- never by `role.name`.
+ */
+describe("RolesPermissionsSettings — Form Builder B3 permissions catalog", () => {
+  const B3_PERMISSIONS: Perm[] = [
+    ...PERMISSIONS_CATALOG,
+    { id: 100, name: "view_public_lead_forms" },
+    { id: 101, name: "manage_public_lead_forms" },
+    { id: 102, name: "publish_public_lead_forms", is_protected: true },
+  ];
+
+  const ADMIN_ROLE = {
+    ...CUSTOM_ROLE,
+    id: 8,
+    name: "Admin",
+    system_role_key: "admin" as const,
+    permissions: [{ id: 102, name: "publish_public_lead_forms", is_protected: true }],
+  };
+
+  const MANAGER_ROLE = {
+    ...CUSTOM_ROLE,
+    id: 9,
+    name: "Manager",
+    system_role_key: "manager" as const,
+    // A legacy pivot forced directly in the DB -- the backend already neutralizes it
+    // (`hasPermission()` returns false for a protected permission on a non-admin canonical
+    // role), but it can still exist as a row and must render as inert, never as active authority.
+    permissions: [{ id: 102, name: "publish_public_lead_forms", is_protected: true }],
+  };
+
+  async function selectRole(user: ReturnType<typeof userEvent.setup>, roleId: number) {
+    await user.selectOptions(await screen.findByRole("combobox", { name: /Seleccionar Rol Existente/i }), String(roleId));
+  }
+
+  async function openFormulariosWebGroup(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(await screen.findByPlaceholderText(/Buscar permiso o modelo/i), "public_lead_forms");
+  }
+
+  it("all three permissions appear exactly once, in their own 'formularios web' group", async () => {
+    mockLoad([CUSTOM_ROLE], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 5);
+    await openFormulariosWebGroup(user);
+
+    expect(await screen.findByText("formularios web")).toBeTruthy();
+    for (const label of ["view public lead forms", "manage public lead forms", "publish public lead forms"]) {
+      expect(screen.getAllByText(label)).toHaveLength(1);
+    }
+  });
+
+  it("no known B3 permission falls into 'otros permisos'", async () => {
+    mockLoad([CUSTOM_ROLE], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 5);
+    await user.type(await screen.findByPlaceholderText(/Buscar permiso o modelo/i), "public_lead");
+
+    expect(screen.queryByText("otros permisos")).toBeNull();
+  });
+
+  it("an unrecognized permission still falls into 'otros permisos' (fallback intact)", async () => {
+    mockLoad([CUSTOM_ROLE], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 5);
+    await user.type(await screen.findByPlaceholderText(/Buscar permiso o modelo/i), "some_future_unknown_permission");
+
+    expect(await screen.findByText("otros permisos")).toBeTruthy();
+  });
+
+  it("shows a 'Protegido' badge on publish_public_lead_forms regardless of the selected role", async () => {
+    mockLoad([CUSTOM_ROLE], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 5);
+    await openFormulariosWebGroup(user);
+
+    expect(await screen.findByText("Protegido")).toBeTruthy();
+  });
+
+  it("the canonical Admin role (system_role_key='admin') can toggle the protected permission", async () => {
+    mockLoad([ADMIN_ROLE], B3_PERMISSIONS);
+    vi.mocked(api.put).mockResolvedValue({ ...ADMIN_ROLE, permissions: [] });
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 8);
+    await openFormulariosWebGroup(user);
+
+    const checkbox = permissionCheckbox("publish public lead forms");
+    expect(checkbox.disabled).toBe(false);
+    await user.click(checkbox);
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/roles/8/permissions", { permission_ids: [] }),
+    );
+  });
+
+  it("Manager (system_role_key='manager') never gets an interactive checkbox for the protected permission, even with a forced legacy pivot", async () => {
+    mockLoad([MANAGER_ROLE], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 9);
+    await openFormulariosWebGroup(user);
+
+    const checkbox = permissionCheckbox("publish public lead forms");
+    expect(checkbox.checked).toBe(true); // the pivot row still exists...
+    expect(checkbox.disabled).toBe(true); // ...but is never interactive here.
+
+    await user.click(checkbox); // no-op: disabled inputs don't fire onChange
+    expect(api.put).not.toHaveBeenCalled();
+    expect(screen.getByText("Sin efecto")).toBeTruthy();
+  });
+
+  it("'Seleccionar Todos' on Manager's group never sends the protected permission id", async () => {
+    const roleWithoutPivot = { ...MANAGER_ROLE, permissions: [] };
+    mockLoad([roleWithoutPivot], B3_PERMISSIONS);
+    vi.mocked(api.put).mockResolvedValue(roleWithoutPivot);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 9);
+    await openFormulariosWebGroup(user);
+
+    const headerSpan = screen.getAllByText("formularios web").find((el) => el.closest("button"));
+    await user.click(screen.getByRole("button", { name: /Seleccionar Todos/i, }));
+    void headerSpan;
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/roles/9/permissions", expect.anything()));
+    const call = vi.mocked(api.put).mock.calls.find(([path]) => path === "/roles/9/permissions");
+    const sentIds = (call?.[1] as { permission_ids: number[] }).permission_ids;
+    expect(sentIds).not.toContain(102);
+    expect(sentIds).toEqual(expect.arrayContaining([100, 101]));
+  });
+
+  it("never authorizes the protected checkbox by role.name -- a custom role named 'Admin' with system_role_key=null stays disabled", async () => {
+    const impostor = { ...CUSTOM_ROLE, id: 11, name: "Admin", system_role_key: null, permissions: [] };
+    mockLoad([impostor], B3_PERMISSIONS);
+    render(<RolesPermissionsSettings canManage={true} />);
+    const user = userEvent.setup();
+    await selectRole(user, 11);
+    await openFormulariosWebGroup(user);
+
+    expect(permissionCheckbox("publish public lead forms").disabled).toBe(true);
+  });
+});

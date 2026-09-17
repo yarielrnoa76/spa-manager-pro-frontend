@@ -594,7 +594,7 @@ const App: React.FC = () => {
               <Route path="/stocks" element={<Stocks />} />
               <Route path="/leads" element={<Leads user={user} />} />
               <Route
-                path="/lead-forms"
+                path="/lead-forms/*"
                 element={canSeePublicLeadForms ? <PublicLeadForms user={user} /> : <Navigate to="/" replace />}
               />
               <Route path="/appointments" element={<Appointments />} />

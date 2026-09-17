@@ -916,6 +916,18 @@ export interface PublicLeadForm {
   lead_source_key: string;
   enabled: boolean;
   allowed_origins: string[];
+  /** Form Builder B3 — governs ONLY `frame-ancestors` for the hosted embed iframe. Never mixed
+   * with `allowed_origins` (which governs submission/page_url). */
+  embed_origins: string[];
+  /**
+   * Canonical hosted-form URL (`{config('public_lead_forms.base_url')}/f/{uuid}`), OPTIONAL and
+   * absent from the currently deployed backend (commit `9aecba2` never serializes it — confirmed
+   * by reading `PublicLeadFormAdminResource`). Declared here, and consumed as optional wherever
+   * delivery artifacts (hosted URL, embed snippet, QR, share link) are built, so this becomes
+   * live automatically the day a backend contract adds it -- the frontend never fabricates this
+   * value itself, and never derives it from `VITE_API_URL` or by concatenating `/f/{uuid}`.
+   */
+  page_url?: string | null;
   created_by_user_id: number | null;
   created_by: PublicLeadFormActorRef | null;
   updated_by_user_id: number | null;
@@ -949,7 +961,17 @@ export interface PublicLeadFormBlockingCondition {
   message: string;
 }
 
-/** GET /api/public-lead-forms/{form}/readiness — never mutates anything server-side. */
+/**
+ * GET /api/public-lead-forms/{form}/readiness — never mutates anything server-side.
+ *
+ * Form Builder B3 extends this aditively (backend commit `9aecba2`): `context_ready`,
+ * `draft_publishable`, `draft_blocking_condition`, `has_published_version` and
+ * `activation_blocking_condition` are new; every B2 field keeps its exact prior semantics,
+ * including `published` (the legacy `form_enabled && master_enabled` reading — NOT "a published
+ * version exists", which is `has_published_version`) and `blocking_condition` (kept as an alias
+ * of `activation_blocking_condition`, never contaminated by a draft-only blocker). The UI must
+ * consume these fields as-is, never infer readiness from local form state.
+ */
 export interface PublicLeadFormReadiness {
   form_id: number;
   form_uuid: string;
@@ -960,6 +982,11 @@ export interface PublicLeadFormReadiness {
   activatable: boolean;
   published: boolean;
   blocking_condition: PublicLeadFormBlockingCondition | null;
+  context_ready: boolean;
+  draft_publishable: boolean;
+  draft_blocking_condition: PublicLeadFormBlockingCondition | null;
+  has_published_version: boolean;
+  activation_blocking_condition: PublicLeadFormBlockingCondition | null;
 }
 
 /** POST /api/public-lead-forms — exactly these fields; nothing server-controlled. */
@@ -970,9 +997,122 @@ export interface CreatePublicLeadFormPayload {
   allowed_origins: string[];
 }
 
-/** PATCH /api/public-lead-forms/{form} — at least one of these two; `key`/`branch_id` are
- * immutable and never sent here. */
+/** PATCH /api/public-lead-forms/{form} — at least one of these three; `key`/`branch_id` are
+ * immutable and never sent here. Still requires `enabled=false` server-side (409
+ * PUBLIC_LEAD_FORM_MUST_BE_PAUSED) — unlike the draft, which is always editable. */
 export interface UpdatePublicLeadFormPayload {
   name?: string;
   allowed_origins?: string[];
+  embed_origins?: string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Form Builder B3 — versioned draft/published/archived schema+branding, admin preview, and
+// delivery. `public_lead_form_versions` NEVER exposes its internal `id` in any B3 HTTP contract
+// (§5.2 of the technical contract) — `uuid` is the only identifier for a version, everywhere:
+// types, requests, rendered history. `PublicLeadFormAdminController` at commit `9aecba2`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One of the 6 canonical fields (`CanonicalFieldRules::ALLOWED_FIELD_KEYS`) — no custom field
+ * types exist in B3. `name`/`consent` are structurally locked to visible=true/required=true by
+ * the backend (`SYSTEM_FIELD_LOCKED` if violated) but still round-trip through this same shape. */
+export type PublicLeadFormCanonicalFieldKey =
+  | "name"
+  | "consent"
+  | "last_name"
+  | "phone"
+  | "email"
+  | "message";
+
+export interface PublicLeadFormField {
+  field_key: PublicLeadFormCanonicalFieldKey;
+  label: string;
+  help_text: string | null;
+  placeholder: string | null;
+  position: number;
+  visible: boolean;
+  required: boolean;
+}
+
+export const PUBLIC_LEAD_FORM_SYSTEM_FIELD_KEYS: readonly PublicLeadFormCanonicalFieldKey[] = [
+  "name",
+  "consent",
+];
+
+/** Branding — exactly the keys `PatchPublicLeadFormDraftRequest::ALLOWED_BRANDING_KEYS` accepts.
+ * No `custom_css`, no free-form styling; `show_logo` never carries a URL -- the resolved
+ * `logo_url` is read-only, server-derived (tenant_settings.logo_path), and only ever appears in
+ * the preview descriptor, never as an editable field here. */
+export interface PublicLeadFormBranding {
+  title: string | null;
+  subtitle: string | null;
+  button_text: string | null;
+  success_text: string | null;
+  privacy_notice_text: string | null;
+  primary_color: string | null;
+  border_radius_style: "square" | "rounded" | "pill" | null;
+  show_logo: boolean;
+}
+
+export type PublicLeadFormVersionStatus = "draft" | "published" | "archived";
+
+/** GET/PATCH /api/public-lead-forms/{form}/draft — the only mutable version; never requires
+ * pausing the form first. */
+export interface PublicLeadFormDraft {
+  uuid: string;
+  version_number: number;
+  status: PublicLeadFormVersionStatus;
+  schema: PublicLeadFormField[];
+  branding: PublicLeadFormBranding;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** PATCH /api/public-lead-forms/{form}/draft body — both optional, partial; the backend upserts
+ * lazily (creates the draft from the last published version, or the platform default, the first
+ * time either key is sent). */
+export interface UpdatePublicLeadFormDraftPayload {
+  schema?: PublicLeadFormField[];
+  branding?: Partial<PublicLeadFormBranding>;
+}
+
+/** GET /api/public-lead-forms/{form}/versions and the response of POST .../draft/publish —
+ * `PublicLeadFormVersionResource`. Deliberately NEVER has an `id` field — `uuid` is the only
+ * identifier, everywhere this type is used (history list, publish confirmation). */
+export interface PublicLeadFormVersion {
+  uuid: string;
+  version_number: number;
+  status: PublicLeadFormVersionStatus;
+  created_at: string | null;
+  published_at: string | null;
+  /** `null` when unknown, cross-tenant, the canonical SuperAdmin projection doesn't apply, or the
+   * user was deleted — never a fallback like "Unknown user". Never carries an id/email. */
+  published_by: { name: string } | null;
+}
+
+/** GET /api/public-lead-forms/{form}/draft/preview — `PublicLeadFormDescriptorResource`, the
+ * SAME shape the public descriptor uses (minus the public-only wrapping), sanitized: no internal
+ * ids, no tenant/branch data, no Turnstile. Rendered directly in React, never via iframe. */
+export interface PublicLeadFormPreviewDescriptor {
+  ok: true;
+  uuid: string;
+  version_uuid: string;
+  schema: Array<{
+    field_key: PublicLeadFormCanonicalFieldKey;
+    label: string;
+    help_text: string | null;
+    placeholder: string | null;
+    position: number;
+    required: boolean;
+  }>;
+  branding: {
+    title: string;
+    subtitle: string | null;
+    button_text: string;
+    success_text: string;
+    privacy_notice_text: string | null;
+    primary_color: string;
+    border_radius_style: "square" | "rounded" | "pill";
+    logo_url: string | null;
+  };
 }

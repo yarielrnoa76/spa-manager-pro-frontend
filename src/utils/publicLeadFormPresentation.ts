@@ -28,6 +28,30 @@ export const PUBLIC_LEAD_FORM_CODE_MESSAGES: Record<string, string> = {
   NOT_FOUND: "El formulario no existe o ya no está disponible.",
   UPDATE_FAILED: "No se pudo actualizar el formulario.",
   PUBLISH_FAILED: "No se pudo publicar el formulario.",
+
+  // Form Builder B3 — draft/publish/activate blocking and validation codes
+  // (CanonicalFieldRules::validatePublishable / PublicLeadFormVersioningService / readiness).
+  NO_DRAFT: "Este formulario todavía no tiene un borrador. Edita sus campos para crear uno.",
+  NO_DRAFT_TO_PUBLISH: "No hay un borrador para publicar.",
+  MISSING_CANONICAL_FIELD: "Falta un campo obligatorio del formulario.",
+  UNKNOWN_CANONICAL_FIELD: "El formulario contiene un campo que no es válido.",
+  INVALID_FIELD_POSITION: "El orden de los campos no es válido.",
+  DUPLICATE_FIELD_POSITION: "Hay dos campos con el mismo orden.",
+  SYSTEM_FIELD_LOCKED: "El nombre y el consentimiento no pueden ocultarse ni volverse opcionales.",
+  FIELD_REQUIRED_BUT_HIDDEN: "Un campo obligatorio no puede estar oculto.",
+  CONTACT_METHOD_REQUIRED: "Debe haber al menos un método de contacto (teléfono o correo) visible y obligatorio.",
+  FIELD_LABEL_REQUIRED: "Todos los campos necesitan una etiqueta.",
+  FIELD_TEXT_INVALID: "El texto de un campo no es válido.",
+  FIELD_TEXT_INVALID_CHARACTERS: "El texto de un campo contiene caracteres no permitidos (< o >).",
+  FIELD_LABEL_TOO_LONG: "La etiqueta de un campo es demasiado larga.",
+  FIELD_HELP_TEXT_TOO_LONG: "El texto de ayuda de un campo es demasiado largo.",
+  FIELD_PLACEHOLDER_TOO_LONG: "El placeholder de un campo es demasiado largo.",
+  BASE_URL_NOT_CONFIGURED: "La URL pública de la plataforma no está configurada.",
+  TURNSTILE_SITE_KEY_NOT_CONFIGURED: "La clave pública de verificación (Turnstile) no está configurada.",
+  NO_PUBLISHED_VERSION: "Este formulario todavía no tiene una versión publicada.",
+  READINESS_CHECK_FAILED_ACTIVATION: "La verificación de disponibilidad falló justo antes de activar. Vuelve a intentarlo.",
+  PREVIEW_FAILED: "No se pudo generar la vista previa.",
+  VALIDATION_ERROR: "Los datos enviados no son válidos.",
 };
 
 export function getCodeMessage(code: string | undefined | null, fallback: string): string {
@@ -160,4 +184,23 @@ export function findDuplicateAllowedOriginIndex(origins: string[]): number | nul
     seen.add(key);
   }
   return null;
+}
+
+/**
+ * `embed_origins` (Form Builder B3) shares `allowed_origins`' canonical scheme://host[:port]
+ * format but additionally forbids wildcards (`UpdatePublicLeadFormAdminRequest::
+ * assertCanonicalEmbedOrigins()`) -- a client-side sanity check only, never a replacement for the
+ * backend's own canonicalization.
+ */
+export function isValidEmbedOrigin(origin: string): boolean {
+  if (typeof origin === "string" && origin.includes("*")) return false;
+  return isValidAllowedOrigin(origin);
+}
+
+/** One clear Spanish sentence for a draft/readiness blocking condition -- never a raw code. */
+export function getDraftBlockingMessage(
+  condition: { code: string; message: string } | null | undefined,
+): string | null {
+  if (!condition) return null;
+  return getCodeMessage(condition.code, condition.message);
 }

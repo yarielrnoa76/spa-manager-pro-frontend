@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import PublicLeadForms from "../PublicLeadForms";
 import { api, ApiError } from "../../services/api";
 import type { UserData } from "../../App";
-import type { PublicLeadForm, PublicLeadFormReadiness, PublicLeadFormListResponse } from "../../types";
+import type { PublicLeadForm, PublicLeadFormListResponse, PublicLeadFormReadiness } from "../../types";
 
 /**
- * Form Builder B2 — administrative lifecycle UI (list, detail, readiness, publish, pause).
- * Explicitly NOT covered here (out of scope for this block): visual field builder, branding,
- * the public page itself, or an integration snippet -- see the "no fake controls" describe
- * block, which asserts none of that surface leaked in.
+ * Form Builder B3 — "Formularios Web" reuses the existing sidebar entry and route; this page is
+ * now split into two real routes (never local-only tab state): `/lead-forms` (Listado) and
+ * `/lead-forms/:id/*` (Configuración, delegated to PublicLeadFormConfigShell). This file covers
+ * only the Listado surface, RBAC on its own controls, and navigation between the two -- the
+ * Configuración shell's own tabs (General/Campos/Preview/Publicación) are covered by their own
+ * dedicated test files under `components/FormBuilder/__tests__`.
  */
 
 vi.mock("../../services/api", async (importOriginal) => {
@@ -21,8 +24,7 @@ vi.mock("../../services/api", async (importOriginal) => {
       listPublicLeadForms: vi.fn(),
       getPublicLeadForm: vi.fn(),
       getPublicLeadFormReadiness: vi.fn(),
-      publishPublicLeadForm: vi.fn(),
-      pausePublicLeadForm: vi.fn(),
+      listPublicLeadFormVersions: vi.fn(),
       listBranches: vi.fn(),
       createPublicLeadForm: vi.fn(),
       updatePublicLeadForm: vi.fn(),
@@ -32,7 +34,7 @@ vi.mock("../../services/api", async (importOriginal) => {
 
 const FORM_ROW = (overrides: Partial<PublicLeadForm> = {}): PublicLeadForm => ({
   id: 1,
-  uuid: "uuid-1",
+  uuid: "11111111-1111-4111-8111-111111111111",
   name: "Contact Form",
   key: "contact-form",
   branch_id: 1,
@@ -40,6 +42,7 @@ const FORM_ROW = (overrides: Partial<PublicLeadForm> = {}): PublicLeadForm => ({
   lead_source_key: "public_web_form",
   enabled: false,
   allowed_origins: ["https://example.com"],
+  embed_origins: [],
   created_by_user_id: 7,
   created_by: { id: 7, name: "Alice" },
   updated_by_user_id: 7,
@@ -69,7 +72,7 @@ const LIST_RESPONSE = (
 
 const READINESS = (overrides: Partial<PublicLeadFormReadiness> = {}): PublicLeadFormReadiness => ({
   form_id: 1,
-  form_uuid: "uuid-1",
+  form_uuid: "11111111-1111-4111-8111-111111111111",
   environment: "qa",
   form_enabled: false,
   master_enabled: true,
@@ -77,6 +80,11 @@ const READINESS = (overrides: Partial<PublicLeadFormReadiness> = {}): PublicLead
   activatable: true,
   published: false,
   blocking_condition: null,
+  context_ready: true,
+  draft_publishable: true,
+  draft_blocking_condition: null,
+  has_published_version: false,
+  activation_blocking_condition: null,
   ...overrides,
 });
 
@@ -89,15 +97,6 @@ const ADMIN_USER: UserData = {
   permissions: ["view_public_lead_forms", "manage_public_lead_forms", "publish_public_lead_forms"],
 };
 
-const MANAGER_USER: UserData = {
-  id: "2",
-  name: "Manager",
-  email: "manager@example.com",
-  role: { id: 2, name: "manager" },
-  is_super_admin: false,
-  permissions: ["view_public_lead_forms", "manage_public_lead_forms"],
-};
-
 const VIEW_ONLY_USER: UserData = {
   id: "3",
   name: "Viewer",
@@ -107,45 +106,48 @@ const VIEW_ONLY_USER: UserData = {
   permissions: ["view_public_lead_forms"],
 };
 
+function renderAt(path: string, user: UserData) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <PublicLeadForms user={user} />
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.listPublicLeadForms).mockResolvedValue(LIST_RESPONSE([FORM_ROW()]));
   vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW());
   vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS());
+  vi.mocked(api.listPublicLeadFormVersions).mockResolvedValue([]);
   vi.mocked(api.listBranches).mockResolvedValue([{ id: "1", name: "Main Branch", code: "MB", address: "" }]);
 });
 
-const openDetail = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(await screen.findByText("Contact Form"));
-  await user.click(screen.getByRole("button", { name: /Ver detalle/i }));
-};
-
 describe("PublicLeadForms — list states", () => {
   it("shows loading, then the server-side rows with their columns", async () => {
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
     const row = (await screen.findByText("Contact Form")).closest("tr")!;
     expect(within(row).getByText("contact-form")).toBeTruthy();
     expect(within(row).getByText("Main Branch")).toBeTruthy();
-    expect(within(row).getByText("https://example.com")).toBeTruthy();
     expect(within(row).getByText("Pausado")).toBeTruthy();
     expect(api.listPublicLeadForms).toHaveBeenCalledWith({ page: 1, per_page: 15 });
   });
 
   it("shows an empty state distinctly from loading/error", async () => {
     vi.mocked(api.listPublicLeadForms).mockResolvedValue(LIST_RESPONSE([]));
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
     expect(await screen.findByText(/Todavía no hay formularios/i)).toBeTruthy();
   });
 
   it("shows a forbidden state, never an empty list, for a 403", async () => {
     vi.mocked(api.listPublicLeadForms).mockRejectedValue(new ApiError("forbidden", { status: 403 }));
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
     expect(await screen.findByText(/No tienes permiso/i)).toBeTruthy();
   });
 
   it("shows an error state with retry, never an empty list, for a network failure", async () => {
     vi.mocked(api.listPublicLeadForms).mockRejectedValue(new TypeError("Failed to fetch"));
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
     expect(await screen.findByText(/No se pudo cargar/i)).toBeTruthy();
   });
 
@@ -154,7 +156,7 @@ describe("PublicLeadForms — list states", () => {
       LIST_RESPONSE([FORM_ROW()], { current_page: 1, last_page: 2, total: 2 }),
     );
     const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
     await screen.findByText("Contact Form");
 
     vi.mocked(api.listPublicLeadForms).mockResolvedValue(
@@ -168,342 +170,64 @@ describe("PublicLeadForms — list states", () => {
 
     await waitFor(() => expect(api.listPublicLeadForms).toHaveBeenLastCalledWith({ page: 2, per_page: 15 }));
     expect(await screen.findByText("Second Form")).toBeTruthy();
-    // The previous page's row is gone -- the list reflects only the server's current page.
     expect(screen.queryByText("Contact Form")).toBeNull();
   });
 });
 
-describe("PublicLeadForms — detail and readiness", () => {
-  it("loads the confirmed detail and readiness via their own authorized endpoints", async () => {
+describe("PublicLeadForms — permissions on the Listado surface", () => {
+  it("a manage-capable user sees 'Nuevo formulario'", async () => {
+    renderAt("/", ADMIN_USER);
+    await screen.findByText("Contact Form");
+    expect(screen.getByRole("button", { name: /Nuevo formulario/i })).toBeTruthy();
+  });
+
+  it("a read-only user (view_public_lead_forms only) never sees 'Nuevo formulario'", async () => {
+    renderAt("/", VIEW_ONLY_USER);
+    await screen.findByText("Contact Form");
+    expect(screen.queryByRole("button", { name: /Nuevo formulario/i })).toBeNull();
+  });
+});
+
+describe("PublicLeadForms — navigation to Configuración", () => {
+  it("clicking Configurar on a row navigates to the config shell without a page reload", async () => {
     const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
+    renderAt("/", ADMIN_USER);
+    await user.click(await screen.findByRole("button", { name: /Configurar/i }));
 
     await waitFor(() => expect(api.getPublicLeadForm).toHaveBeenCalledWith(1));
-    await waitFor(() => expect(api.getPublicLeadFormReadiness).toHaveBeenCalledWith(1));
-    expect(screen.getByText("Listo para publicar")).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "General" })).toBeTruthy();
   });
 
-  it("projects the creator and last editor safely when the backend provides them", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    await screen.findByText("Listo para publicar");
-    expect(screen.getAllByText("Alice").length).toBeGreaterThan(0);
+  it("deep-linking directly to /:id/campos renders the Configuración shell on that tab", async () => {
+    renderAt("/1/campos", ADMIN_USER);
+    await waitFor(() => expect(api.getPublicLeadForm).toHaveBeenCalledWith(1));
+    const campos = await screen.findByRole("tab", { name: "Campos" });
+    expect(campos.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("shows 'No disponible' rather than crashing when creator/editor are null", async () => {
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(
-      FORM_ROW({ created_by: null, updated_by: null }),
-    );
+  it("'Volver al listado' returns to the Listado table", async () => {
     const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    expect(await screen.findAllByText("No disponible")).toHaveLength(2);
-  });
-
-  it("shows a clear, translated message for a blocking condition", async () => {
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(
-      READINESS({
-        prerequisites_ready: false,
-        activatable: false,
-        blocking_condition: { code: "TICKET_CATEGORY", message: "raw" },
-      }),
-    );
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    expect(await screen.findByText("Requiere configuración")).toBeTruthy();
-    expect(await screen.findByTestId("readiness-blocking-message")).toHaveTextContent(
-      /categoría de ticket activa/i,
-    );
-  });
-
-  it("explains PUBLIC_WEB_INTAKE_DISABLED as a platform-level condition this form cannot change", async () => {
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(
-      READINESS({
-        form_enabled: true,
-        master_enabled: false,
-        activatable: false,
-        blocking_condition: { code: "PUBLIC_WEB_INTAKE_DISABLED", message: "raw" },
-      }),
-    );
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    expect(await screen.findByText("Captación global desactivada")).toBeTruthy();
-    expect(screen.getByTestId("readiness-blocking-message")).toHaveTextContent(
-      /no puede cambiarse desde este formulario/i,
-    );
-  });
-
-  it("refreshes readiness on demand without reloading the whole detail", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Listo para publicar");
-
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ published: true, form_enabled: true }));
-    await user.click(screen.getByRole("button", { name: /Refrescar/i }));
-
-    expect(await screen.findByText("Publicado")).toBeTruthy();
-    expect(api.getPublicLeadFormReadiness).toHaveBeenCalledTimes(2);
+    renderAt("/1/general", ADMIN_USER);
+    await user.click(await screen.findByText(/Volver al listado/i));
+    expect(await screen.findByText("Contact Form")).toBeTruthy();
   });
 });
 
-describe("PublicLeadForms — permissions", () => {
-  it("Admin sees create, publish and pause controls", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    expect(await screen.findByRole("button", { name: /Nuevo formulario/i })).toBeTruthy();
-
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    await openDetail(user);
-
-    await screen.findByText("Publicado");
-    expect(screen.getByRole("button", { name: /Pausar/i })).toBeTruthy();
-  });
-
-  it("Manager can manage (edit/pause) but never sees Publicar", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={MANAGER_USER} />);
-    expect(await screen.findByRole("button", { name: /Nuevo formulario/i })).toBeTruthy();
-
-    await openDetail(user);
-    await screen.findByText("Listo para publicar");
-
-    expect(screen.getByRole("button", { name: /^Editar$/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Publicar$/i })).toBeNull();
-  });
-
-  it("a read-only user (view_public_lead_forms only) sees no mutation controls at all", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={VIEW_ONLY_USER} />);
-    expect(screen.queryByRole("button", { name: /Nuevo formulario/i })).toBeNull();
-
-    await openDetail(user);
-    await screen.findByText("Listo para publicar");
-
-    expect(screen.queryByRole("button", { name: /^Editar$/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Publicar$/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Pausar/i })).toBeNull();
-  });
-});
-
-describe("PublicLeadForms — publish", () => {
-  it("disables Publicar while activatable is false, and never opens the confirmation or calls the endpoint", async () => {
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(
-      READINESS({ activatable: false, prerequisites_ready: false, blocking_condition: { code: "ALLOWED_ORIGINS", message: "x" } }),
-    );
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    const publishButton = await screen.findByRole("button", { name: /Publicar/i });
-    expect(publishButton).toBeDisabled();
-    await user.click(publishButton);
-    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
-    expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
-  });
-
-  it("clicking Publicar opens a confirmation dialog and does NOT call the endpoint yet", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    const publishButton = await screen.findByRole("button", { name: /^Publicar$/i });
-    expect(publishButton).not.toBeDisabled();
-    await user.click(publishButton);
-
-    expect(await screen.findByText(/Confirmas la publicación/i)).toBeTruthy();
-    // Names the specific form, not a generic message.
-    expect(screen.getByText(/"Contact Form"/)).toBeTruthy();
-    expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
-  });
-
-  it("Cancelar closes the confirmation without calling the endpoint", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
-    await screen.findByText(/Confirmas la publicación/i);
-    await user.click(screen.getByRole("button", { name: /^Cancelar$/i }));
-
-    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
-    expect(api.publishPublicLeadForm).not.toHaveBeenCalled();
-  });
-
-  it("confirming calls the endpoint exactly once and re-fetches list, detail and readiness afterward", async () => {
-    vi.mocked(api.publishPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    const listCallsBefore = vi.mocked(api.listPublicLeadForms).mock.calls.length;
-    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
-    await screen.findByText(/Confirmas la publicación/i);
-
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    await user.click(screen.getByRole("button", { name: /Confirmar publicación/i }));
-
-    await waitFor(() => expect(api.publishPublicLeadForm).toHaveBeenCalledTimes(1));
-    expect(api.publishPublicLeadForm).toHaveBeenCalledWith(1);
-    // Never optimistic -- the confirmed state comes from fresh GETs, not from the publish response alone.
-    await waitFor(() => expect(api.getPublicLeadForm).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(api.getPublicLeadFormReadiness).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(vi.mocked(api.listPublicLeadForms).mock.calls.length).toBeGreaterThan(listCallsBefore),
-    );
-    expect(await screen.findByText("Publicado")).toBeTruthy();
-    // The dialog itself is gone once the request settles.
-    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
-  });
-
-  it("disables the dialog's controls while publishing, preventing a double submission", async () => {
-    let resolvePublish!: (value: PublicLeadForm) => void;
-    vi.mocked(api.publishPublicLeadForm).mockReturnValue(
-      new Promise((resolve) => {
-        resolvePublish = resolve;
-      }),
-    );
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
-    const confirmButton = await screen.findByRole("button", { name: /Confirmar publicación|Publicando/i });
-    await user.click(confirmButton);
-
-    const busyButton = await screen.findByRole("button", { name: /Publicando/i });
-    expect(busyButton).toBeDisabled();
-    expect(screen.getByRole("button", { name: /^Cancelar$/i })).toBeDisabled();
-
-    // A second click while in flight must not fire another request.
-    await user.click(busyButton);
-    expect(api.publishPublicLeadForm).toHaveBeenCalledTimes(1);
-
-    resolvePublish(FORM_ROW({ enabled: true }));
-    await waitFor(() => expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull());
-  });
-
-  it("shows a clear message for a 409 conflict after confirming, and closes the dialog so it's visible", async () => {
-    vi.mocked(api.publishPublicLeadForm).mockRejectedValue(
-      new ApiError("conflict", { status: 409, code: "READINESS_CHECK_FAILED" }),
-    );
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-
-    await user.click(await screen.findByRole("button", { name: /^Publicar$/i }));
-    await user.click(await screen.findByRole("button", { name: /Confirmar publicación/i }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/verificación de disponibilidad falló/i);
-    // The confirmation overlay closed -- the error above is actually visible, not hidden behind it.
-    expect(screen.queryByText(/Confirmas la publicación/i)).toBeNull();
-  });
-});
-
-describe("PublicLeadForms — pause", () => {
-  it("requires explicit confirmation before pausing", async () => {
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Publicado");
-
-    await user.click(screen.getByRole("button", { name: /^Pausar$/i }));
-    expect(await screen.findByText(/dejará de aceptar envíos públicos/i)).toBeTruthy();
-    expect(api.pausePublicLeadForm).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: /Volver/i }));
-    expect(screen.queryByText(/dejará de aceptar envíos públicos/i)).toBeNull();
-    expect(api.pausePublicLeadForm).not.toHaveBeenCalled();
-  });
-
-  it("confirming pauses and re-fetches confirmed state afterward", async () => {
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    vi.mocked(api.pausePublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: false }));
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Publicado");
-
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: false }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: false, activatable: true }));
-
-    await user.click(screen.getByRole("button", { name: /^Pausar$/i }));
-    await user.click(screen.getByRole("button", { name: /Confirmar pausa/i }));
-
-    await waitFor(() => expect(api.pausePublicLeadForm).toHaveBeenCalledWith(1));
-    expect(await screen.findByText("Listo para publicar")).toBeTruthy();
-  });
-});
-
-describe("PublicLeadForms — create/edit integration", () => {
-  it("opens the create modal and reloads the list after a successful creation", async () => {
+describe("PublicLeadForms — create integration", () => {
+  it("opens the create modal and navigates to the new form's config shell after a successful creation", async () => {
     vi.mocked(api.createPublicLeadForm).mockResolvedValue(FORM_ROW({ id: 9, name: "New Form", key: "new-form" }));
+    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ id: 9, name: "New Form", key: "new-form" }));
     const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
+    renderAt("/", ADMIN_USER);
 
     await user.click(await screen.findByRole("button", { name: /Nuevo formulario/i }));
-    await user.type(screen.getByLabelText("Nombre"), "New Form");
-    await user.type(screen.getByLabelText("Identificador (key)"), "new-form");
-    await screen.findByLabelText("Sucursal");
-    await user.selectOptions(screen.getByLabelText("Sucursal"), "1");
-    await user.type(screen.getByLabelText("Origen permitido 1"), "https://example.com");
-
-    const listCallsBefore = vi.mocked(api.listPublicLeadForms).mock.calls.length;
+    await user.type(screen.getByLabelText(/^Nombre$/i), "New Form");
+    await user.type(screen.getByLabelText(/Identificador/i), "new-form");
+    await user.selectOptions(screen.getByLabelText(/Sucursal/i), "1");
+    await user.type(screen.getByLabelText(/Origen permitido 1/i), "https://example.com");
     await user.click(screen.getByRole("button", { name: /Crear formulario/i }));
 
-    await waitFor(() => expect(api.createPublicLeadForm).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(vi.mocked(api.listPublicLeadForms).mock.calls.length).toBeGreaterThan(listCallsBefore),
-    );
-  });
-
-  it("Editar is disabled while the form is enabled -- editing is only allowed while paused", async () => {
-    vi.mocked(api.getPublicLeadForm).mockResolvedValue(FORM_ROW({ enabled: true }));
-    vi.mocked(api.getPublicLeadFormReadiness).mockResolvedValue(READINESS({ form_enabled: true, published: true }));
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Publicado");
-
-    expect(screen.getByRole("button", { name: /^Editar$/i })).toBeDisabled();
-  });
-});
-
-describe("PublicLeadForms — no fake controls (out of scope for B2)", () => {
-  it("never renders a control for the platform-wide master flag", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Listo para publicar");
-
-    expect(screen.queryByText(/captación global desactivada/i)).toBeNull();
-    expect(screen.queryByLabelText(/master/i)).toBeNull();
-  });
-
-  it("never renders branding, schema-builder, public-page or snippet controls", async () => {
-    const user = userEvent.setup();
-    render(<PublicLeadForms user={ADMIN_USER} />);
-    await openDetail(user);
-    await screen.findByText("Listo para publicar");
-
-    expect(screen.queryByText(/branding/i)).toBeNull();
-    expect(screen.queryByText(/constructor visual/i)).toBeNull();
-    expect(screen.queryByText(/schema/i)).toBeNull();
-    expect(screen.queryByText(/página pública/i)).toBeNull();
-    expect(screen.queryByText(/snippet/i)).toBeNull();
-    expect(screen.queryByText(/código de integración/i)).toBeNull();
+    await waitFor(() => expect(api.createPublicLeadForm).toHaveBeenCalled());
+    await waitFor(() => expect(api.getPublicLeadForm).toHaveBeenCalledWith(9));
   });
 });

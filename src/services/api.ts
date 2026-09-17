@@ -35,6 +35,10 @@ import {
   CreatePublicLeadFormPayload,
   AuthenticatedUser,
   UpdatePublicLeadFormPayload,
+  PublicLeadFormDraft,
+  UpdatePublicLeadFormDraftPayload,
+  PublicLeadFormVersion,
+  PublicLeadFormPreviewDescriptor,
   SaleCreateContext,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
@@ -1347,6 +1351,9 @@ export const api = {
     return res.data;
   },
 
+  /** Legacy alias of `/activate` (`Deprecation: true` header on the response) — kept only for
+   * pre-B3 compatibility. Form Builder B3's own UI (PublishDeliveryPanel) never calls this; it
+   * uses `activatePublicLeadForm()` below. */
   async publishPublicLeadForm(id: number) {
     const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}/publish`, {
       method: "POST",
@@ -1360,6 +1367,72 @@ export const api = {
       method: "POST",
       auth: true,
     });
+    return res.data;
+  },
+
+  // --- Public Lead Forms (Form Builder B3 — versioned draft/published/archived, preview,
+  // readiness extension, delivery). All nested under the same numeric `{form}` id the admin
+  // control plane has used since B1 (`whereNumber('form')` — the real deployed backend route
+  // constraint; a UUID segment there 404s before reaching the controller). The public identifier
+  // discipline B3 adds is scoped to the NEW entities this block returns: a version is identified
+  // ONLY by its own `uuid`, never `id` (`PublicLeadFormVersionResource` never serializes one). ---
+
+  /** GET /draft — 404 NO_DRAFT is a normal, expected state (no draft exists yet), not an error to
+   * surface as a failure banner; callers translate it into an empty-draft UI state. */
+  async getPublicLeadFormDraft(id: number) {
+    const res = await request<{ data: PublicLeadFormDraft }>(`/api/public-lead-forms/${id}/draft`, {
+      method: "GET",
+      auth: true,
+    });
+    return res.data;
+  },
+
+  /** PATCH /draft — lazy upsert; always editable, even while the form is enabled/published. */
+  async updatePublicLeadFormDraft(id: number, payload: UpdatePublicLeadFormDraftPayload) {
+    const res = await request<{ data: PublicLeadFormDraft }>(`/api/public-lead-forms/${id}/draft`, {
+      method: "PATCH",
+      body: payload,
+      auth: true,
+    });
+    return res.data;
+  },
+
+  /** GET /draft/preview — sanitized descriptor of the CURRENT draft, `Cache-Control: no-store`.
+   * Never touches the public route; rendered directly in React by PreviewPane, never an iframe. */
+  async getPublicLeadFormDraftPreview(id: number) {
+    return request<PublicLeadFormPreviewDescriptor>(`/api/public-lead-forms/${id}/draft/preview`, {
+      method: "GET",
+      auth: true,
+    });
+  },
+
+  /** POST /draft/publish — atomically archives the current published version (if any) and
+   * promotes the draft. Returns the newly published version's own resource (no `id`). */
+  async publishPublicLeadFormDraft(id: number) {
+    const res = await request<{ data: PublicLeadFormVersion }>(
+      `/api/public-lead-forms/${id}/draft/publish`,
+      { method: "POST", auth: true },
+    );
+    return res.data;
+  },
+
+  /** POST /activate — the B3 activation endpoint (requires a published version + readiness);
+   * distinct from the deprecated `/publish` alias above. */
+  async activatePublicLeadForm(id: number) {
+    const res = await request<{ data: PublicLeadForm }>(`/api/public-lead-forms/${id}/activate`, {
+      method: "POST",
+      auth: true,
+    });
+    return res.data;
+  },
+
+  /** GET /versions — full history, newest version_number first. Every entry carries only its own
+   * `uuid`, never an internal id. */
+  async listPublicLeadFormVersions(id: number) {
+    const res = await request<{ data: PublicLeadFormVersion[] }>(
+      `/api/public-lead-forms/${id}/versions`,
+      { method: "GET", auth: true },
+    );
     return res.data;
   },
 

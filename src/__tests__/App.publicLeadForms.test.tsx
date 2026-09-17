@@ -119,4 +119,38 @@ describe("App — Formularios Web menu and route guard", () => {
 
     expect(await screen.findByRole("heading", { name: /Formularios Web/i })).toBeTruthy();
   });
+
+  it("a SuperAdmin WITHOUT an effective tenant fails closed at /lead-forms -- shown the tenant-selection gate, never the forms surface", async () => {
+    vi.mocked(api.me).mockResolvedValue(
+      baseUser([], { is_super_admin: true, active_tenant_id: null }),
+    );
+    vi.mocked(api.listTenants).mockResolvedValue([{ id: 5, name: "Acme", slug: "acme", status: "active" }]);
+    const callsBefore = vi.mocked(api.listPublicLeadForms).mock.calls.length;
+
+    render(
+      <MemoryRouter initialEntries={["/lead-forms"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(api.me).toHaveBeenCalled());
+    expect(screen.queryByRole("heading", { name: /Formularios Web/i })).toBeNull();
+    expect(await screen.findByRole("heading", { name: /Seleccione un Tenant/i })).toBeTruthy();
+    // The gate replaces the whole authenticated routing tree -- PublicLeadForms never mounts, so
+    // it never issues a NEW request for this render.
+    expect(vi.mocked(api.listPublicLeadForms).mock.calls.length).toBe(callsBefore);
+  });
+
+  it("deep-linking directly to a config sub-route (/lead-forms/1/general) is gated the same as the list route", async () => {
+    vi.mocked(api.me).mockResolvedValue(baseUser([]));
+
+    render(
+      <MemoryRouter initialEntries={["/lead-forms/1/general"]}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(api.me).toHaveBeenCalled());
+    expect(screen.queryByText(/Formularios Web/i)).toBeNull();
+  });
 });

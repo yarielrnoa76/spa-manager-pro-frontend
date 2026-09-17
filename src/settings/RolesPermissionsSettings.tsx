@@ -43,12 +43,21 @@ function getResourceScopeLabel(scope: string): string {
  */
 const FALLBACK_PERMISSION_GROUP = "otros permisos";
 
-type Permission = { id: number; name: string };
+type Permission = { id: number; name: string; is_protected?: boolean };
 type Role = {
   id: number;
   name: string;
   tenant_id: number | null;
   is_system_role?: boolean;
+  /**
+   * Form Builder B3 (§6.1 of the technical contract) — the ONLY discriminator for "is this the
+   * tenant's canonical Admin role", exposed read-only by `GET /api/roles`/`GET /api/roles/{role}`
+   * (a plain DB column Eloquent serializes by default; no cast needed). `is_system_role` is
+   * insufficient: Manager/Sales are also `is_system_role=true`. This screen NEVER authorizes by
+   * `role.name` — a protected permission's checkbox is only ever interactive for
+   * `system_role_key === 'admin'`.
+   */
+  system_role_key?: "admin" | "manager" | "sales" | null;
   view_scope?: string;
   resource_scopes?: Record<string, string>;
   permissions?: Permission[];
@@ -152,6 +161,12 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
         all_conversations: "conversations",
         expense: "expenses",
         expenses: "expenses",
+
+        // Form Builder B3 — `view_public_lead_forms`/`manage_public_lead_forms`/
+        // `publish_public_lead_forms` all share this exact raw suffix ("public_lead_forms"),
+        // so this single key gives the three of them their own group, each appearing exactly
+        // once (contract §6.4).
+        public_lead_forms: "formularios web",
       };
 
       // A permission whose raw suffix matches no explicit key above is NEVER given its own
@@ -188,8 +203,19 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
     load();
   }, []);
 
+  // Form Builder B3 (§6.2/§6.4) — a protected permission (`is_protected`) only ever produces
+  // effective authority on the tenant's canonical Admin role (`system_role_key === 'admin'`);
+  // the real barrier lives entirely in the backend (`hasPermission()`/`RolePolicy`). This screen
+  // never re-authorizes anything itself, but it must never let the UI *pretend* a protected
+  // permission is delegable to a non-canonical role — so the checkbox for that combination is
+  // never wired to a request at all, on/off, individually or via "Seleccionar Todos".
+  const isProtectedForNonAdmin = (perm: Permission) =>
+    !!perm.is_protected && selectedRole?.system_role_key !== "admin";
+
   const togglePermission = async (permId: number) => {
     if (!selectedRole || !canManage) return;
+    const perm = perms.find((p) => p.id === permId);
+    if (perm && isProtectedForNonAdmin(perm)) return;
 
     // endpoint sugerido: PUT /roles/:id/permissions con array permission_ids
     const next = new Set<number>(selectedPermIds);
@@ -203,8 +229,16 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
     await load();
   };
 
-  const toggleGroupPermissions = async (groupPerms: Permission[]) => {
+  const toggleGroupPermissions = async (allGroupPerms: Permission[]) => {
     if (!selectedRole) return;
+
+    // Protected permissions never participate in a group toggle for a non-canonical role — they
+    // are excluded from both the "is everything already selected" check and the mutation itself,
+    // so "Seleccionar Todos" can never grant (or a stray "Desmarcar Todos" never revoke, since the
+    // backend enforcement already makes their pivot inert) something this role can't legitimately
+    // hold.
+    const groupPerms = allGroupPerms.filter((p) => !isProtectedForNonAdmin(p));
+    if (groupPerms.length === 0) return;
 
     const isAllSelected = groupPerms.every(p => selectedPermIds.has(p.id));
     const next = new Set<number>(selectedPermIds);
@@ -469,7 +503,12 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
           <div className="space-y-3 mt-4">
             {Object.entries(groupedPerms).map(([groupName, groupPerms]) => {
               const isOpen = openGroups[groupName] ?? (searchTerm.trim().length > 0 ? true : false);
-              const isAllSelected = groupPerms.every((p) => selectedPermIds.has(p.id));
+              // "Select all" only ever considers permissions this role could actually receive —
+              // a protected permission excluded from the toggle (see toggleGroupPermissions)
+              // must never make the header read as "not all selected" for a reason the button
+              // itself can't fix.
+              const toggleableGroupPerms = groupPerms.filter((p) => !isProtectedForNonAdmin(p));
+              const isAllSelected = toggleableGroupPerms.length > 0 && toggleableGroupPerms.every((p) => selectedPermIds.has(p.id));
               const isSomeSelected = groupPerms.some((p) => selectedPermIds.has(p.id));
               const assignedCount = groupPerms.filter((p) => selectedPermIds.has(p.id)).length;
 
@@ -520,16 +559,24 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {groupPerms.map((p) => {
                           const checked = selectedPermIds.has(p.id);
+                          // A checked, protected permission on a non-canonical role is a legacy
+                          // pivot the backend already treats as inert (`hasPermission()` returns
+                          // false regardless) — shown checked (it IS still assigned in the DB) but
+                          // clearly labeled as ineffective, never as active authority, and never
+                          // interactive from here.
+                          const ineffective = checked && isProtectedForNonAdmin(p);
+                          const interactionDisabled = !canManage || isProtectedForNonAdmin(p);
                           return (
                             <label
                               key={p.id}
-                              className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer transition ${checked ? "bg-indigo-50/50 border-indigo-200" : "hover:bg-gray-50"} ${!canManage ? "opacity-70 cursor-not-allowed" : ""}`}
+                              title={isProtectedForNonAdmin(p) ? "Permiso protegido: solo el Admin canónico del tenant puede recibirlo." : undefined}
+                              className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 transition ${checked ? "bg-indigo-50/50 border-indigo-200" : "hover:bg-gray-50"} ${interactionDisabled ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}
                             >
                               <div className="relative flex items-center">
                                 <input
                                   type="checkbox"
                                   className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600"
-                                  disabled={!canManage}
+                                  disabled={interactionDisabled}
                                   checked={checked}
                                   onChange={() => togglePermission(p.id)}
                                 />
@@ -537,6 +584,14 @@ export default function RolesPermissionsSettings({ canManage = true }: { canMana
                               <span className={`text-sm font-semibold capitalize ${checked ? "text-indigo-900" : "text-gray-700"}`}>
                                 {p.name.replaceAll("_", " ")}
                               </span>
+                              {p.is_protected && (
+                                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                                  Protegido
+                                </span>
+                              )}
+                              {ineffective && (
+                                <span className="text-[10px] font-bold uppercase text-gray-400">Sin efecto</span>
+                              )}
                             </label>
                           );
                         })}
