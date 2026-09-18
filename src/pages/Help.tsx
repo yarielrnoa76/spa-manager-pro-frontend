@@ -3,10 +3,10 @@ import {
     HelpCircle, Ticket, Calendar, Package, DollarSign, UserPlus,
     ChevronDown, ChevronUp, BookOpen, Info, MessageSquare,
     Search, ExternalLink, ArrowRight, Settings, Activity,
-    BarChart3, Bell, Radio, Shield, Key, Globe2
+    BarChart3, Bell, Radio, Shield, Key, Globe2, FileText, Link2
 } from 'lucide-react';
 
-type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'communication' | 'audit' | 'settings' | 'notifications';
+type ModuleKey = 'dashboard' | 'tickets' | 'appointments' | 'inventory' | 'sales' | 'leads' | 'formularios-web' | 'communication' | 'audit' | 'settings' | 'notifications';
 
 interface HelpSectionProps {
     title: string;
@@ -54,6 +54,7 @@ const Help: React.FC = () => {
         { id: 'inventory', label: 'Inventario', icon: Package, color: 'text-amber-600 bg-amber-50' },
         { id: 'sales', label: 'Ventas Diarias', icon: DollarSign, color: 'text-emerald-600 bg-emerald-50' },
         { id: 'leads', label: 'Contactos / Leads', icon: UserPlus, color: 'text-indigo-600 bg-indigo-50' },
+        { id: 'formularios-web', label: 'Formularios Web', icon: FileText, color: 'text-violet-600 bg-violet-50' },
         { id: 'communication', label: 'Live Chat', icon: Radio, color: 'text-teal-600 bg-teal-50' },
         { id: 'audit', label: 'Auditoría / Logs', icon: Activity, color: 'text-slate-600 bg-slate-50' },
         { id: 'settings', label: 'Configuración', icon: Settings, color: 'text-rose-600 bg-rose-50' },
@@ -529,6 +530,285 @@ const Help: React.FC = () => {
                                     <li><strong>Limpiar BD:</strong> Active la casilla "Limpiar BD" junto al botón de exportar para que, tras la descarga, los registros exportados se <strong className="text-red-500">eliminen de la base de datos</strong>. Se solicita confirmación explícita antes de ejecutar.</li>
                                     <li>La tabla incluye <strong>paginación</strong> para navegar entre páginas de resultados cuando el volumen es alto.</li>
                                 </ul>
+                            </HelpSection>
+                        </div>
+                    )}
+
+                    {/* FORMULARIOS WEB HELP */}
+                    {activeModule === 'formularios-web' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <header className="flex items-center gap-4 mb-8">
+                                <div className="p-4 bg-violet-50 text-violet-600 rounded-2xl">
+                                    <FileText size={28} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">Formularios Web</h2>
+                                    <p className="text-sm text-gray-500 font-medium">Formularios de captación pública y su ciclo de vida</p>
+                                </div>
+                            </header>
+
+                            <HelpSection title="Qué es Formularios Web" icon={Info} defaultOpen={true}>
+                                <p>Formularios Web le permite crear formularios de captación que cualquier visitante puede completar desde internet, sin necesidad de iniciar sesión.</p>
+                                <p className="mt-2 text-sm">Sirve para reunir datos de contacto de personas interesadas en sus servicios directamente desde su sitio web, sin que un vendedor tenga que atenderlas en tiempo real.</p>
+                                <p className="mt-2 text-sm">Cada envío válido de un formulario público se convierte automáticamente en un nuevo Lead dentro del Pipeline de Leads, con la fuente identificada como <strong>Formulario Web</strong>.</p>
+                                <p className="mt-2 text-sm text-gray-500">Cada formulario pertenece siempre a una sola sucursal de su negocio, elegida al crearlo. Todos los leads que genere ese formulario quedan asociados automáticamente a esa sucursal.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Acceso y Permisos" icon={Shield}>
+                                <p>El acceso al módulo se controla con permisos independientes:</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-violet-600">view_public_lead_forms</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Ver el módulo y sus formularios. Sin este permiso, "Formularios Web" no aparece en el menú.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <span className="text-[10px] font-black uppercase text-indigo-600">manage_public_lead_forms</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Crear formularios y editar su General, Campos y Marca.</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 sm:col-span-2">
+                                        <span className="text-[10px] font-black uppercase text-emerald-600">publish_public_lead_forms</span>
+                                        <p className="text-xs text-gray-800 mt-1 font-medium">Publicar un borrador, activar y pausar un formulario.</p>
+                                    </div>
+                                </div>
+                                <p className="mt-3 text-sm">Editar y publicar son capacidades distintas: un usuario puede tener permiso para modificar el contenido de un formulario sin poder publicarlo, y viceversa.</p>
+                                <p className="mt-2 text-sm text-gray-500">Si un botón de acción no está disponible, aparece deshabilitado; al pasar el cursor sobre él se indica el permiso requerido. Solicite a su administrador que se lo asigne.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Listado de Formularios" icon={ExternalLink}>
+                                <p>Al entrar al módulo verá una tabla con todos los formularios de su cuenta:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Nombre:</strong> nombre visible del formulario.</li>
+                                    <li><strong>Key:</strong> identificador técnico único, definido al crearlo.</li>
+                                    <li><strong>Sucursal:</strong> sucursal a la que pertenece.</li>
+                                    <li><strong>Estado:</strong> "Habilitado" o "Pausado", según si el formulario está aceptando envíos actualmente.</li>
+                                    <li><strong>Actualizado:</strong> fecha del último cambio guardado.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">Use el botón <strong>"Configurar"</strong> de cada fila para entrar a la configuración completa de ese formulario.</p>
+                                <p className="mt-2 text-sm text-gray-500">La tabla se pagina de 15 en 15; use las flechas del pie de tabla para navegar entre páginas. Si todavía no ha creado ningún formulario, verá un mensaje indicándolo en lugar de la tabla.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Creación de un Formulario" icon={Info}>
+                                <p>Use el botón <strong>"Nuevo formulario"</strong> (visible solo con permiso de gestión) para crear uno:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Nombre:</strong> obligatorio.</li>
+                                    <li><strong>Identificador (key):</strong> obligatorio; solo minúsculas, números y guiones simples entre palabras (ej. "website-leads").</li>
+                                    <li><strong>Sucursal:</strong> obligatoria, se elige de la lista de sucursales de su cuenta.</li>
+                                    <li><strong>Orígenes permitidos:</strong> debe agregar al menos uno antes de poder crear el formulario.</li>
+                                </ul>
+                                <p className="mt-4 text-sm text-gray-500"><strong>Nota:</strong> la key y la sucursal quedan fijas para siempre una vez creado el formulario; solo el nombre y los orígenes permitidos pueden modificarse después, desde la pestaña General.</p>
+                                <p className="mt-2 text-sm">Crear el formulario solo registra su configuración base. Todavía no tiene contenido publicado ni acepta envíos públicos hasta que complete la pestaña Campos y publique un borrador.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Pestaña General" icon={ExternalLink}>
+                                <p>Reúne los datos básicos del formulario:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Nombre:</strong> editable en cualquier momento.</li>
+                                    <li><strong>Sucursal:</strong> de solo lectura; no puede modificarse después de crear el formulario.</li>
+                                    <li><strong>Orígenes permitidos:</strong> dominios autorizados a enviar el formulario y a alojar su propia página.</li>
+                                    <li><strong>Orígenes de embebido:</strong> dominios autorizados a mostrar el formulario dentro de un iframe propio.</li>
+                                </ul>
+                                <div className="bg-violet-50 p-4 rounded-2xl border border-violet-100 flex gap-4 mt-4">
+                                    <Info className="text-violet-600 shrink-0" size={20} />
+                                    <p className="text-sm text-violet-900"><strong>Importante:</strong> son dos listas independientes que cumplen funciones distintas y no deben mezclarse. Los orígenes permitidos controlan quién puede enviar datos al formulario; los orígenes de embebido controlan únicamente quién puede incrustarlo visualmente en un iframe.</p>
+                                </div>
+                                <p className="mt-3 text-sm">Formato correcto de un origen: protocolo + dominio exactamente, por ejemplo <code className="bg-gray-100 px-1 rounded font-mono text-xs">https://www.ejemplo.com</code> — sin rutas, parámetros ni datos adicionales.</p>
+                                <p className="mt-2 text-sm">Use <strong>"Agregar origen"</strong> para añadir una fila y el ícono de papelera para eliminarla (siempre se conserva al menos una). Guarde con <strong>"Guardar cambios"</strong> al final del formulario.</p>
+                                <p className="mt-2 text-sm text-gray-500">Para guardar cambios en esta pestaña, el formulario debe estar pausado. Si lo intenta mientras está activo, verá un aviso pidiéndole pausarlo primero.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Pestaña Campos" icon={ExternalLink}>
+                                <p>El formulario cuenta con 6 campos disponibles — Nombre, Apellido, Teléfono, Correo electrónico, Mensaje y Consentimiento — no existen campos personalizados.</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Orden:</strong> use las flechas arriba/abajo junto a cada campo para reordenarlo; ese orden es el que verá el visitante.</li>
+                                    <li><strong>Etiqueta, Texto de ayuda y Placeholder:</strong> editables por campo.</li>
+                                    <li><strong>Visible / Obligatorio:</strong> casillas independientes; un campo obligatorio no puede quedar oculto.</li>
+                                    <li><strong>Campos "Fijo":</strong> Nombre y Consentimiento siempre permanecen visibles y obligatorios — sus casillas no son interactivas.</li>
+                                    <li><strong>Método de contacto:</strong> debe quedar al menos uno (Teléfono o Correo) visible y obligatorio.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">Esta misma pestaña incluye la <strong>Marca (branding)</strong> del formulario: título, subtítulo, texto del botón, mensaje de éxito, aviso de privacidad, color primario, estilo de bordes y si se muestra el logo de su cuenta.</p>
+                                <p className="mt-3 text-sm">Use <strong>"Guardar borrador"</strong> para guardar sus cambios. Si el formulario nunca tuvo un borrador, primero verá un botón <strong>"Crear borrador"</strong>, que parte de la última versión publicada (o de la configuración por defecto si nunca se publicó nada).</p>
+                                <p className="mt-2 text-sm text-gray-500">Los campos visibles y obligatorios definen lo que verá el visitante público, pero una versión ya publicada nunca se modifica por guardar el borrador — los cambios solo se reflejan públicamente cuando publique un nuevo borrador desde la pestaña Publicación.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Consentimiento y Privacidad" icon={Shield}>
+                                <p>El campo Consentimiento pide al visitante autorizar expresamente el uso de sus datos antes de enviar el formulario.</p>
+                                <p className="mt-2 text-sm">Por eso es un campo del sistema fijo: no puede ocultarse ni volverse opcional, para preservar siempre esa autorización explícita.</p>
+                                <p className="mt-2 text-sm">En la pestaña Campos puede escribir el texto del <strong>aviso de privacidad</strong> que se muestra junto al formulario público.</p>
+                                <p className="mt-2 text-sm text-gray-500">Redacte un texto claro y breve sobre el uso de los datos recolectados. SPA Manager Pro no ofrece asesoría legal; consulte a su equipo legal si necesita revisar el contenido de este aviso.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Pestaña Preview" icon={ExternalLink}>
+                                <p>Permite revisar el borrador actual antes de publicarlo, alternando entre dos vistas:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Escritorio:</strong> vista de ancho completo.</li>
+                                    <li><strong>Móvil:</strong> vista angosta, como la vería un visitante desde su teléfono.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">La previsualización muestra los mismos campos, textos y colores configurados en Campos, tal como se verían al publicarse. El botón <strong>"Refrescar"</strong> vuelve a cargarla con los últimos cambios guardados en el borrador.</p>
+                                <p className="mt-2 text-sm text-gray-500"><strong>Preview no activa el formulario ni lo hace público:</strong> nunca envía datos reales ni activa la verificación anti-bots; es solo una referencia visual. Publicar es una acción aparte, disponible en la pestaña Publicación.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Borradores y Versiones" icon={ExternalLink}>
+                                <p>El <strong>borrador</strong> es la copia editable de los Campos y la Marca de un formulario; sus cambios nunca se ven públicamente hasta que se publican. Se crea automáticamente la primera vez que guarda la pestaña Campos.</p>
+                                <p className="mt-3 text-sm">En la pestaña Publicación, el estado del borrador puede mostrarse como:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li><strong>Sin borrador:</strong> todavía no se ha creado ninguno.</li>
+                                    <li><strong>Borrador incompleto:</strong> existe un borrador, pero le falta algo para poder publicarse (el motivo se muestra junto al estado).</li>
+                                    <li><strong>Borrador listo para publicar:</strong> el formulario nunca fue publicado y el borrador actual ya cumple todos los requisitos.</li>
+                                    <li><strong>Publicado · sin cambios pendientes:</strong> ya existe una versión publicada y no hay ningún borrador nuevo esperando.</li>
+                                    <li><strong>Borrador nuevo incompleto:</strong> ya existe una versión publicada, pero el borrador más reciente todavía no cumple los requisitos.</li>
+                                    <li><strong>Cambios listos para publicar:</strong> ya existe una versión publicada y el borrador actual está listo para reemplazarla.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">Al publicar una nueva versión, la versión publicada anterior (si existía) pasa a <strong>Archivada</strong> y la nueva pasa a <strong>Publicada</strong>.</p>
+                                <p className="mt-2 text-sm">El <strong>Historial de versiones</strong> lista cada versión con su número, estado (Publicada / Borrador / Archivada), fecha de creación, fecha de publicación y el usuario que la publicó, cuando se conoce.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Publicar, Activar y Pausar" icon={ExternalLink}>
+                                <p>Tres acciones independientes, disponibles en la pestaña Publicación:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Publicar borrador:</strong> convierte el borrador actual en la nueva versión pública del formulario — pero no lo activa por sí sola.</li>
+                                    <li><strong>Activar:</strong> habilita la captación pública con la última versión publicada.</li>
+                                    <li><strong>Pausar:</strong> detiene temporalmente que el formulario reciba envíos públicos, sin borrar nada de su configuración ni de su historial.</li>
+                                </ul>
+                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
+                                    <Info className="text-amber-600 shrink-0" size={20} />
+                                    <p className="text-sm text-amber-900"><strong>Publicar y activar son acciones distintas:</strong> puede publicar contenido nuevo sin activarlo todavía (para revisarlo con calma), o mantener activo un formulario mientras prepara un nuevo borrador.</p>
+                                </div>
+                                <p className="mt-3 text-sm">Un formulario pausado conserva intactos su configuración, sus campos, su marca y todo su historial de versiones; solo deja de aceptar envíos hasta que vuelva a activarse.</p>
+                                <p className="mt-2 text-sm text-gray-500">Cada botón se deshabilita automáticamente si el formulario no cumple los requisitos para esa acción, o si no cuenta con el permiso de publicación. Las tres acciones piden confirmación explícita antes de ejecutarse.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Estados de Disponibilidad" icon={ExternalLink}>
+                                <p>La pestaña Publicación muestra tres indicadores:</p>
+                                <div className="flex flex-wrap gap-3 mt-4">
+                                    <span className="px-3 py-1.5 bg-gray-100 text-gray-700 text-[11px] font-bold rounded-lg border border-gray-200">Estado del borrador</span>
+                                    <span className="px-3 py-1.5 bg-gray-100 text-gray-700 text-[11px] font-bold rounded-lg border border-gray-200">Activable / No activable</span>
+                                    <span className="px-3 py-1.5 bg-gray-100 text-gray-700 text-[11px] font-bold rounded-lg border border-gray-200">Activo / Pausado</span>
+                                </div>
+                                <p className="mt-3 text-sm text-gray-500">En el listado y en el encabezado de configuración, este mismo estado se rotula como "Habilitado" o "Pausado"; en la pestaña Publicación se muestra como "Activo" o "Pausado" — ambos reflejan la misma condición.</p>
+                                <p className="mt-4 text-sm">Un formulario puede aparecer como <strong>"No activable"</strong> por, entre otras, estas causas reales:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-2 text-sm">
+                                    <li>Todavía no existe ninguna versión publicada.</li>
+                                    <li>El borrador o la configuración del formulario está incompleta.</li>
+                                    <li>La captación pública está desactivada a nivel de toda la plataforma.</li>
+                                    <li>La verificación anti-bots no está configurada en la plataforma.</li>
+                                    <li>La sucursal o la fuente de leads asociadas ya no están activas.</li>
+                                    <li>No hay un responsable configurado para revisar los leads sin asignar de esa sucursal.</li>
+                                </ul>
+                                <p className="mt-2 text-sm text-gray-500">En todos los casos, el panel muestra el motivo exacto junto al indicador correspondiente.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Protección Anti-bots" icon={Shield}>
+                                <p>Los formularios públicos están protegidos con <strong>Turnstile</strong>, un servicio de verificación que confirma que quien envía el formulario es una persona real, sin pedirle resolver acertijos visuales.</p>
+                                <div className="bg-violet-50 p-4 rounded-2xl border border-violet-100 flex gap-4 mt-4">
+                                    <Info className="text-violet-600 shrink-0" size={20} />
+                                    <p className="text-sm text-violet-900">Esta protección la configura y administra la plataforma de forma centralizada. Usted no necesita crear ni configurar su propio widget de verificación para su formulario.</p>
+                                </div>
+                                <p className="mt-3 text-sm text-gray-500">Si la verificación no aparece, o los envíos fallan repetidamente por este motivo, contacte al administrador de la plataforma — no es algo que se resuelva desde la configuración del formulario.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Entrega al Cliente" icon={Link2}>
+                                <p>Estas opciones aparecen únicamente cuando el formulario tiene una versión publicada y está activo. Si está pausado, o nunca fue publicado, verá un mensaje explicándolo en su lugar.</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li><strong>Hosted URL:</strong> la dirección pública donde el formulario vive como página completa, alojada por SPA Manager Pro. Botón "Copiar URL".</li>
+                                    <li><strong>Embed (iframe):</strong> fragmento de código listo para pegar en el sitio del cliente, que incrusta el formulario dentro de su página. Botón "Copiar snippet".</li>
+                                    <li><strong>Loader asíncrono:</strong> una alternativa de una sola línea de código que carga el formulario de forma diferida en el sitio del cliente. Botón "Copiar loader".</li>
+                                    <li><strong>Share link:</strong> el mismo enlace de la Hosted URL, listo para compartir directamente. Botón "Copiar share link".</li>
+                                    <li><strong>Código QR:</strong> se genera automáticamente a partir de la Hosted URL; útil para materiales impresos.</li>
+                                </ul>
+                                <p className="mt-3 text-sm">Para entregar el formulario a un cliente: copie la opción que necesite (Hosted URL para una página independiente, o el snippet/loader para incrustarlo) y compártala o péguela donde corresponda.</p>
+                                <p className="mt-2 text-sm">El iframe solo se mostrará correctamente en los dominios registrados como <strong>orígenes de embebido</strong> en la pestaña General.</p>
+                                <p className="mt-2 text-sm text-gray-500">Nunca modifique manualmente la dirección entregada — el identificador que contiene es único; cópiela y péguela tal cual. Ejemplo genérico de referencia: <code className="bg-gray-100 px-1 rounded font-mono text-xs">https://formularios.ejemplo.com/f/&lt;identificador&gt;</code> (la URL real de su formulario será distinta).</p>
+                                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
+                                    <Info className="text-amber-600 shrink-0" size={20} />
+                                    <p className="text-sm text-amber-900">Si esta sección no muestra ninguna dirección a pesar de que el formulario está publicado y activo, es porque la plataforma todavía no ha habilitado la entrega de esa dirección para su entorno; verá un aviso explicándolo. La sección se activará automáticamente en cuanto esté disponible, sin que deba hacer nada adicional.</p>
+                                </div>
+                            </HelpSection>
+
+                            <HelpSection title="Integración mediante iframe" icon={ExternalLink}>
+                                <p>Pasos para incrustar el formulario en el sitio de un cliente:</p>
+                                <ol className="list-decimal pl-5 space-y-2 mt-4 text-sm">
+                                    <li>Registre el dominio del sitio del cliente como <strong>origen de embebido</strong> en la pestaña General.</li>
+                                    <li>Guarde los cambios de la pestaña General.</li>
+                                    <li>Si tiene cambios pendientes en Campos, publique el borrador desde la pestaña Publicación.</li>
+                                    <li>Active el formulario.</li>
+                                    <li>Copie el snippet del iframe (o el loader asíncrono) desde "Entrega al cliente".</li>
+                                    <li>Pegue el código en el sitio del cliente, en el lugar donde debe aparecer el formulario.</li>
+                                    <li>Verifique el resultado tanto en escritorio como en un dispositivo móvil.</li>
+                                </ol>
+                                <p className="mt-3 text-sm text-gray-500">Si el sitio rechaza o no muestra el iframe, confirme que el dominio exacto (protocolo + host) del sitio del cliente esté registrado como origen de embebido, que el formulario esté activo, y que no haya una diferencia entre http y https frente al dominio real del sitio.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Experiencia del Visitante" icon={MessageSquare}>
+                                <p>Lo que ve y hace la persona que completa el formulario público:</p>
+                                <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
+                                    <li>Solo ve los campos marcados como <strong>Visible</strong>, en el orden configurado.</li>
+                                    <li>Los campos <strong>Obligatorios</strong> se marcan y deben completarse antes de enviar.</li>
+                                    <li><strong>Consentimiento:</strong> debe marcarlo antes de poder enviar el formulario, cuando es obligatorio.</li>
+                                    <li>La <strong>verificación anti-bots</strong> se muestra antes del botón de envío.</li>
+                                    <li>El botón <strong>Enviar</strong> se deshabilita mientras se procesa el envío, evitando que se envíe más de una vez con un mismo clic.</li>
+                                    <li>Al completarse el envío, el formulario se reemplaza por el <strong>mensaje de éxito</strong> configurado en la Marca.</li>
+                                    <li>Los <strong>errores de validación</strong> se muestran junto a cada campo afectado, sin perder lo ya escrito en el resto del formulario.</li>
+                                </ul>
+                                <p className="mt-3 text-sm text-gray-500">Si la verificación anti-bots expira o falla, el visitante ve un aviso y puede volver a intentar el envío; el sistema restablece la verificación automáticamente para el siguiente intento.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Qué sucede con el Lead enviado" icon={UserPlus}>
+                                <ul className="list-disc pl-5 space-y-2 text-sm">
+                                    <li>Se crea un nuevo <strong>Lead</strong> asociado a la sucursal del formulario que lo generó.</li>
+                                    <li>La fuente del Lead queda registrada como <strong>Formulario Web</strong>, visible en el Pipeline de Leads junto a WhatsApp, Referidos y Directo.</li>
+                                    <li>Cuando el visitante completa el campo Mensaje, su contenido se incorpora a la información del Lead.</li>
+                                    <li>El Lead aparece en el Pipeline de Leads, columna "Nuevo", listo para que su equipo lo gestione como cualquier otro contacto entrante.</li>
+                                </ul>
+                                <p className="mt-3 text-sm text-gray-500">Si un envío se reintenta automáticamente por un problema de red del visitante, el sistema evita duplicar el Lead correspondiente a ese envío.</p>
+                            </HelpSection>
+
+                            <HelpSection title="Solución de Problemas" icon={Info}>
+                                <ul className="list-disc pl-5 space-y-3 text-sm">
+                                    <li><strong>No puedo publicar:</strong> el borrador no cumple todavía los requisitos (revise el mensaje junto al estado del borrador), o su rol no tiene el permiso de publicación.</li>
+                                    <li><strong>No puedo activar:</strong> no hay ninguna versión publicada todavía, o el indicador "No activable" muestra un motivo específico junto a él.</li>
+                                    <li><strong>El formulario aparece pausado:</strong> alguien lo pausó manualmente, o nunca fue activado después de publicarse. Actívelo desde Publicación si cuenta con el permiso correspondiente.</li>
+                                    <li><strong>No aparecen opciones de entrega:</strong> el formulario no tiene versión publicada, está pausado, o la plataforma todavía no ha habilitado la entrega de la dirección pública para su entorno (verá un mensaje explicándolo).</li>
+                                    <li><strong>El Hosted URL muestra "Formulario no disponible":</strong> el formulario fue pausado, no tiene versión publicada, o la captación pública está temporalmente desactivada a nivel de plataforma.</li>
+                                    <li><strong>El iframe no carga:</strong> revise que el dominio del sitio esté registrado exactamente como origen de embebido (protocolo + dominio) y que el formulario esté activo.</li>
+                                    <li><strong>El dominio no está autorizado:</strong> agréguelo como origen permitido (para envíos) u origen de embebido (para iframe) en la pestaña General y guarde los cambios.</li>
+                                    <li><strong>Turnstile no aparece o falla:</strong> espere unos segundos a que cargue; si persiste, contacte al administrador de la plataforma.</li>
+                                    <li><strong>El envío muestra error:</strong> revise los mensajes junto a cada campo, corrija los datos señalados y vuelva a intentarlo.</li>
+                                    <li><strong>El lead no aparece inmediatamente:</strong> actualice el Pipeline de Leads; el registro se crea al momento del envío, pero la vista puede necesitar refrescarse.</li>
+                                    <li><strong>Cambié campos, pero el formulario público sigue igual:</strong> los cambios de Campos se guardan como borrador; debe publicarlo desde la pestaña Publicación para que se reflejen en la versión pública.</li>
+                                    <li><strong>No aparece el nombre de quien publicó:</strong> el historial no siempre puede identificar al usuario que publicó (por ejemplo, si ya no existe); en ese caso el campo queda vacío intencionalmente.</li>
+                                    <li><strong>Caché del navegador:</strong> si no ve un cambio reciente, refresque la página forzando la recarga (Ctrl+F5 o el atajo equivalente de su navegador) para descartar una versión anterior guardada en caché.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Buenas Prácticas" icon={ExternalLink}>
+                                <ul className="list-disc pl-5 space-y-2 text-sm">
+                                    <li>Pruebe primero con Preview antes de publicar cualquier cambio.</li>
+                                    <li>Use textos breves y claros en título, subtítulo y botón.</li>
+                                    <li>Solicite solo la información que realmente necesita para dar seguimiento al Lead.</li>
+                                    <li>Configure un aviso de privacidad claro y honesto.</li>
+                                    <li>Verifique que los dominios (orígenes permitidos y de embebido) sean exactamente los correctos antes de entregar el formulario al cliente.</li>
+                                    <li>Publique antes de activar, y revise la vista previa una vez más tras publicar.</li>
+                                    <li>Haga una prueba de envío controlada antes de compartir el formulario ampliamente.</li>
+                                    <li>Pause el formulario durante mantenimientos o cambios grandes de contenido.</li>
+                                    <li>Revise el Lead recibido en el Pipeline tras cada prueba.</li>
+                                    <li>Evite crear varios formularios redundantes para el mismo propósito y sucursal.</li>
+                                </ul>
+                            </HelpSection>
+
+                            <HelpSection title="Flujo Recomendado Completo" icon={BookOpen}>
+                                <p>Resumen del recorrido típico para poner en marcha un formulario:</p>
+                                <ol className="list-decimal pl-5 space-y-2 mt-4 text-sm font-medium">
+                                    <li>Crear</li>
+                                    <li>Configurar General</li>
+                                    <li>Configurar Campos</li>
+                                    <li>Preview</li>
+                                    <li>Publicar</li>
+                                    <li>Activar</li>
+                                    <li>Entregar al cliente</li>
+                                    <li>Probar</li>
+                                    <li>Revisar lead</li>
+                                    <li>Pausar cuando corresponda</li>
+                                </ol>
                             </HelpSection>
                         </div>
                     )}
