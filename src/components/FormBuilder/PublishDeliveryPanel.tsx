@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { PlayCircle, PauseCircle, UploadCloud, History, CheckCircle2, AlertTriangle, Link2 } from "lucide-react";
 import { api, ApiError } from "../../services/api";
 import { PublicLeadForm, PublicLeadFormReadiness, PublicLeadFormVersion } from "../../types";
-import { getCodeMessage, getPublicLeadFormMutationErrorMessage } from "../../utils/publicLeadFormPresentation";
+import { getCodeMessage, getDraftStatusPresentation, getPublicLeadFormMutationErrorMessage } from "../../utils/publicLeadFormPresentation";
 import CopyButton from "../shared/CopyButton";
 import QrCodeDisplay from "./QrCodeDisplay";
 
@@ -94,6 +94,7 @@ const PublishDeliveryPanel: React.FC<{
 
   const hasPublishedVersion = readiness?.has_published_version === true;
   const isDeliverable = hasPublishedVersion && form.enabled;
+  const draftStatus = readiness ? getDraftStatusPresentation(readiness) : null;
   const pageUrl = typeof form.page_url === "string" && form.page_url.trim() !== "" ? form.page_url : null;
   const loaderOrigin = pageUrl ? originOf(pageUrl) : null;
   const embedSnippet = pageUrl
@@ -122,11 +123,20 @@ const PublishDeliveryPanel: React.FC<{
             <button onClick={onRefreshReadiness} className="text-xs font-bold text-indigo-600 hover:underline">Reintentar</button>
           </div>
         )}
-        {readinessState === "success" && readiness && (
+        {readinessState === "success" && readiness && draftStatus && (
           <div className="space-y-2 text-xs">
             <div className="flex flex-wrap gap-2">
-              <span className={`px-2 py-0.5 rounded-full font-bold border ${readiness.draft_publishable ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
-                {readiness.draft_publishable ? "Borrador listo para publicar" : "Borrador incompleto"}
+              <span
+                data-testid="draft-status-badge"
+                className={`px-2 py-0.5 rounded-full font-bold border ${
+                  draftStatus.tone === "ready"
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : draftStatus.tone === "neutral"
+                      ? "bg-gray-100 text-gray-600 border-gray-200"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
+                }`}
+              >
+                {draftStatus.label}
               </span>
               <span className={`px-2 py-0.5 rounded-full font-bold border ${readiness.activatable ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
                 {readiness.activatable ? "Activable" : "No activable"}
@@ -135,9 +145,9 @@ const PublishDeliveryPanel: React.FC<{
                 {form.enabled ? "Activo" : "Pausado"}
               </span>
             </div>
-            {readiness.draft_blocking_condition && (
+            {draftStatus.message && (
               <p data-testid="draft-blocking-message" className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                {getCodeMessage(readiness.draft_blocking_condition.code, readiness.draft_blocking_condition.message)}
+                {draftStatus.message}
               </p>
             )}
             {readiness.activation_blocking_condition && (

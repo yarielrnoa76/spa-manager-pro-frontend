@@ -204,3 +204,46 @@ export function getDraftBlockingMessage(
   if (!condition) return null;
   return getCodeMessage(condition.code, condition.message);
 }
+
+export type PublicLeadFormDraftStatusTone = "ready" | "warning" | "neutral";
+
+export interface PublicLeadFormDraftStatusPresentation {
+  label: string;
+  tone: PublicLeadFormDraftStatusTone;
+  /** Explanatory sentence to show alongside the badge, or null when the badge alone is enough
+   * (a ready draft, or a published version with no pending draft, needs no extra warning text). */
+  message: string | null;
+}
+
+/**
+ * Combines `draft_publishable` / `draft_blocking_condition` / `has_published_version` into the
+ * one picture the Publicación panel needs -- whether a NEW draft exists and is ready, kept
+ * independent of whether the form already has a published version. `draft_blocking_condition`
+ * alone cannot make that distinction: its `NO_DRAFT` code fires identically whether the form was
+ * never published or was published and simply has no pending draft yet, which is exactly what
+ * produced the misleading "borrador incompleto" copy on an already-published form. This is a pure
+ * presentation combination of fields the backend already returns -- it never re-derives the
+ * backend's own readiness/publish rules.
+ */
+export function getDraftStatusPresentation(
+  readiness: Pick<PublicLeadFormReadiness, "draft_publishable" | "draft_blocking_condition" | "has_published_version">,
+): PublicLeadFormDraftStatusPresentation {
+  const hasPublished = readiness.has_published_version;
+  const noDraftAtAll = readiness.draft_blocking_condition?.code === "NO_DRAFT";
+
+  if (readiness.draft_publishable) {
+    return hasPublished
+      ? { label: "Cambios listos para publicar", tone: "ready", message: null }
+      : { label: "Borrador listo para publicar", tone: "ready", message: null };
+  }
+
+  if (noDraftAtAll) {
+    return hasPublished
+      ? { label: "Publicado · sin cambios pendientes", tone: "neutral", message: null }
+      : { label: "Sin borrador", tone: "warning", message: getDraftBlockingMessage(readiness.draft_blocking_condition) };
+  }
+
+  return hasPublished
+    ? { label: "Borrador nuevo incompleto", tone: "warning", message: getDraftBlockingMessage(readiness.draft_blocking_condition) }
+    : { label: "Borrador incompleto", tone: "warning", message: getDraftBlockingMessage(readiness.draft_blocking_condition) };
+}

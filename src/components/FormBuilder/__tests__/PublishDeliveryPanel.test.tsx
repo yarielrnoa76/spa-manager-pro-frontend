@@ -282,6 +282,148 @@ describe("PublishDeliveryPanel — version history (public identifiers only)", (
   });
 });
 
+describe("PublishDeliveryPanel — draft status badge (published vs. no-pending-draft is never an error)", () => {
+  it("published, no new draft at all -> 'Publicado · sin cambios pendientes', no alarming blocking text", async () => {
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: true })}
+        readiness={READINESS({
+          has_published_version: true,
+          draft_publishable: false,
+          draft_blocking_condition: { code: "NO_DRAFT", message: "No draft version exists for this form." },
+        })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Publicado · sin cambios pendientes");
+    expect(screen.queryByTestId("draft-blocking-message")).toBeNull();
+    expect(screen.queryByText(/todavía no tiene un borrador/i)).toBeNull();
+  });
+
+  it("published, new draft exists but is incomplete -> a distinct 'new draft incomplete' badge and the validation message", async () => {
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: true })}
+        readiness={READINESS({
+          has_published_version: true,
+          draft_publishable: false,
+          draft_blocking_condition: {
+            code: "CONTACT_METHOD_REQUIRED",
+            message: "Debe haber al menos un método de contacto.",
+          },
+        })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Borrador nuevo incompleto");
+    expect(screen.getByTestId("draft-blocking-message")).toHaveTextContent(/método de contacto/i);
+  });
+
+  it("published, new draft exists and is ready -> 'Cambios listos para publicar'", async () => {
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: true })}
+        readiness={READINESS({ has_published_version: true, draft_publishable: true })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Cambios listos para publicar");
+    expect(screen.queryByTestId("draft-blocking-message")).toBeNull();
+  });
+
+  it("never published, no draft at all -> 'Sin borrador' with the honest 'no draft yet' message", async () => {
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: false })}
+        readiness={READINESS({
+          has_published_version: false,
+          draft_publishable: false,
+          draft_blocking_condition: { code: "NO_DRAFT", message: "No draft version exists for this form." },
+        })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Sin borrador");
+    expect(screen.getByTestId("draft-blocking-message")).toHaveTextContent(/todavía no tiene un borrador/i);
+  });
+
+  it("Publicar stays disabled in every non-ready draft state, including 'published, no pending draft'", async () => {
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: true })}
+        readiness={READINESS({
+          has_published_version: true,
+          draft_publishable: false,
+          draft_blocking_condition: { code: "NO_DRAFT", message: "No draft version exists for this form." },
+        })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: /Publicar borrador/i })).toBeDisabled();
+  });
+
+  it("re-rendering with new readiness/form props (e.g. after a tab round-trip) updates the badge cleanly, without leaking the previous state", async () => {
+    const { rerender } = render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: false })}
+        readiness={READINESS({ has_published_version: false, draft_publishable: true })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Borrador listo para publicar");
+
+    rerender(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM({ enabled: true })}
+        readiness={READINESS({
+          has_published_version: true,
+          draft_publishable: false,
+          draft_blocking_condition: { code: "NO_DRAFT", message: "No draft version exists for this form." },
+        })}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+    expect(await screen.findByTestId("draft-status-badge")).toHaveTextContent("Publicado · sin cambios pendientes");
+    expect(screen.queryByText("Borrador listo para publicar")).toBeNull();
+  });
+});
+
+describe("PublishDeliveryPanel — version history publisher rendering", () => {
+  it("falls back safely to '—' when a version's publisher is not available (e.g. cross-tenant/soft-deleted, gated server-side)", async () => {
+    vi.mocked(api.listPublicLeadFormVersions).mockResolvedValue([VERSION({ published_by: null })]);
+    render(
+      <PublishDeliveryPanel
+        {...defaultProps}
+        form={FORM()}
+        readiness={READINESS()}
+        readinessState="success"
+        canPublish={true}
+      />,
+    );
+
+    expect(await screen.findByText("v1")).toBeTruthy();
+    expect(screen.getByText("—")).toBeTruthy();
+  });
+});
+
 describe("PublishDeliveryPanel — delivery", () => {
   it("shows a not-deliverable state when there is no published version", async () => {
     render(
