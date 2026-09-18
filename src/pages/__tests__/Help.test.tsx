@@ -103,19 +103,54 @@ describe("Help — Formularios Web", () => {
     ).toBeTruthy();
   });
 
-  it("explains Hosted URL and the iframe embed, and ties them to a published + active form", async () => {
+  it("explains Hosted URL, the iframe embed, the loader and the QR as permanent, currently-working delivery options", async () => {
     const user = await openFormulariosWeb();
     await user.click(screen.getByRole("button", { name: /Entrega al Cliente/ }));
 
     expect(
-      screen.getByText(/la dirección pública donde el formulario vive como página completa, alojada por SPA Manager Pro/i),
+      screen.getByText(/abre la página pública del formulario, alojada por SPA Manager Pro/i),
     ).toBeTruthy();
     expect(
-      screen.getByText(/fragmento de código listo para pegar en el sitio del cliente, que incrusta el formulario/i),
+      screen.getByText(/fragmento de código listo para pegar en el sitio del cliente, que inserta el formulario dentro de su sitio autorizado/i),
     ).toBeTruthy();
     expect(
-      screen.getByText(/aparecen únicamente cuando el formulario tiene una versión publicada y está activo/i),
+      screen.getByText(/la alternativa de integración implementada para cargar el formulario de forma diferida/i),
     ).toBeTruthy();
+    expect(screen.getByText(/apunta a la Hosted URL/i)).toBeTruthy();
+    expect(
+      screen.getByText(/aparecen cuando el formulario tiene una versión publicada, está activo y la plataforma dispone de su dirección pública/i),
+    ).toBeTruthy();
+  });
+
+  it("tells the user to confirm published/active state and refresh, then contact the platform admin, if delivery options unexpectedly don't appear", async () => {
+    const user = await openFormulariosWeb();
+    await user.click(screen.getByRole("button", { name: /Entrega al Cliente/ }));
+
+    expect(
+      screen.getByText(/confirme que el formulario está publicado, confirme que está activo y refresque la pantalla/i),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/si el problema continúa, contacte al administrador de la plataforma/i),
+    ).toBeTruthy();
+  });
+
+  it("never describes form delivery (Hosted URL / iframe / loader / QR) as pending, future, or blocked by an unready backend or environment", async () => {
+    await openFormulariosWeb();
+    const fullText = document.body.textContent ?? "";
+
+    const forbidden = [
+      /todavía no ha habilitado/i,
+      /aún no (está|esté|ha sido) disponible/i,
+      /backend[^.]*(no entrega|todavía no|aún no)/i,
+      /funcionalidad futura/i,
+      /se activará automáticamente en cuanto/i,
+      /próximamente/i,
+      /no está disponible en (el|este) entorno/i,
+    ];
+
+    for (const pattern of forbidden) {
+      expect(fullText).not.toMatch(pattern);
+    }
   });
 
   it("never claims each tenant must create or configure its own Turnstile/Cloudflare widget", async () => {

@@ -707,20 +707,20 @@ const Help: React.FC = () => {
                             </HelpSection>
 
                             <HelpSection title="Entrega al Cliente" icon={Link2}>
-                                <p>Estas opciones aparecen únicamente cuando el formulario tiene una versión publicada y está activo. Si está pausado, o nunca fue publicado, verá un mensaje explicándolo en su lugar.</p>
+                                <p>Estas opciones aparecen cuando el formulario tiene una versión publicada, está activo y la plataforma dispone de su dirección pública. Si el formulario está pausado, o nunca fue publicado, verá un mensaje explicándolo en su lugar.</p>
                                 <ul className="list-disc pl-5 space-y-2 mt-4 text-sm">
-                                    <li><strong>Hosted URL:</strong> la dirección pública donde el formulario vive como página completa, alojada por SPA Manager Pro. Botón "Copiar URL".</li>
-                                    <li><strong>Embed (iframe):</strong> fragmento de código listo para pegar en el sitio del cliente, que incrusta el formulario dentro de su página. Botón "Copiar snippet".</li>
-                                    <li><strong>Loader asíncrono:</strong> una alternativa de una sola línea de código que carga el formulario de forma diferida en el sitio del cliente. Botón "Copiar loader".</li>
+                                    <li><strong>Hosted URL:</strong> abre la página pública del formulario, alojada por SPA Manager Pro. Botón "Copiar URL".</li>
+                                    <li><strong>Embed (iframe):</strong> fragmento de código listo para pegar en el sitio del cliente, que inserta el formulario dentro de su sitio autorizado. Botón "Copiar snippet".</li>
+                                    <li><strong>Loader asíncrono:</strong> la alternativa de integración implementada para cargar el formulario de forma diferida en el sitio del cliente, en una sola línea de código. Botón "Copiar loader".</li>
                                     <li><strong>Share link:</strong> el mismo enlace de la Hosted URL, listo para compartir directamente. Botón "Copiar share link".</li>
-                                    <li><strong>Código QR:</strong> se genera automáticamente a partir de la Hosted URL; útil para materiales impresos.</li>
+                                    <li><strong>Código QR:</strong> apunta a la Hosted URL; útil para materiales impresos.</li>
                                 </ul>
                                 <p className="mt-3 text-sm">Para entregar el formulario a un cliente: copie la opción que necesite (Hosted URL para una página independiente, o el snippet/loader para incrustarlo) y compártala o péguela donde corresponda.</p>
                                 <p className="mt-2 text-sm">El iframe solo se mostrará correctamente en los dominios registrados como <strong>orígenes de embebido</strong> en la pestaña General.</p>
                                 <p className="mt-2 text-sm text-gray-500">Nunca modifique manualmente la dirección entregada — el identificador que contiene es único; cópiela y péguela tal cual. Ejemplo genérico de referencia: <code className="bg-gray-100 px-1 rounded font-mono text-xs">https://formularios.ejemplo.com/f/&lt;identificador&gt;</code> (la URL real de su formulario será distinta).</p>
                                 <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-4 mt-4">
                                     <Info className="text-amber-600 shrink-0" size={20} />
-                                    <p className="text-sm text-amber-900">Si esta sección no muestra ninguna dirección a pesar de que el formulario está publicado y activo, es porque la plataforma todavía no ha habilitado la entrega de esa dirección para su entorno; verá un aviso explicándolo. La sección se activará automáticamente en cuanto esté disponible, sin que deba hacer nada adicional.</p>
+                                    <p className="text-sm text-amber-900">Si estas opciones no aparecen y no lo esperaba: confirme que el formulario está publicado, confirme que está activo y refresque la pantalla. Si el problema continúa, contacte al administrador de la plataforma.</p>
                                 </div>
                             </HelpSection>
 
@@ -767,7 +767,7 @@ const Help: React.FC = () => {
                                     <li><strong>No puedo publicar:</strong> el borrador no cumple todavía los requisitos (revise el mensaje junto al estado del borrador), o su rol no tiene el permiso de publicación.</li>
                                     <li><strong>No puedo activar:</strong> no hay ninguna versión publicada todavía, o el indicador "No activable" muestra un motivo específico junto a él.</li>
                                     <li><strong>El formulario aparece pausado:</strong> alguien lo pausó manualmente, o nunca fue activado después de publicarse. Actívelo desde Publicación si cuenta con el permiso correspondiente.</li>
-                                    <li><strong>No aparecen opciones de entrega:</strong> el formulario no tiene versión publicada, está pausado, o la plataforma todavía no ha habilitado la entrega de la dirección pública para su entorno (verá un mensaje explicándolo).</li>
+                                    <li><strong>No aparecen opciones de entrega:</strong> confirme que el formulario está publicado y que está activo, y refresque la pantalla. Si el formulario no tiene versión publicada o está pausado, verá un mensaje explicándolo; si continúa sin aparecer, contacte al administrador de la plataforma.</li>
                                     <li><strong>El Hosted URL muestra "Formulario no disponible":</strong> el formulario fue pausado, no tiene versión publicada, o la captación pública está temporalmente desactivada a nivel de plataforma.</li>
                                     <li><strong>El iframe no carga:</strong> revise que el dominio del sitio esté registrado exactamente como origen de embebido (protocolo + dominio) y que el formulario esté activo.</li>
                                     <li><strong>El dominio no está autorizado:</strong> agréguelo como origen permitido (para envíos) u origen de embebido (para iframe) en la pestaña General y guarde los cambios.</li>
