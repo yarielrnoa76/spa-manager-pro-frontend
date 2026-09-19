@@ -178,6 +178,12 @@ const SettingsPage: React.FC<{
             canCreate={hasPerm("manage_settings") || hasPerm("create_branch")}
             canEdit={hasPerm("manage_settings") || hasPerm("edit_branch")}
             canDelete={hasPerm("manage_settings") || hasPerm("delete_branch")}
+            canViewReviewer={
+              hasPerm("manage_settings") ||
+              hasPerm("view_branch") ||
+              hasPerm("manage_branch_notification_reviewer")
+            }
+            tenantId={currentTenantId ?? null}
           />
         )}
         {tab === "users" && canSeeUsers && (

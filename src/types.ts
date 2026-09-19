@@ -429,6 +429,48 @@ export interface Branch {
 }
 
 /**
+ * Branch default notification reviewer -- `GET|PUT /api/branches/{branch}/notification-reviewer`
+ * (backend `BranchNotificationReviewerResource`). The ONE user told about the branch's unassigned
+ * leads and tickets. It is NOT the lead owner and NOT the ticket assignee: designating a reviewer
+ * never assigns anything to them.
+ */
+export type BranchNotificationReviewerStatus = "not_configured" | "valid" | "invalid";
+
+/** The configured reviewer as the backend describes them: id, display name and role name only
+ * (never an email). `name` is null for a deleted user or a platform account. */
+export interface BranchNotificationReviewerUser {
+  id: number;
+  name: string | null;
+  role: string | null;
+  is_platform_account: boolean;
+}
+
+/** An eligible candidate, already filtered by the backend for this tenant and branch. */
+export interface BranchNotificationReviewerCandidate {
+  id: number;
+  name: string;
+  role: string | null;
+}
+
+export interface BranchNotificationReviewer {
+  branch_id: number;
+  user_id: number | null;
+  user: BranchNotificationReviewerUser | null;
+  status: BranchNotificationReviewerStatus;
+  /** A closed backend reason code; only set when `status` is "invalid". */
+  invalid_reason: string | null;
+  /** Empty unless the actor can manage the configuration. */
+  candidates: BranchNotificationReviewerCandidate[];
+  capabilities: { can_manage: boolean };
+}
+
+/** `GET` answers `{ data }`; `PUT` also answers `meta.outcome`. */
+export interface BranchNotificationReviewerResponse {
+  data: BranchNotificationReviewer;
+  meta?: { outcome?: string };
+}
+
+/**
  * The single, authoritative shape of the currently-authenticated user, exactly as
  * `GET /api/user` (api.me()) returns it. Every consumer that needs the logged-in actor's
  * identity, tenant, branch, or permissions must use this type -- never a hand-built partial

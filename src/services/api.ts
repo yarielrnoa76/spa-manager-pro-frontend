@@ -40,6 +40,7 @@ import {
   PublicLeadFormVersion,
   PublicLeadFormPreviewDescriptor,
   SaleCreateContext,
+  BranchNotificationReviewerResponse,
 } from "../types";
 import { SaleGroup, SalesListItem, CreateSaleGroupResponse, CreateSaleBatchResponse } from "../types/payments";
 
@@ -941,6 +942,24 @@ export const api = {
       method: "GET",
       auth: true,
     });
+  },
+
+  // --- Branch default notification reviewer ---
+  // The tenant is never sent in the URL or body: it is the authenticated (or, for a SuperAdmin,
+  // selected) effective tenant, resolved by the backend. The body is exactly `{ user_id }` --
+  // the backend rejects unknown fields and offers no way to clear the reviewer over HTTP.
+  async getBranchNotificationReviewer(branchId: number) {
+    return request<BranchNotificationReviewerResponse>(
+      `/api/branches/${branchId}/notification-reviewer`,
+      { method: "GET", auth: true },
+    );
+  },
+
+  async setBranchNotificationReviewer(branchId: number, userId: number) {
+    return request<BranchNotificationReviewerResponse>(
+      `/api/branches/${branchId}/notification-reviewer`,
+      { method: "PUT", body: { user_id: userId }, auth: true },
+    );
   },
 
   // --- Generic helpers ---

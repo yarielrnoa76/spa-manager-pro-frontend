@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../services/api";
 import BranchFormModal from "../components/BranchFormModal";
+import BranchNotificationReviewerModal from "../components/BranchNotificationReviewerModal";
 
 type Tenant = { id: number; name: string };
 
@@ -18,17 +19,25 @@ export default function BranchesSettings({
   canCreate = false,
   canEdit = false,
   canDelete = false,
+  canViewReviewer = false,
+  tenantId = null,
 }: {
   isSuperAdmin?: boolean;
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  /** Mirrors the backend's read permissions for the notification reviewer; the backend still
+   * decides what the actor may see and change. */
+  canViewReviewer?: boolean;
+  /** Effective tenant of the screen; resets the reviewer dialog if it ever changes. */
+  tenantId?: number | null;
 }) {
   const [rows, setRows] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [reviewerBranch, setReviewerBranch] = useState<Branch | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -96,6 +105,15 @@ export default function BranchesSettings({
         />
       )}
 
+      {reviewerBranch && (
+        <BranchNotificationReviewerModal
+          branchId={reviewerBranch.id}
+          branchName={reviewerBranch.name}
+          tenantId={tenantId}
+          onClose={() => setReviewerBranch(null)}
+        />
+      )}
+
       <div className="overflow-x-auto border rounded-xl">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
@@ -150,6 +168,14 @@ export default function BranchesSettings({
                     <td className="p-3 text-right space-x-2">
                       {!deleted && (
                         <>
+                          {canViewReviewer && (
+                            <button
+                              className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
+                              onClick={() => setReviewerBranch(b)}
+                            >
+                              Notification reviewer
+                            </button>
+                          )}
                           {canEdit && (
                             <button
                               className="px-3 py-1 rounded-lg border hover:bg-gray-50 font-semibold"
